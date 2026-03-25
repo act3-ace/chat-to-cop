@@ -78,6 +78,7 @@ Voice is already transcribed and piped into IRC as `#stt_*` channels — we only
 | [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | What's on Pydio, what we downloaded, how to access DASH data |
 | [docs/SCHEMAS.md](docs/SCHEMAS.md) | BattleEffectSchemaV2, GenMSG fields, CoP database model |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed pipeline design and deployment options |
+| [docs/PRIOR_ART.md](docs/PRIOR_ART.md) | Lessons from prior DASH event chat-parsing approaches |
 
 ## Quick Start
 
