@@ -1,0 +1,33 @@
+# Data (downloaded separately via scripts)
+data/
+*.zip
+*.rar
+*.7z
+*.flac
+*.mp4
+*.mkv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Credentials
+*PAT*.txt
+*token*.txt
+*credentials*
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,73 @@
+{
+    "description": "Regex patterns for extracting track numbers from military chat. Adapted from prior DASH event chat processing tooling.",
+    "rules": [
+        {
+            "pattern": "[tT]\\s*[mM]\\s*(\\d{3})",
+            "flags": "i",
+            "label": "Track TM###"
+        },
+        {
+            "pattern": "[tT]\\s*[mM]\\s*(\\d{1}\\s*\\d{1}\\s*\\d{1})",
+            "flags": "i",
+            "label": "Track TM### (spaced digits)"
+        },
+        {
+            "pattern": "[dD]\\s*[aA]\\s*(\\d{3})",
+            "flags": "i",
+            "label": "Track DA###"
+        },
+        {
+            "pattern": "[dD]\\s*[aA]\\s*(\\d{1}\\s*\\d{1}\\s*\\d{1})",
+            "flags": "i",
+            "label": "Track DA### (spaced digits)"
+        },
+        {
+            "pattern": "(?:working|wrking|wkrg|wkg)\\s*(\\d{5})",
+            "flags": "i",
+            "label": "Working track (5-digit)"
+        },
+        {
+            "pattern": "(?:ctn|cnt|cttn)\\s*(\\d{5})",
+            "flags": "i",
+            "label": "Contact track number"
+        },
+        {
+            "pattern": "(?:tracks|trks|tn|TN:)\\s*(\\d{5})",
+            "flags": "i",
+            "label": "Track number reference"
+        },
+        {
+            "pattern": "(?:contact|contacts)\\s*(\\d{5})",
+            "flags": "i",
+            "label": "Contact reference"
+        },
+        {
+            "pattern": "(\\d{5})\\s*(?:match)",
+            "flags": "i",
+            "label": "Match track"
+        },
+        {
+            "pattern": "(?:ref)\\s*(\\d{5})",
+            "flags": "i",
+            "label": "Reference track"
+        },
+        {
+            "pattern": "(?:id)\\s*(\\d{5})",
+            "flags": "i",
+            "label": "ID track"
+        },
+        {
+            "pattern": "(\\d{5})\\s*(?:copy)",
+            "flags": "i",
+            "label": "Copy track acknowledgment"
+        }
+    ],
+    "noise_patterns": [
+        "^\\s*[c\\.]+\\s*$",
+        "^\\s*copy\\s*$",
+        "^\\s*word\\s*$",
+        "^\\s*test\\s*$",
+        "^\\s*\\.$",
+        "^\\s*\\.\\.$"
+    ]
+}
