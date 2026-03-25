@@ -200,6 +200,15 @@ Local GPU for Tier 2 (primary processing), cloud for Tier 3 (fallback).
 
 **Recommendation:** Start with Option A (local desktop), have Option B ready as fallback. The message volume (10-30/min) is trivially handled by a single GPU.
 
+## Strategic Context
+
+This pipeline sits within the broader C2ES (Command & Control Effects at Scale) project, which is the ACT3/AFRL contribution to CJADC2. Key context from project planning:
+
+- C2ES is grounded in the CJADC2 "sense, make sense, and act" loop. Our pipeline is the **"make sense"** layer for unstructured chat/voice data.
+- The DASH events demonstrated that AI-enabled tools generate **30x more COAs** than human-only teams — but only when they have current, accurate data to work with. That's what we provide.
+- As of Mar 2026, the real-time streaming contractor was cut. The **critical need is for a structured API endpoint to augment CoP data** — this validates our approach of LLM-structured JSON output pushed to the CoP REST API.
+- The HLT (Human Language Translation) team is ramping up to cover some of the gap. Coordinate with them on overlapping scope.
+
 ## Open Questions
 
 1. **CoP database schema** — Pending from contractor team. Need this to build the Schema Mapper.
@@ -208,3 +217,5 @@ Local GPU for Tier 2 (primary processing), cloud for Tier 3 (fallback).
 4. **Bullseye reference point** — Need the scenario's bullseye coordinates to convert cigar bearings to lat/lon.
 5. **Fine-tuning data** — Should we annotate a subset of the DASH 3 chat for fine-tuning the local model?
 6. **GPU availability** — Confirm desktop GPU specs at H2O.
+7. **HLT team coordination** — What is the HLT team covering? Avoid duplication of effort.
+8. **JADPACT integration** — C2ES uses JADPACT as architectural blueprint. Does our CoP output need to conform to JADPACT data formats?
