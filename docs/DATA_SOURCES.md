@@ -105,5 +105,9 @@ The `equifinality` repo (`../equifinality/`) has processed entity catalogs usefu
 | `data/processed/schema_assets.csv` | 122 Blue assets with platform type, supercategory |
 | `data/processed/schema_effects.csv` | 3,465 capability-target effect rules |
 | `config/dash_target_taxonomy.csv` | Target class hierarchy with aliases |
+| `data/processed/theater_geometry_polygons.geojson` | GeoJSON polygon boundaries for BMAs, holding areas, tanker tracks (from ACO) |
+| `scripts/geocode_dash_locations.py` | ACO parser — resolves named areas to coordinates |
 | `docs/GLOSSARY.md` | 50+ weapons, 100+ acronyms |
 | `docs/DASH/SCENARIO_REFERENCE.md` | 122 callsigns, 77 targets, geographic locations |
+
+**Note on theater geometry:** The GeoJSON polygons and named area boundaries are from the DASH 3 GBC scenario. The MASH event will likely use a different theater with different BMAs, holding areas, and tanker tracks. However, the *structure* and *types* of named areas will be similar. When the MASH scenario data becomes available, the same ACO parsing tooling (`scripts/geocode_dash_locations.py`, `scripts/export_aco_polygons.py`) can generate updated geometry. In the meantime, the DASH 3 data is useful for development and testing — e.g., resolving "MANDALAY BMA" or "SEAHAWKS track" to polygon boundaries.
