@@ -9,6 +9,7 @@ Uses `instructor` for structured output with Pydantic validation.
 from __future__ import annotations
 
 import asyncio
+
 import instructor
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -118,7 +119,8 @@ def build_system_prompt(
     parts = [
         "You are a military chat message interpreter for a Common Operating Picture (CoP) database.",
         "Extract world-state changes from the messages and return structured JSON.",
-        "If the message contains no actionable world-state information (acks like 'c' or 'copy', radio checks, chatter), set update_type to 'none'.",
+        "If the message contains no actionable world-state information "
+        "(acks like 'c' or 'copy', radio checks, chatter), set update_type to 'none'.",
         "Be concise in your reasoning. Focus on what changed in the battlespace.",
     ]
 
