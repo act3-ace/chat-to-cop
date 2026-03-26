@@ -31,3 +31,10 @@ build/
 # OS
 Thumbs.db
 .DS_Store
+
+# SQLite databases (generated at runtime)
+*.db
+*.db-journal
+
+# Docker
+.docker/
