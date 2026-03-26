@@ -38,3 +38,6 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests requiring external services (Ollama, IRC server, etc.)",
+]
