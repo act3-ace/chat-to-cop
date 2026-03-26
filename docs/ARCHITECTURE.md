@@ -209,6 +209,33 @@ This pipeline sits within the broader C2ES (Command & Control Effects at Scale) 
 - As of Mar 2026, the real-time streaming contractor was cut. The **critical need is for a structured API endpoint to augment CoP data** — this validates our approach of LLM-structured JSON output pushed to the CoP REST API.
 - The HLT (Human Language Translation) team is ramping up to cover some of the gap. Coordinate with them on overlapping scope.
 
+## MASH Event Model
+
+The MASH event is structurally different from prior DASH events in important ways:
+
+**The database is the experiment's oracle.** The white cell populates it directly (not via chat). Vendors poll it via REST API. Vendors never write to the database. Our pipeline is one of the few systems authorized to write to it — from chat and voice sources.
+
+**Chat will be "thinner" than DASH 3.** In prior DASH events, the white cell injected scenario stimuli (new threats, BDA, intel reports) through chat. In MASH, that information goes directly into the database. What remains in chat is **organic battle manager communication**: real-time status updates, coordination between cells, fuel states, operational decisions, and the kind of information that only humans generate in conversation.
+
+**High-value extraction targets for MASH:**
+- **Fuel state** — Explicitly called out as something operators trust chat over the database for. High-value, high-trust use case.
+- **Platform operational status** — "Gadget bent", "RTB", equipment failures. These happen in real-time and may not be reflected in the simulation.
+- **Weapons expenditure** — "Fired 4x SM6, 8 remaining." Real-time inventory that the simulation may lag behind on.
+- **Coordination/tasking** — BM-to-BM coordination, handoffs, re-tasking. These are decisions that only exist in chat until someone enters them.
+
+**Lower-value targets (already in the DB from other sources):**
+- Entity identification (sim/white cell populates directly)
+- Threat assessments (intel reports go straight to DB)
+- Location updates (track data from GenMSG/MACE feeds)
+
+**Implication for our pipeline:** Expect fewer messages per minute with extractable content than DASH 3 showed. But the messages that DO come through chat are the ones the database can't get any other way — making our pipeline the only source for that data.
+
+## Training Data Strategy
+
+**DASH 3 GBC is the primary reference** — closest to MASH's integrated exercise format, though still richer than what we should expect (some white cell injects that won't happen in MASH were still in chat).
+
+**DASH 1 & 2 are background reference only** — useful for understanding military jargon, database field expectations, and the battle management process, but their chat is not representative of MASH. Those events used wizard-of-oz approaches where the white cell played roles that will be handled by vendor tools in MASH, making the chat artificially information-dense.
+
 ## Open Questions
 
 1. **CoP database schema** — Pending from contractor team. Need this to build the Schema Mapper.
