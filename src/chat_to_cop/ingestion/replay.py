@@ -15,9 +15,9 @@ from __future__ import annotations
 import asyncio
 import re
 import zipfile
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
 
 from chat_to_cop.models.messages import IRCMessage
 
@@ -71,8 +71,18 @@ def _extract_date_from_path(path: Path) -> datetime | None:
     DASH paths contain date info like: Data/23Sep/usaf/ or Data/1Apr/
     """
     month_map = {
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
     }
     for part in path.parts:
         match = re.match(r"(\d{1,2})([A-Za-z]{3})$", part)
@@ -86,7 +96,11 @@ def _extract_date_from_path(path: Path) -> datetime | None:
     return None
 
 
-def parse_line(line: str, default_channel: str = "#unknown", reference_date: datetime | None = None) -> IRCMessage | None:
+def parse_line(
+    line: str,
+    default_channel: str = "#unknown",
+    reference_date: datetime | None = None,
+) -> IRCMessage | None:
     """Parse a single log line into an IRCMessage, or None if unparseable."""
     line = line.rstrip()
     if not line:
