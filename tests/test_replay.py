@@ -16,6 +16,7 @@ from chat_to_cop.ingestion.replay import (
     parse_zip,
     replay_messages,
 )
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -167,8 +168,7 @@ class TestParseZip:
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr(
                 "combined.log",
-                "[14:00:00] #c2_coord VEGAS_SL: hello world\n"
-                "[14:00:05] #fires HYDRO_Strike: fire mission\n",
+                "[14:00:00] #c2_coord VEGAS_SL: hello world\n[14:00:05] #fires HYDRO_Strike: fire mission\n",
             )
         msgs = parse_zip(zip_path)
         assert len(msgs) == 2
@@ -221,6 +221,7 @@ class TestReplayMessages:
 
     def test_replay_instant(self):
         """speed=0 should yield all messages without delay."""
+
         async def run():
             msgs = []
             async for msg in replay_messages(FIXTURES / "sample_dash1.txt", speed=0):

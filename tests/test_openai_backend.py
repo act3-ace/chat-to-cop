@@ -87,10 +87,12 @@ class TestOpenAICompatibleBackend:
         backend._client.chat.completions.create = mock_create
 
         with pytest.raises(RetryableError, match="Timeout"):
-            asyncio.run(backend.extract(
-                messages=[{"role": "user", "content": "test"}],
-                schema=SimpleExtraction,
-            ))
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
 
     def test_extract_rate_limit_raises_retryable(self):
         """429 errors should be classified as retryable."""
@@ -102,10 +104,12 @@ class TestOpenAICompatibleBackend:
         backend._client.chat.completions.create = mock_create
 
         with pytest.raises(RetryableError):
-            asyncio.run(backend.extract(
-                messages=[{"role": "user", "content": "test"}],
-                schema=SimpleExtraction,
-            ))
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
 
     def test_extract_bad_request_raises_permanent(self):
         """400 errors should be classified as permanent."""
@@ -117,10 +121,12 @@ class TestOpenAICompatibleBackend:
         backend._client.chat.completions.create = mock_create
 
         with pytest.raises(PermanentError):
-            asyncio.run(backend.extract(
-                messages=[{"role": "user", "content": "test"}],
-                schema=SimpleExtraction,
-            ))
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
 
     def test_extract_success_with_mock(self):
         """Successful extraction should return a populated model."""
@@ -137,13 +143,15 @@ class TestOpenAICompatibleBackend:
 
         backend._client.chat.completions.create = mock_create
 
-        result = asyncio.run(backend.extract(
-            messages=[
-                {"role": "system", "content": "You are a military chat interpreter."},
-                {"role": "user", "content": "Hydro_Tank: RR15 F+40, RL36 F+50"},
-            ],
-            schema=SimpleExtraction,
-        ))
+        result = asyncio.run(
+            backend.extract(
+                messages=[
+                    {"role": "system", "content": "You are a military chat interpreter."},
+                    {"role": "user", "content": "Hydro_Tank: RR15 F+40, RL36 F+50"},
+                ],
+                schema=SimpleExtraction,
+            )
+        )
 
         assert result.update_type == "fuel"
         assert result.confidence == 0.85
