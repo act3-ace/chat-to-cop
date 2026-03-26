@@ -1,13 +1,19 @@
 stages:
   - check
   - test
+  - build
+  - release
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  # Container registry path on DLE GitLab
+  CONTAINER_IMAGE: "$CI_REGISTRY_IMAGE"
 
 cache:
   paths:
     - .pip-cache/
+
+# --- Stage: check (every push) ---
 
 lint:
   stage: check
@@ -17,9 +23,100 @@ lint:
     - ruff check src/ tests/
     - ruff format --check src/ tests/
 
+# --- Stage: test (every push) ---
+
 test:
   stage: test
   image: python:3.12-slim
   script:
     - pip install -e ".[dev]"
     - pytest tests/ -k "not integration" -v --tb=short
+
+# --- Stage: build (main branch only) ---
+
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - docker build -t "$CONTAINER_IMAGE:latest" -t "$CONTAINER_IMAGE:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$CONTAINER_IMAGE:latest"
+    - docker push "$CONTAINER_IMAGE:$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# --- Stage: build (tagged releases) ---
+
+build-release:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - docker build -t "$CONTAINER_IMAGE:$CI_COMMIT_TAG" -t "$CONTAINER_IMAGE:latest" .
+    - docker push "$CONTAINER_IMAGE:$CI_COMMIT_TAG"
+    - docker push "$CONTAINER_IMAGE:latest"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+# Build Apptainer/Singularity image from Docker image for HPC deployment.
+# Converts the Docker image we already built — no separate definition file needed.
+# Output: chat-to-cop_<tag>.sif uploaded as a job artifact.
+build-apptainer:
+  stage: build
+  image: quay.io/singularity/singularity:v4.1.0
+  variables:
+    SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
+  script:
+    - singularity build chat-to-cop_${CI_COMMIT_TAG:-latest}.sif docker://$CONTAINER_IMAGE:${CI_COMMIT_TAG:-latest}
+  artifacts:
+    paths:
+      - "*.sif"
+    expire_in: 90 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  needs:
+    - build-release
+
+# --- Stage: release (tagged releases) ---
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "Release $CI_COMMIT_TAG"
+    description: |
+      ## Container Images
+
+      **Docker:**
+      ```
+      docker pull $CONTAINER_IMAGE:$CI_COMMIT_TAG
+      ```
+
+      **Apptainer/Singularity (for DSRC HPC):**
+      Download `chat-to-cop_$CI_COMMIT_TAG.sif` from the build artifacts.
+      ```
+      singularity run chat-to-cop_$CI_COMMIT_TAG.sif
+      ```
+
+      See the [CHANGELOG](CHANGELOG.md) for details.
+    assets:
+      links:
+        - name: "Apptainer SIF image"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/chat-to-cop_${CI_COMMIT_TAG}.sif?job=build-apptainer"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  needs:
+    - build-apptainer
