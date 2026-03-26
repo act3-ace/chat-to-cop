@@ -4,6 +4,8 @@
 
 AI staff officer system: a team of stateful agents that watch military IRC chat and voice STT, maintain situational awareness, learn operator patterns, and push structured world-state updates to a Common Operating Picture (CoP) database. Target: MASH event, May 2026.
 
+This system embodies **equifinality** (multiple paths to the same CoP update), **antifragility** (stress produces information that improves routing), and **FACS** principles (heterogeneous agents, loosely coordinated, configurable at runtime). It is a miniature FACS research platform that happens to produce operational value. See docs/DESIGN_PHILOSOPHY.md.
+
 ## Key Context
 
 - This is an ACT3 government project for DASH/MASH wargame events
@@ -11,7 +13,7 @@ AI staff officer system: a team of stateful agents that watch military IRC chat 
 - The CoP database schema is pending from the contractor team — design around the BattleEffectSchemaV2 and GenMSG field specs in docs/SCHEMAS.md for now
 - Chat data from DASH 1-3 is available on Pydio (see docs/DATA_SOURCES.md)
 - The equifinality repo (`../equifinality/`) has entity catalogs, target taxonomies, and alias resolution code that can be reused
-- This system embodies equifinality, antifragility, and FACS principles — see docs/DESIGN_PHILOSOPHY.md
+- The "Against the Ontological Mandate" paper (in C2ES Google Drive) is the intellectual foundation — we do NOT use top-down declared ontologies. The LLM is the ontology. See docs/DESIGN_PHILOSOPHY.md for how this connects to our two research questions.
 
 ## Architecture
 
@@ -28,39 +30,123 @@ IRC WebSocket -> Message Router -> Channel Agents (1 per channel)
 
 See docs/ARCHITECTURE.md for details.
 
+## Source Layout
+
+```
+src/chat_to_cop/
+    agent/           channel_agent.py (stateful per-channel), fusion_agent.py, supervisor.py
+    backend/         base.py (protocol), openai_compat.py (instructor), regex_fallback.py, degrading.py
+    ingestion/       irc_client.py (live WebSocket), replay.py (DASH log parser)
+    models/          messages.py (IRCMessage), cop_update.py (CoPUpdate), speaker.py, world_state.py
+    output/          store.py (SQLite), cop_writer.py (CoP REST API)
+    metrics.py       Toggleable instrumentation (counters, histograms, timers)
+    config.py        Configuration management
+    replay.py        CLI entry point: python -m chat_to_cop.replay <path>
+```
+
 ## Design Principles
 
-- **Model-agnostic**: OpenAI-compatible API everywhere. `instructor` + Pydantic for structured output. No vendor lock-in.
+- **Model-agnostic**: OpenAI-compatible API everywhere. `instructor` + Pydantic for structured output. No vendor lock-in. No MCP, no LangChain, no framework.
 - **Equifinality**: Multiple paths to the same CoP update (large model, small model, regex, passthrough, cross-channel fusion).
 - **Antifragile**: Component failures produce information that improves future routing.
-- **Flow never stops**: Every message gets something written to CoP. Quality degrades; output never halts.
+- **Flow never stops**: Every message gets something written to CoP. Quality degrades; output never halts. "Out-of-ontology" data is retained, never dropped (Pattern B).
 - **Stateful, not stateless**: Agents maintain conversation context, speaker models, and world state across messages.
+- **Shape the boundary, not the inside**: Validate the CoP REST API output shape (Pydantic). Do NOT police internal agent representations (Pattern C).
+- **Zero-Trust semantics**: Every assertion ships with source, time, and confidence. Provenance is a gating signal.
+
+## Workflow — READ THIS BEFORE CODING
+
+### Branch/MR process (required)
+Every change goes through a branch and merge request. Never commit directly to main.
+```bash
+git checkout main && git pull
+git checkout -b <issue-number>-<short-description>   # e.g., 8-regex-backend
+# ... do work, write tests, run lint ...
+git push -u origin <branch-name>
+# Create MR on GitLab, then merge
+```
+
+### Before every commit
+```bash
+ruff check src/ tests/                    # Lint
+ruff format src/ tests/                   # Format
+pytest tests/ -k "not integration" -q     # All unit tests pass
+```
+CI enforces this on every push. Don't push code that fails lint or tests.
+
+### Commit style
+```
+feat: Short description of what changed
+
+Closes #<issue-number>
+
+- Bullet points of what was done
+- Include test counts
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+### Issue tracking
+All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues
+- Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE (98 tests)
+- Sprint 2 (Multi-Channel + Resilience): #8-#13
+- Sprint 3 (Deploy + Harden): #14-#18
+Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
+
+### Tests
+- Unit tests: `tests/test_*.py`, run with `pytest tests/ -k "not integration"`
+- Integration tests: marked `@pytest.mark.integration`, require Ollama or external services
+- Use in-memory SQLite (`:memory:`) for store tests
+- Use FakeBackend classes (see test_channel_agent.py) for agent tests
+- Every new component needs tests in the same MR
 
 ## Common Commands
 
 ```bash
-# Download DASH chat data from Pydio
-python scripts/explore_and_download_chat.py explore /dav/dash-mef/ --pattern chat
-python scripts/explore_and_download_chat.py download --output data/chat
+# Install in dev mode
+pip install -e ".[dev]"
 
 # Replay DASH chat through agent pipeline
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat/
+python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip
 
-# Run live against IRC server
-python -m chat_to_cop.live --server ws://10.5.185.72:8097
+# Run with specific LLM
+python -m chat_to_cop.replay <path> --url http://localhost:11434/v1 --model qwen2.5:7b
 
-# Run tests
-pytest tests/
+# Run tests (what CI runs)
+ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -v
+
+# Docker deployment
+docker compose up
 ```
 
 ## Code Style
 
 - Python 3.10+
-- Use ruff for formatting and linting
+- ruff for formatting and linting (line length 120)
 - Type hints for function signatures
-- Use loguru for logging
+- loguru for logging
 - Pydantic for all data models
 - asyncio for all I/O
+- Do NOT add: docstrings to unchanged code, unnecessary error handling, premature abstractions
+
+## Anti-Ontology Principles (from C2ES Addendum)
+
+These are embedded in the architecture, not bolted on:
+
+- **Pattern A (Ontology as hypothesis)**: Our Pydantic schemas are provisional — the metadata dict overflow captures anything that doesn't fit the schema.
+- **Pattern B (Out-of-Ontology Lane)**: Passthrough backend ensures no data is ever dropped. Non-conforming records are first-class signals of novelty.
+- **Pattern C (Shape the boundary)**: We validate the CoP API output shape. We do NOT police internal agent representations.
+- **Pattern E (Parallel analytical paths)**: The degrading backend IS this — LLM path + regex path, differences are signal.
+- **Pattern F (OODA-centric metrics)**: Measure time-to-adapt, not compliance. KPPs: TTA, URR, ASR, MTTR.
+
+## RAI / Provenance
+
+Every extraction must be traceable (DoD AI Ethics Principle 3). Track automatically:
+- Model name, version, quantization for every LLM call
+- Prompt template hash and version
+- Confidence score and extraction method
+- Full audit trail: raw message -> CoPUpdate -> CoP database write
+- See issue #18 for the full RAI provenance plan (system card, dataset cards, AIBOM)
 
 ## Important Notes
 
@@ -72,3 +158,6 @@ pytest tests/
 - Each channel agent is stateful — it maintains context, learns speakers, and tracks world state across messages.
 - Every LLM call must go through the OpenAI-compatible interface. Never import a vendor-specific SDK.
 - The system must degrade gracefully: LLM -> smaller LLM -> regex -> passthrough. Never silently stop.
+- This system is a research platform, not just a pipeline. The two research questions are:
+  1. How to personalize/learn a model of the user during operations (speaker models)
+  2. How a heterogeneous team adapts without predefined ontology (LLM as universal translator)
