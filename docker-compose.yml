@@ -1,0 +1,34 @@
+services:
+  # Local LLM serving (GPU required)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # The agent pipeline
+  chat-to-cop:
+    build: .
+    depends_on:
+      - ollama
+    environment:
+      # Model-agnostic: just a URL + model name
+      - CHAT_TO_COP_LLM_URL=http://ollama:11434/v1
+      - CHAT_TO_COP_LLM_MODEL=qwen3:30b-a3b
+      - CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b
+    ports:
+      - "8000:8000"  # FastAPI CoP REST API
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+
+volumes:
+  ollama_models:

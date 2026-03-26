@@ -1,248 +1,229 @@
 # Architecture
 
-Detailed design for the chat-to-CoP real-time pipeline.
+## Core Concept: AI Staff Officer, Not ETL Pipeline
+
+Traditional chat parsing treats each message independently: regex it, classify it, extract fields, write to database. That's an ETL pipeline. It works, but it's a dead end for the two research questions we care about (online user modeling, ontology-free team adaptation) and it can't maintain context across messages.
+
+Instead, we deploy **stateful agents** — one per IRC channel — that maintain a running world model, learn operator patterns, and output structured CoP updates. Each agent is an AI staff officer watching a radio net.
+
+## System Overview
+
+```
+                    IRC WebSocket (ws://server:8097)
+                    +------------------------------+
+                    |  #c2_coord    #isr_reports    |
+                    |  #fires       #jprc           |
+                    |  #stt_C2Coord #stt_hydroBMA   |
+                    |  #stt_crusherBMA  ...         |
+                    +--------------+---------------+
+                                   |
+                    +--------------v---------------+
+                    |       Message Router          |
+                    |  async Python, channel fan-out|
+                    +--------------+---------------+
+                                   |
+              +--------------------+--------------------+
+              |                    |                     |
+    +---------v--------+ +--------v---------+ +---------v--------+
+    | Channel Agent    | | Channel Agent    | | Channel Agent    |
+    | #c2_coord        | | #fires           | | #stt_hydroBMA    |
+    |                  | |                  | |                  |
+    | - Conv. window   | | - Conv. window   | | - Conv. window   |
+    | - Speaker models | | - Speaker models | | - Speaker models |
+    | - World state    | | - World state    | | - World state    |
+    | - LLM backend    | | - LLM backend    | | - LLM backend    |
+    +--------+---------+ +--------+---------+ +--------+---------+
+             |                    |                     |
+             +--------------------+---------------------+
+                                  |
+                    +-------------v--------------+
+                    |       Fusion Agent          |
+                    |  Semantic deconfliction     |
+                    |  Cross-channel correlation  |
+                    |  Duplicate suppression      |
+                    +-------------+--------------+
+                                  |
+                    +-------------v--------------+
+                    |     World State Store       |
+                    |  SQLite (portable)          |
+                    |  -> CoP REST API            |
+                    |  -> Audit log               |
+                    +----------------------------+
+```
 
 ## Design Principles
 
-1. **Latency over accuracy** — "70% is great." Even basic extraction adds value. Don't over-engineer accuracy at the cost of speed.
-2. **Don't lose data** — If something can't be mapped to a strict schema field, put it in metadata. Always preserve the raw message.
-3. **Single connection point** — Voice STT is already piped into IRC. We only need to connect to the IRC WebSocket.
-4. **Structure where possible, metadata for the rest** — Map to known schema fields when confident, use the freeform metadata dictionary otherwise.
-5. **We write, they read** — Only our pipeline writes to the CoP database. Vendors are read-only consumers.
+1. **Model-agnostic** — Every LLM call goes through the OpenAI-compatible chat completions API. `instructor` + Pydantic for structured output. Backend is a configuration choice, not an architecture decision.
+2. **Equifinality** — Multiple paths to the same CoP update. No single point of failure in the extraction logic.
+3. **Antifragile** — Component failures produce information that improves future routing decisions.
+4. **Flow never stops** — Every message gets something written to the CoP. Quality degrades gracefully; output never halts.
+5. **Latency over accuracy** — "70% is great." Even basic extraction adds value. Must beat white cell humans.
+6. **Don't lose data** — If it can't be structured, forward the raw message with an "unprocessed" flag.
+7. **Stateful extraction** — Context from previous messages informs current interpretation. "Copy" after a tasking message is an acknowledgment. "Copy" in isolation is noise.
 
-## Pipeline Overview
+## Components
 
-```text
-                    IRC WebSocket (ws://server:8097)
-                    ┌──────────────────────────────┐
-                    │  #c2_coord    #isr_reports    │
-                    │  #fires       #jprc           │
-                    │  #stt_C2Coord #stt_hydroBMA   │
-                    │  #stt_crusherBMA  ...         │
-                    └──────────────┬───────────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │     Message Ingestion      │
-                    │  WebSocket client          │
-                    │  Channel tagging           │
-                    │  Timestamp normalization   │
-                    └─────────────┬─────────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │    Tier 1: Fast Filter     │  ~0ms
-                    │  - Drop acks ("c", ".")    │
-                    │  - Regex track numbers     │
-                    │  - Coordinate extraction   │
-                    │  - Callsign dictionary     │
-                    │  - Exercise control filter │
-                    └────┬────────────┬─────────┘
-                         │            │
-                    (fast-path)  (needs interpretation)
-                         │            │
-                         │  ┌─────────▼─────────────┐
-                         │  │  Tier 2: Local LLM     │  ~0.3-0.6s
-                         │  │  Structured JSON output │
-                         │  │  System prompt with:    │
-                         │  │  - Exercise glossary    │
-                         │  │  - Few-shot examples    │
-                         │  │  - Output schema        │
-                         │  └────┬──────────┬────────┘
-                         │       │          │
-                         │  (confident) (low confidence)
-                         │       │          │
-                         │       │  ┌───────▼───────────┐
-                         │       │  │ Tier 3: Cloud API  │  ~0.5-1.5s
-                         │       │  │ Complex reasoning  │
-                         │       │  │ Disambiguation     │
-                         │       │  └───────┬───────────┘
-                         │       │          │
-                    ┌────▼───────▼──────────▼────┐
-                    │   Schema Mapper / Validator │
-                    │  - Map to CoP fields       │
-                    │  - Validate against known  │
-                    │    entity lists             │
-                    │  - Overflow → metadata dict │
-                    └─────────────┬──────────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │    CoP REST API Writer     │
-                    │  - Track Manager updates   │
-                    │  - SmartPack Manager       │
-                    │  - Audit log               │
-                    └───────────────────────────┘
+### Message Router
+
+Async Python WebSocket client that connects to the IRC server, joins all configured channels, and fans messages out to the appropriate channel agent.
+
+- **Protocol:** WebSocket (not raw IRC) on port 8097
+- **Channels:** Configured in `config/irc_channels.json`
+- **Responsibilities:** Connection management, reconnection, channel subscription, message framing
+- **Does NOT:** Filter, classify, or interpret messages — that's the agent's job
+
+For development/testing, the router also supports replay mode: read DASH chat log files and feed them through the same agent interface with original timestamps.
+
+### Channel Agent
+
+The core component. One instance per IRC channel, each maintaining:
+
+**Conversation Window** — Sliding buffer of recent messages (raw text + metadata). Included in the LLM prompt so the agent has conversational context. Size is configurable; default is the last 50 messages or 15 minutes, whichever is smaller.
+
+**Speaker Models** — Learned per-speaker profiles built during the session:
+- Role (battle manager, intel analyst, fires coordinator, tanker controller)
+- Area of interest (which BMA, which lane, which threat axis)
+- Jargon preferences (how this specific person abbreviates things)
+- Reliability (do their reports tend to be confirmed or corrected?)
+
+Speaker models are updated incrementally. The agent doesn't need to be told who "Hydro_SL" is — it learns from context that this speaker issues tasking, references the Hydro BMA, and uses specific abbreviation patterns.
+
+**World State Snapshot** — The agent's current belief about the battlespace, derived from messages it has seen. This is included in the prompt so the agent can produce updates relative to current state (e.g., "4 more launched" when current inventory is known).
+
+**Degrading LLM Backend** — Each agent has a backend stack that degrades gracefully:
+
+| Level | Backend | Trigger | What's Lost |
+|-------|---------|---------|-------------|
+| Normal | Best available model (70B class) | Default | Nothing |
+| Degraded | Smaller model (8B class) | Primary times out or errors 3x | Speaker model updates |
+| Minimal | Regex/keyword patterns | All LLM backends down | Semantic interpretation |
+| Passthrough | Raw forward | Everything down | All extraction |
+
+Transitions are managed by a circuit breaker: 3 consecutive failures or p95 latency >5s triggers a downgrade. Recovery is automatic when the backend starts responding normally.
+
+### Fusion Agent
+
+Operates on channel agent outputs, not raw messages. Responsibilities:
+
+1. **Semantic deconfliction** — Two agents reporting the same event from different channels (e.g., typed chat says "splash 2 flankers" and STT picks up "two more down"). The fusion agent recognizes these as the same event using semantic similarity + temporal proximity, not field matching.
+
+2. **Cross-channel correlation** — A tasking in #c2_coord and a status update in #fires about the same track number. The fusion agent links these into a coherent narrative.
+
+3. **Confidence aggregation** — When multiple channels report the same event, confidence increases. When they contradict, flag for human review.
+
+4. **STT denoising** — STT channels are ~60% noise. The fusion agent can cross-reference STT reports against typed chat to validate or discard.
+
+**Degradation:** If the fusion agent fails, channel agents write directly to the world state store. Updates may contain duplicates, but no data is lost.
+
+### LLM Backend
+
+The `backend` package abstracts all LLM interaction behind a single protocol:
+
+```python
+class LLMBackend(Protocol):
+    async def extract(
+        self,
+        messages: list[ChatMessage],
+        schema: type[BaseModel],
+        context: AgentContext,
+    ) -> BaseModel: ...
 ```
 
-## Tier 1: Fast Filter (~0ms)
+Implementations:
 
-Rule-based filtering and extraction. No ML/LLM involved.
+**OpenAICompatibleBackend** — Wraps any OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM, cloud APIs). Uses `instructor` for structured output. This one class covers every model we'd want to use.
 
-### What it does
+**RegexBackend** — Pattern matching against `config/track_patterns.json` and domain-specific extractors (fuel state, weapons count, operational status). No LLM involved. Fast, reliable, limited.
 
-1. **Drop noise** — Single-character acks ("c", "."), radio checks ("test"), exercise control (STARTEX/ENDEX)
-2. **Extract track numbers** — Regex patterns from prior event tooling (see config/track_patterns.json)
-3. **Extract coordinates** — Lat/lon regex, MGRS grid parser
-4. **Callsign lookup** — Match against known callsign dictionary from scenario data
-5. **Channel-based routing** — #fires messages get fire mission parser, #jprc gets CSAR parser, etc.
+**DegradingBackend** — Wraps a list of backends, tries in order with configurable timeouts and circuit breakers. This is what channel agents actually use.
 
-### What it produces
+**PassthroughBackend** — Returns the raw message wrapped in the output schema with `confidence: 0.0` and `extraction_method: "passthrough"`. The last resort.
 
-For high-confidence extractions (track ID with known callsign, coordinates in standard format), emit a structured update directly to the CoP without LLM processing.
+### World State Store
 
-For everything else, pass to Tier 2 with any extracted fields pre-populated.
+SQLite database (zero-config, portable, ships with Python) that holds:
 
-## Tier 2: Local LLM (~0.3-0.6s)
+- **CoP updates** — Every structured update extracted by any agent, with provenance (which agent, which backend, confidence score, source message)
+- **Speaker models** — Serialized per-speaker profiles, queryable by channel agents
+- **Audit log** — Every raw message received, whether processed or not
 
-The workhorse. Handles 80-90% of messages that get past Tier 1.
+The store exposes a FastAPI REST API for:
+- Querying current world state
+- Streaming updates (SSE)
+- Forwarding updates to the actual CoP database when available
 
-### Model Selection
+For deployment, SQLite can be swapped for PostgreSQL without changing the application code (SQLAlchemy or similar).
 
-**Primary:** Qwen 3 30B-A3B MoE at Q4_K_M quantization
-- 196 tokens/sec on RTX 4090
-- Only 3B parameters active per token (MoE) = fast
-- 18GB VRAM = fits with headroom on 24GB card
-- Qwen family excels at structured JSON output
+### Supervisor
 
-**Fallback:** Qwen 2.5 14B or Phi-4 14B if GPU is smaller
+Lightweight Python process (not an LLM) that manages the agent pool:
 
-### Inference Engine
+- **Health monitoring** — Tracks each agent's latency, error rate, backend status
+- **Agent lifecycle** — Start, stop, restart agents; reassign channels
+- **Priority management** — When all agents are slow, shed load by prioritizing HIGH channels (typed chat) over MEDIUM (STT) over LOW (exercise control)
+- **New channel detection** — If a new channel appears mid-exercise, spawn a new agent and seed it with context from the most similar existing agent
+- **Metrics** — Expose Prometheus-compatible metrics for monitoring during the event
 
-**Ollama** for prototyping (easiest setup, JSON schema support since v0.5)
-**llama.cpp server** for production (GBNF grammar = 100% valid JSON guaranteed)
+## Structured Output
 
-### System Prompt Design
+All CoP updates use Pydantic models enforced by `instructor`. The core update model:
 
-```text
-You are a military chat message interpreter for a Common Operating Picture database.
-Extract world-state changes from the message and return structured JSON.
-
-GLOSSARY:
-- "gadget bent" = radar failure
-- "buzzer on" = EW jamming active
-- "splash" = target destroyed
-- "FOX 3" = active radar missile launched
-- "RTB" = return to base
-- "angels XX" = altitude in thousands of feet
-- "bullseye/cigar XXX/YYY" = bearing/range from reference point
-- "F+XX" = fuel above frag in thousands of lbs
-- "c" or "copy" = acknowledgment (ignore)
-[... exercise-specific glossary ...]
-
-KNOWN CALLSIGNS: [from scenario data]
-KNOWN TRACK NUMBERS: [from current CoP state]
-
-OUTPUT SCHEMA:
-{
-  "update_type": "entity_id | status_change | weapons | location | threat | tasking | fuel | handover | csar | fire_mission | cyber | sitrep | environmental | none",
-  "confidence": 0.0-1.0,
-  "entities": [...],
-  "raw_message": "original text"
-}
+```python
+class CoPUpdate(BaseModel):
+    update_type: UpdateType           # entity_id, status_change, weapons, fuel, etc.
+    confidence: float                 # 0.0-1.0
+    extraction_method: str            # "llm", "regex", "passthrough"
+    entities: list[EntityUpdate]      # What changed
+    source_channel: str               # Which IRC channel
+    source_speaker: str               # Who said it
+    source_message: str               # Raw text
+    timestamp: datetime               # When it was said
+    context_messages: list[str]       # Surrounding conversation for audit
 ```
 
-### Few-Shot Examples
+The `EntityUpdate` model maps to CoP database fields where possible, with overflow to a metadata dict. See [SCHEMAS.md](SCHEMAS.md) for the target schema.
 
-Include 3-5 representative messages in the prompt with expected output. These should cover the common update types. Source examples from the DASH 3 chat data.
+## Deployment
 
-## Tier 3: Cloud API Fallback (~0.5-1.5s)
-
-For messages where the local model reports low confidence. This should be <10% of traffic.
-
-**Options (see docs/LLM_BENCHMARKS.md for full comparison):**
-- Gemini 2.5 Flash — best speed/cost ratio
-- Claude 4.5 Haiku — most consistent latency
-- Mercury 2 — fastest raw speed
-
-**When to escalate:**
-- Local model confidence < 0.5
-- Message contains multiple entities or compound state changes
-- SITREP/handover messages (information-dense, multiple updates per message)
-- Ambiguous abbreviations the local model hasn't seen
-
-## Schema Mapper
-
-Takes structured output from any tier and maps to CoP database fields.
-
-1. **Known fields** → direct mapping (trackNumber, position, status, etc.)
-2. **Unknown fields** → metadata dictionary (JSON key-value pairs on the entity)
-3. **Validation** → check track numbers against known entities, callsigns against scenario data
-4. **Conflict resolution** → most recent update wins (as decided in planning meeting)
-
-## CoP Writer
-
-REST API client that pushes updates to Track Manager and SmartPack Manager.
-
-- **Optimistic writes** — push immediately, don't wait for validation
-- **Audit trail** — log every update with source message, confidence score, and tier that processed it
-- **Idempotency** — handle duplicate messages gracefully (same track update from chat + STT)
-
-## Deployment Options
-
-### Option A: On-Site Desktop (Preferred)
+### MASH Event (May 2026)
 
 Desktop workstation with RTX 4090/5090 at H2O Las Vegas.
 
-- Pros: Lowest latency, no network dependency, works in air-gapped scenarios
-- Cons: Need to ship/set up hardware, limited to one GPU
+```
+Docker Compose:
+  - ollama (GPU, serves local models)
+  - chat-to-cop (Python, the agent pipeline)
+  - sqlite (embedded, no separate container)
+  - fastapi (CoP REST API, same container as pipeline)
+```
 
-### Option B: Cloud API Only
+Single `docker compose up`. Total setup time: <10 minutes.
 
-Process everything through cloud APIs from the event facility.
+### Development
 
-- Pros: No hardware logistics, effectively unlimited compute
-- Cons: Network dependency, latency variability, classification constraints (IL2 data)
+Same Docker Compose stack, but the message router runs in replay mode against DASH chat logs instead of connecting to a live IRC server.
 
-### Option C: Hybrid
+### Future (Analytics Gateway)
 
-Local GPU for Tier 2 (primary processing), cloud for Tier 3 (fallback).
+The same container images deploy to AG (AWS GovCloud). Ollama is replaced by a vLLM deployment or Bedrock endpoint. The application code doesn't change — only the backend configuration.
 
-- Pros: Best of both worlds
-- Cons: Most complex setup
+## Message Flow Example
 
-**Recommendation:** Start with Option A (local desktop), have Option B ready as fallback. The message volume (10-30/min) is trivially handled by a single GPU.
-
-## Strategic Context
-
-This pipeline sits within the broader C2ES (Command & Control Effects at Scale) project, which is the ACT3/AFRL contribution to CJADC2. Key context from project planning:
-
-- C2ES is grounded in the CJADC2 "sense, make sense, and act" loop. Our pipeline is the **"make sense"** layer for unstructured chat/voice data.
-- The DASH events demonstrated that AI-enabled tools generate **30x more COAs** than human-only teams — but only when they have current, accurate data to work with. That's what we provide.
-- As of Mar 2026, the real-time streaming contractor was cut. The **critical need is for a structured API endpoint to augment CoP data** — this validates our approach of LLM-structured JSON output pushed to the CoP REST API.
-- The HLT (Human Language Translation) team is ramping up to cover some of the gap. Coordinate with them on overlapping scope.
-
-## MASH Event Model
-
-The MASH event is structurally different from prior DASH events in important ways:
-
-**The database is the experiment's oracle.** The white cell populates it directly (not via chat). Vendors poll it via REST API. Vendors never write to the database. Our pipeline is one of the few systems authorized to write to it — from chat and voice sources.
-
-**Chat will be "thinner" than DASH 3.** In prior DASH events, the white cell injected scenario stimuli (new threats, BDA, intel reports) through chat. In MASH, that information goes directly into the database. What remains in chat is **organic battle manager communication**: real-time status updates, coordination between cells, fuel states, operational decisions, and the kind of information that only humans generate in conversation.
-
-**High-value extraction targets for MASH:**
-- **Fuel state** — Explicitly called out as something operators trust chat over the database for. High-value, high-trust use case.
-- **Platform operational status** — "Gadget bent", "RTB", equipment failures. These happen in real-time and may not be reflected in the simulation.
-- **Weapons expenditure** — "Fired 4x SM6, 8 remaining." Real-time inventory that the simulation may lag behind on.
-- **Coordination/tasking** — BM-to-BM coordination, handoffs, re-tasking. These are decisions that only exist in chat until someone enters them.
-
-**Lower-value targets (already in the DB from other sources):**
-- Entity identification (sim/white cell populates directly)
-- Threat assessments (intel reports go straight to DB)
-- Location updates (track data from GenMSG/MACE feeds)
-
-**Implication for our pipeline:** Expect fewer messages per minute with extractable content than DASH 3 showed. But the messages that DO come through chat are the ones the database can't get any other way — making our pipeline the only source for that data.
-
-## Training Data Strategy
-
-**DASH 3 GBC is the primary reference** — closest to MASH's integrated exercise format, though still richer than what we should expect (some white cell injects that won't happen in MASH were still in chat).
-
-**DASH 1 & 2 are background reference only** — useful for understanding military jargon, database field expectations, and the battle management process, but their chat is not representative of MASH. Those events used wizard-of-oz approaches where the white cell played roles that will be handled by vendor tools in MASH, making the chat artificially information-dense.
+1. IRC message arrives: `Hydro_Tank: RR15 F+40, RL36 F+50`
+2. Message router sends it to the `#c2_coord` channel agent
+3. Agent includes message in conversation window, checks speaker model for "Hydro_Tank" (known: tanker controller for Hydro BMA)
+4. Agent calls LLM backend with conversation context + world state + output schema
+5. LLM returns structured output: two fuel updates (RR15 at +40k lbs, RL36 at +50k lbs), confidence 0.9
+6. Agent emits two `CoPUpdate` objects to the world state store
+7. Agent updates speaker model: "Hydro_Tank reports fuel states, tracks tanker assets RR15 and RL36"
+8. Fusion agent sees the updates, checks for conflicts with other channels, passes them through
+9. World state store writes to SQLite and pushes to CoP REST API
+10. Total time: ~0.5-1s from IRC message to CoP update
 
 ## Open Questions
 
-1. **CoP database schema** — Pending from contractor team. Need this to build the Schema Mapper.
-2. **IRC server details for MASH** — Same server config as DASH 3, or new setup?
-3. **Channel list for MASH** — Same channels, or different?
-4. **Bullseye reference point** — Need the scenario's bullseye coordinates to convert cigar bearings to lat/lon.
-5. **Fine-tuning data** — Should we annotate a subset of the DASH 3 chat for fine-tuning the local model?
-6. **GPU availability** — Confirm desktop GPU specs at H2O.
-7. **HLT team coordination** — What is the HLT team covering? Avoid duplication of effort.
-8. **JADPACT integration** — C2ES uses JADPACT as architectural blueprint. Does our CoP output need to conform to JADPACT data formats?
+1. **CoP database schema** — Pending from contractor team. Need this to finalize the CoPUpdate -> database field mapping.
+2. **IRC server details for MASH** — Same config as DASH 3, or new setup?
+3. **Bullseye reference point** — Need the scenario's bullseye coordinates to convert cigar bearings.
+4. **GPU specs at H2O** — Confirm desktop GPU model for local inference sizing.
+5. **HLT team scope** — What is the Human Language Translation team covering? Coordinate to avoid duplication.
