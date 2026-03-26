@@ -129,6 +129,49 @@ docker compose up
 - asyncio for all I/O
 - Do NOT add: docstrings to unchanged code, unnecessary error handling, premature abstractions
 
+## Library Adoption Decisions — Don't Reinvent These
+
+| Need | Use This | NOT This |
+|------|----------|----------|
+| Retries with backoff | `tenacity` | Custom retry loops |
+| Circuit breaker | `pybreaker` | Custom state machine |
+| Configuration | `pydantic-settings` | Custom config parser |
+| Experiment tracking | `mlflow` (Sprint 3) | Custom SQLite run logs |
+| Structured LLM output | `instructor` (already using) | Raw API calls + manual parsing |
+| Metrics (future) | OpenTelemetry SDK | Custom metrics.py (current, to be replaced) |
+
+The current `metrics.py` works for Sprint 2 but should be swapped for OpenTelemetry before deployment. Prometheus is the ACT3 standard for observability.
+
+## Parallel Agent Work — READ THIS IF RUNNING IN A WORKTREE
+
+### GitLab project
+- **DLE GitLab**: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop (project ID: 18350)
+- **MCP tool prefix**: `mcp__gitlab__` for DLE, `mcp__act3-gitlab__` for ACT3 GitLab
+
+### Sprint 2 parallelization map
+These issues can run simultaneously without file conflicts:
+
+**Wave 1 (no dependencies on each other):**
+- `#8` (regex fallback backend) — touches `backend/regex_fallback.py` + `tests/test_regex_backend.py`
+- `#13` (IRC WebSocket client) — touches `ingestion/irc_client.py` + `tests/test_irc_client.py`
+
+**Wave 2 (depend on Wave 1 or Sprint 1 only):**
+- `#9` (degrading backend) — depends on #8, touches `backend/degrading.py`. Use `tenacity` + `pybreaker`.
+- `#10` (speaker models) — touches `models/speaker.py` + extends `agent/channel_agent.py`
+- `#11` (supervisor) — touches `agent/supervisor.py`. Independent of #10.
+
+**Wave 3 (hardest, depends on most things):**
+- `#12` (fusion agent) — touches `agent/fusion_agent.py`. Can mock channel agent outputs.
+
+### Each agent should:
+1. `git checkout main && git pull`
+2. `git checkout -b <issue-number>-<short-description>`
+3. Read the GitLab issue for full acceptance criteria
+4. Write code + tests, run `ruff check && ruff format && pytest -k "not integration"`
+5. Commit with `Closes #<N>` and `Co-Authored-By: Claude <noreply@anthropic.com>`
+6. Push and create MR via `mcp__gitlab__create_merge_request` (project_id: 18350)
+7. Do NOT merge — leave MRs open for human review
+
 ## Anti-Ontology Principles (from C2ES Addendum)
 
 These are embedded in the architecture, not bolted on:
