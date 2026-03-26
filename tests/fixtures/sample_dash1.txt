@@ -1,0 +1,10 @@
+[10:39:06] WF_Clark: STARTEX
+[10:39:34] wf_beep: AOC_CCO: @Hydro status Lane Wynn
+[10:39:49] Hydro_SL: @AOC status Wynn, Hydro on sta
+[10:39:56] Hydro_MSO: Intel, color TN 44642
+[10:40:08] Hydro_SL: @ TR21-24 est cap A , Money 01-4 est lane b
+[10:43:01] Hydro_MSO: c, civ
+[10:44:13] WF_Shoresy8: Space_Ops @Hydro_SL TN 44834 Adversary DDG1
+[10:44:44] Hydro_SL: @AOC CCO_ , tn44834 upgrade ID To hostile, DDG1
+[10:45:02] WF_Clark: Floater03_OPS (USS Cole DDG): @Maritime_OPS Possible UAV swarm approaching from south
+[10:45:14] Hydro_MSO: Intel, color TN 44846 x4
