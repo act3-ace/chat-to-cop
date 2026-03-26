@@ -1,0 +1,8 @@
+[14:02:59] #c2_coord wf_beep: ***********************STARTEX************************
+[14:03:03] #c2_coord VEGAS_ABM2: .
+[14:03:34] #c2_coord ORCA_MC: SITREP / AIR: / LRSAMs: / NAVAL SAMs: / OTHER: //
+[14:03:36] #fires HYDRO_Strike: ref DA011: Rank 1 FLOATER11
+[14:03:38] #isr_reports AOC_SIDO: tacrep e10-4, 4th-gen sam active, cigar 316/398
+[14:05:22] #stt_C2Coord afrl_lavgn: <WF2> Radio check Radio check
+[14:10:15] #jprc Hydro_SL: @JPRC, FG31 bailout, searching for chutes
+[14:15:30] #stt_hydroBMA afrl_lavgn: tiger 21 Splash leader bullseye 31077
