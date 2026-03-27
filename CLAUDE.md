@@ -88,10 +88,17 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ### Issue tracking
 All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues
-- Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE (98 tests)
-- Sprint 2 (Multi-Channel + Resilience): #8-#13
-- Sprint 3 (Deploy + Harden): #14-#18
+- Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE
+- Sprint 2 (Multi-Channel + Resilience): #8-#13 — ALL COMPLETE
+- Sprint 3 (Deploy + Harden): #14 DONE, #19 DONE, #15 #16 #17 #18 OPEN
+- Total: 344 tests passing, pipeline validated against real DASH 3 data
 Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
+
+### Remaining Sprint 3 issues (parallelizable)
+- `#15` Docker containerization — build + test the existing Dockerfile/compose
+- `#16` Full DASH 3 replay test — needs GPU for full corpus, can do typed-chat subset on CPU
+- `#17` CoP database writer — blocked on contractor schema, has tiered write authority design
+- `#18` RAI provenance — MLflow integration, system card, dataset cards, AIBOM
 
 ### Tests
 - Unit tests: `tests/test_*.py`, run with `pytest tests/ -k "not integration"`
