@@ -10,6 +10,7 @@ The agent receives IRCMessages and emits CoPUpdate objects.
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from datetime import timedelta
 
@@ -21,6 +22,17 @@ from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
 from chat_to_cop.models.speaker import SpeakerInference, SpeakerRegistry
+
+# Noise patterns — skip LLM call for these
+_NOISE_RE = re.compile(
+    r"^[\s.]+$"  # dots only
+    r"|^\s*c\s*$"  # "c"
+    r"|^\s*copy\s*$"  # "copy"
+    r"|^\s*word\s*$"  # "word"
+    r"|^\s*test\s*$"  # "test"
+    r"|^\s*NSTR\s*$",  # "nothing significant to report"
+    re.IGNORECASE,
+)
 
 # How often (in messages) to run LLM inference on a speaker's profile.
 # First inference at message 3, then every 10 messages.
@@ -95,15 +107,19 @@ class ChannelAgent:
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
         if context_lines:
+            # Clearly separate context from the target message
+            context_block = "\n".join(context_lines[:-1]) if len(context_lines) > 1 else ""
+            latest_line = context_lines[-1]
+
+            content_parts = []
+            if context_block:
+                content_parts.append(f"PRIOR CONTEXT (for reference only, do NOT extract from these):\n{context_block}")
+            content_parts.append(f"\nEXTRACT FROM THIS MESSAGE ONLY:\n{latest_line}")
+
             messages.append(
                 {
                     "role": "user",
-                    "content": (
-                        "Recent conversation context:\n"
-                        + "\n".join(context_lines)
-                        + "\n\nExtract world-state updates from the LATEST message only. "
-                        "Use the context to resolve references."
-                    ),
+                    "content": "\n".join(content_parts),
                 }
             )
         else:
@@ -196,6 +212,11 @@ class ChannelAgent:
         self._window.append(message)
         self._trim_window_by_time()
 
+        # Pre-filter noise — don't waste an LLM call on acks and dots
+        if _NOISE_RE.match(message.content):
+            metrics.inc("agent_messages_filtered_total", labels=labels)
+            return []
+
         # Build prompt and extract
         llm_messages = self._build_messages(message)
 
@@ -219,11 +240,12 @@ class ChannelAgent:
                 )
             ]
 
-        # Fill in source fields the LLM doesn't know
+        # Fill in source fields the LLM doesn't know / shouldn't control
         result.source_channel = self.channel
         result.source_speaker = message.sender
         result.source_message = message.content
         result.timestamp = message.timestamp
+        result.extraction_method = "llm"  # Override — LLM should not set this
         result.context_messages = [f"{m.sender}: {m.content}" for m in list(self._window)[-5:]]
 
         # Filter out NONE updates (acks, noise)
