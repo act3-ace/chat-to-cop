@@ -30,9 +30,52 @@ _NOISE_RE = re.compile(
     r"|^\s*copy\s*$"  # "copy"
     r"|^\s*word\s*$"  # "word"
     r"|^\s*test\s*$"  # "test"
-    r"|^\s*NSTR\s*$",  # "nothing significant to report"
+    r"|^\s*NSTR\s*$"  # "nothing significant to report"
+    r"|^\s*roger\s*$"  # roger
+    r"|^\s*affirm\s*$"  # affirm
+    r"|^\s*wilco\s*$",  # will comply
     re.IGNORECASE,
 )
+
+# URL/link patterns — these are admin/debrief, not world-state
+_URL_RE = re.compile(r"https?://\S+")
+
+# Radio check patterns — not operational
+_RADIO_CHECK_RE = re.compile(r"radio\s+check", re.IGNORECASE)
+
+# STARTEX/ENDEX patterns — exercise control, not world-state
+_EXERCISE_CONTROL_RE = re.compile(
+    r"\*{3,}.*(?:STARTEX|ENDEX|START\s+EX|END\s+EX).*\*{3,}"
+    r"|^\s*(?:STARTEX|ENDEX)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_noise(content: str) -> bool:
+    """Check if a message is noise that shouldn't be sent to the LLM.
+
+    Catches: acks, dots, URLs/links, STARTEX/ENDEX, and short banter.
+    """
+    stripped = content.strip()
+
+    # Regex noise patterns
+    if _NOISE_RE.match(stripped):
+        return True
+
+    # URLs (debrief links, surveys)
+    if _URL_RE.match(stripped):
+        return True
+
+    # Radio checks
+    if _RADIO_CHECK_RE.search(stripped):
+        return True
+
+    # Exercise control
+    if _EXERCISE_CONTROL_RE.search(stripped):
+        return True
+
+    return False
+
 
 # How often (in messages) to run LLM inference on a speaker's profile.
 # First inference at message 3, then every 10 messages.
@@ -212,8 +255,8 @@ class ChannelAgent:
         self._window.append(message)
         self._trim_window_by_time()
 
-        # Pre-filter noise — don't waste an LLM call on acks and dots
-        if _NOISE_RE.match(message.content):
+        # Pre-filter noise — don't waste an LLM call on acks, dots, URLs, STARTEX
+        if _is_noise(message.content):
             metrics.inc("agent_messages_filtered_total", labels=labels)
             return []
 
