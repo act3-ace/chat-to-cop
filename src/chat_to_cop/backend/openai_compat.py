@@ -129,6 +129,10 @@ def build_system_prompt(
         "- Extract ALL entities mentioned. If multiple aircraft/ships are listed, create an entity for EACH.",
         "- For complex multi-section messages (SITREP, C2 HANDOVER), focus on the key state changes.",
         "- Keep entities simple. Only include fields you are confident about.",
+        "- STT messages may have <speaker> tags — the real speaker is inside the tag.",
+        "- STT may garble numbers: 'cigar 3 1 5 3 80' means cigar 315/380.",
+        "- For corrections ('disregard last', 'correction:'), update the entity to the corrected state.",
+        "- Radio checks are NOT operational — set update_type to 'none'.",
         "- Be concise in reasoning. Focus on what changed in the battlespace.",
         "",
         "EXAMPLES:",
@@ -166,6 +170,15 @@ def build_system_prompt(
         "",
         'Message: "***STARTEX DASH 3 GBC Run 10***"',
         "Output: update_type=none, confidence=0.0, entities=[]",
+        "",
+        'Message: "Disregard last, TN 44504 is NOT DDG1, reassessing"',
+        "Output: update_type=entity_id, confidence=0.8",
+        "  entities: [{track_number:44504, affiliation:UNKNOWN}]",
+        "  reasoning: Correction — previous ID retracted",
+        "",
+        'Message: "<WF2> Radio check Radio check C2 cord."',
+        "Output: update_type=none, confidence=0.0, entities=[]",
+        "  reasoning: Radio check, not operational content",
     ]
 
     if glossary:
