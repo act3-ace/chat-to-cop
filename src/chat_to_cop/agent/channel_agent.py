@@ -40,6 +40,9 @@ _NOISE_RE = re.compile(
 # URL/link patterns — these are admin/debrief, not world-state
 _URL_RE = re.compile(r"https?://\S+")
 
+# Radio check patterns — not operational
+_RADIO_CHECK_RE = re.compile(r"radio\s+check", re.IGNORECASE)
+
 # STARTEX/ENDEX patterns — exercise control, not world-state
 _EXERCISE_CONTROL_RE = re.compile(
     r"\*{3,}.*(?:STARTEX|ENDEX|START\s+EX|END\s+EX).*\*{3,}"
@@ -61,6 +64,10 @@ def _is_noise(content: str) -> bool:
 
     # URLs (debrief links, surveys)
     if _URL_RE.match(stripped):
+        return True
+
+    # Radio checks
+    if _RADIO_CHECK_RE.search(stripped):
         return True
 
     # Exercise control
