@@ -17,6 +17,7 @@ import aiosqlite
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate
 from chat_to_cop.models.messages import IRCMessage
+from chat_to_cop.models.speaker import SpeakerModel
 from chat_to_cop.models.world_state import TrackedEntity
 
 _SCHEMA = """
@@ -49,6 +50,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_channel ON audit_log(channel);
+
+CREATE TABLE IF NOT EXISTS speakers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    data_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(username, channel)
+);
+
+CREATE INDEX IF NOT EXISTS idx_speakers_channel ON speakers(channel);
 
 CREATE TABLE IF NOT EXISTS entities (
     entity_key TEXT PRIMARY KEY,
@@ -233,3 +248,45 @@ class WorldStateStore:
         cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM entities")
         row = await cursor.fetchone()
         return row["cnt"]  # type: ignore[index]
+
+    async def write_speaker(self, model: SpeakerModel, channel: str) -> None:
+        """Persist a speaker model (upsert by username + channel)."""
+        await self.db.execute(
+            """INSERT INTO speakers (username, channel, first_seen, last_seen, message_count, data_json)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(username, channel) DO UPDATE SET
+                last_seen = excluded.last_seen,
+                message_count = excluded.message_count,
+                data_json = excluded.data_json,
+                updated_at = datetime('now')
+            """,
+            (
+                model.username,
+                channel,
+                model.first_seen.isoformat(),
+                model.last_seen.isoformat(),
+                model.message_count,
+                model.model_dump_json(),
+            ),
+        )
+        await self.db.commit()
+
+    async def get_speaker(self, username: str, channel: str) -> SpeakerModel | None:
+        """Load a speaker model by username and channel."""
+        cursor = await self.db.execute(
+            "SELECT data_json FROM speakers WHERE username = ? AND channel = ?",
+            (username, channel),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return SpeakerModel.model_validate_json(row["data_json"])
+
+    async def get_speakers(self, channel: str) -> list[SpeakerModel]:
+        """Load all speaker models for a channel."""
+        cursor = await self.db.execute(
+            "SELECT data_json FROM speakers WHERE channel = ? ORDER BY message_count DESC",
+            (channel,),
+        )
+        rows = await cursor.fetchall()
+        return [SpeakerModel.model_validate_json(row["data_json"]) for row in rows]
