@@ -15,6 +15,15 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+class CapabilityImpact(str, Enum):
+    """SDAC capability mapping for entity updates."""
+
+    SENSE = "sense"
+    DECIDE = "decide"
+    ACT = "act"
+    COLLABORATE = "collaborate"
+
+
 class UpdateType(str, Enum):
     """Types of world-state updates extractable from chat."""
 
@@ -55,6 +64,9 @@ class EntityUpdate(BaseModel):
     fuel_state: str | None = Field(None, description="Fuel state (e.g., F+40, playtime 15 min)")
     subsystem_status: str | None = Field(None, description="Subsystem detail (e.g., radar inop, CIWS out)")
     metadata: dict[str, str] = Field(default_factory=dict, description="Overflow fields that don't map to schema")
+    capability_impact: CapabilityImpact | None = Field(
+        None, description="SDAC mapping: sense, decide, act, or collaborate"
+    )
 
 
 class CoPUpdate(BaseModel):
