@@ -1,5 +1,20 @@
+# Chat-to-CoP Docker Compose
+#
+# Usage:
+#   docker compose up                    # GPU mode (Ollama + pipeline + API)
+#   docker compose --profile cpu up      # CPU mode (Ollama CPU + pipeline + API)
+#   docker compose up chat-to-cop        # Pipeline + API only (bring your own LLM)
+#
+# After startup, pull a model:
+#   docker compose exec ollama ollama pull qwen2.5:7b
+#
+# Then run a replay:
+#   docker compose exec chat-to-cop python -m chat_to_cop.replay /app/data/chat.zip
+#
+# API available at: http://localhost:8000/docs
+
 services:
-  # Local LLM serving (GPU required)
+  # Local LLM serving — GPU mode (default)
   ollama:
     image: ollama/ollama:latest
     ports:
@@ -13,22 +28,49 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
-  # The agent pipeline
+  # Local LLM serving — CPU mode (use --profile cpu)
+  ollama-cpu:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    profiles:
+      - cpu
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # The agent pipeline + FastAPI REST API
   chat-to-cop:
     build: .
-    depends_on:
-      - ollama
     environment:
-      # Model-agnostic: just a URL + model name
       - CHAT_TO_COP_LLM_URL=http://ollama:11434/v1
-      - CHAT_TO_COP_LLM_MODEL=qwen3:30b-a3b
-      - CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b
+      - CHAT_TO_COP_LLM_MODEL=qwen2.5:7b
+      - CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:3b
+      - CHAT_TO_COP_DB_PATH=/app/data/world_state.db
+      - CHAT_TO_COP_METRICS=true
     ports:
-      - "8000:8000"  # FastAPI CoP REST API
+      - "8000:8000"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   ollama_models:
