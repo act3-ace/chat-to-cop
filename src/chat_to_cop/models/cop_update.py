@@ -74,12 +74,12 @@ class CoPUpdate(BaseModel):
 
     update_type: UpdateType
     confidence: float = Field(ge=0.0, le=1.0)
-    extraction_method: str = Field(description="'llm', 'regex', or 'passthrough'")
+    extraction_method: str = Field(default="llm", description="'llm', 'regex', or 'passthrough'")
     entities: list[EntityUpdate] = Field(default_factory=list)
-    source_channel: str
-    source_speaker: str
-    source_message: str
-    timestamp: datetime
+    source_channel: str = Field(default="", description="Filled by channel agent, not the LLM")
+    source_speaker: str = Field(default="", description="Filled by channel agent, not the LLM")
+    source_message: str = Field(default="", description="Filled by channel agent, not the LLM")
+    timestamp: datetime = Field(default_factory=lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc))
     context_messages: list[str] = Field(
         default_factory=list,
         description="Surrounding conversation for audit trail",
