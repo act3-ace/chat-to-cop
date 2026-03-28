@@ -30,7 +30,9 @@ async def run_test(url: str, model: str):
     print(f"SMOKE TEST: {model} @ {url}")
     print(f"{'='*60}\n")
 
-    backend = OpenAICompatibleBackend(base_url=url, model=model, timeout=120.0)
+    import os
+    api_key = os.environ.get("OPENAI_API_KEY", "not-needed")
+    backend = OpenAICompatibleBackend(base_url=url, model=model, api_key=api_key, timeout=120.0, max_retries=3)
     agent = ChannelAgent(channel="#c2_coord", backend=backend)
 
     for raw_line, channel in TEST_MESSAGES:

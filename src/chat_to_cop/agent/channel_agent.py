@@ -27,7 +27,7 @@ from chat_to_cop.models.speaker import SpeakerInference, SpeakerRegistry
 _NOISE_RE = re.compile(
     r"^[\s.]+$"  # dots only
     r"|^\s*c\s*$"  # "c"
-    r"|^\s*copy\s*$"  # "copy"
+    r"|^\s*copy\s*$"  # standalone "copy" only
     r"|^\s*word\s*$"  # "word"
     r"|^\s*test\s*$"  # "test"
     r"|^\s*NSTR\s*$"  # "nothing significant to report"
