@@ -79,7 +79,9 @@ class CoPUpdate(BaseModel):
     source_channel: str = Field(default="", description="Filled by channel agent, not the LLM")
     source_speaker: str = Field(default="", description="Filled by channel agent, not the LLM")
     source_message: str = Field(default="", description="Filled by channel agent, not the LLM")
-    timestamp: datetime = Field(default_factory=lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc))
+    timestamp: datetime = Field(
+        default_factory=lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+    )
     context_messages: list[str] = Field(
         default_factory=list,
         description="Surrounding conversation for audit trail",
