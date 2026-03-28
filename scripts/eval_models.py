@@ -158,19 +158,37 @@ async def eval_model(
     messages: list[IRCMessage],
     ground_truth: list[CoPUpdate | None],
     verbose: bool = False,
+    rate_delay: float = 0.0,
 ) -> EvalMetrics:
-    """Evaluate a single model against labeled data."""
-    backend = OpenAICompatibleBackend(base_url=url, model=model, api_key=api_key, timeout=60.0, max_retries=3)
+    """Evaluate a single model against labeled data.
+
+    Args:
+        rate_delay: Seconds to wait between LLM calls (for rate-limited APIs).
+            Groq free tier: use 18.0 (6000 tokens/min / ~1700 tokens per call = ~3.5/min).
+            Paid APIs or local: use 0.0.
+    """
+    backend = OpenAICompatibleBackend(base_url=url, model=model, api_key=api_key, timeout=120.0, max_retries=3)
     agents: dict[str, ChannelAgent] = {}
     metrics = EvalMetrics(model=model)
+    last_llm_call = 0.0
 
     for i, (msg, expected) in enumerate(zip(messages, ground_truth)):
         if msg.channel not in agents:
             agents[msg.channel] = ChannelAgent(channel=msg.channel, backend=backend, use_speaker_models=False)
 
+        # Rate limiting — wait between LLM calls (noise is pre-filtered, no delay needed)
+        if rate_delay > 0:
+            elapsed_since_last = time.perf_counter() - last_llm_call
+            if elapsed_since_last < rate_delay:
+                await asyncio.sleep(rate_delay - elapsed_since_last)
+
         start = time.perf_counter()
         updates = await agents[msg.channel].process_message(msg)
         elapsed = time.perf_counter() - start
+
+        # Track when we last made an LLM call (filtered messages don't count)
+        if updates and updates[0].extraction_method != "error":
+            last_llm_call = time.perf_counter()
 
         metrics.total += 1
         metrics.latencies.append(elapsed)
@@ -212,22 +230,25 @@ async def run_eval(
     api_key: str,
     count: int,
     verbose: bool,
+    rate_delay: float = 0.0,
 ):
     """Run evaluation for a single model."""
     print(f"\n{'=' * 70}")
     print(f"EVALUATING: {model} @ {url}")
     print(f"Messages: {count} synthetic (30% noise)")
+    if rate_delay > 0:
+        est_minutes = count * rate_delay / 60 * 0.7  # ~70% hit LLM, rest filtered
+        print(f"Rate delay: {rate_delay:.0f}s between LLM calls (~{est_minutes:.0f} min estimated)")
     print(f"{'=' * 70}\n")
 
     messages, ground_truth = generate_messages(count=count, noise_ratio=0.3)
-    metrics = await eval_model(url, model, api_key, messages, ground_truth, verbose=verbose)
+    metrics = await eval_model(url, model, api_key, messages, ground_truth, verbose=verbose, rate_delay=rate_delay)
     print(f"\n{metrics.summary()}")
     return metrics
 
 
-async def run_comparison(url: str, api_key: str, models: list[str], count: int, verbose: bool):
+async def run_comparison(url: str, api_key: str, models: list[str], count: int, verbose: bool, rate_delay: float = 0.0):
     """Compare multiple models on the same test data."""
-    # Generate data once, share across models
     messages, ground_truth = generate_messages(count=count, noise_ratio=0.3)
 
     all_metrics: list[EvalMetrics] = []
@@ -235,9 +256,12 @@ async def run_comparison(url: str, api_key: str, models: list[str], count: int, 
     for model in models:
         print(f"\n{'=' * 70}")
         print(f"EVALUATING: {model}")
+        if rate_delay > 0:
+            est_minutes = count * rate_delay / 60 * 0.7
+            print(f"Rate delay: {rate_delay:.0f}s (~{est_minutes:.0f} min)")
         print(f"{'=' * 70}")
 
-        m = await eval_model(url, model, api_key, messages, ground_truth, verbose=verbose)
+        m = await eval_model(url, model, api_key, messages, ground_truth, verbose=verbose, rate_delay=rate_delay)
         all_metrics.append(m)
         print(f"\n{m.summary()}")
 
@@ -263,14 +287,20 @@ def main():
     parser.add_argument("--count", type=int, default=50, help="Number of test messages")
     parser.add_argument("--compare", action="store_true", help="Compare all Groq models")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show per-message results")
+    parser.add_argument(
+        "--rate-delay",
+        type=float,
+        default=0.0,
+        help="Seconds between LLM calls for rate-limited APIs. Groq free: use 18. Local/paid: use 0.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("GROQ_API_KEY", "not-needed")
 
     if args.compare:
-        asyncio.run(run_comparison(args.url, api_key, GROQ_MODELS, args.count, args.verbose))
+        asyncio.run(run_comparison(args.url, api_key, GROQ_MODELS, args.count, args.verbose, args.rate_delay))
     else:
-        asyncio.run(run_eval(args.url, args.model, api_key, args.count, args.verbose))
+        asyncio.run(run_eval(args.url, args.model, api_key, args.count, args.verbose, args.rate_delay))
 
 
 if __name__ == "__main__":
