@@ -113,7 +113,7 @@ async def run_replay_test(count: int, url: str, model: str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--count", type=int, default=30, help="Number of messages to process")
-    parser.add_argument("--url", default="http://localhost:11434/v1")
+    parser.add_argument("--url", default="http://127.0.0.1:11434/v1")
     parser.add_argument("--model", default="qwen2.5:3b")
     args = parser.parse_args()
 
