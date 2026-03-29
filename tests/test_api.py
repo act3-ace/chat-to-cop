@@ -114,6 +114,46 @@ class TestEntitiesEndpoint:
         assert r.status_code == 404
 
 
+class TestDashboardEndpoint:
+    def test_dashboard_returns_html(self, client):
+        r = client.get("/dashboard")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+
+    def test_dashboard_contains_title(self, client):
+        r = client.get("/dashboard")
+        assert "chat-to-cop Dashboard" in r.text
+
+    def test_dashboard_contains_updates_table(self, client):
+        r = client.get("/dashboard")
+        assert 'id="updates-body"' in r.text
+
+    def test_dashboard_contains_entities_table(self, client):
+        r = client.get("/dashboard")
+        assert 'id="entities-body"' in r.text
+
+    def test_dashboard_contains_auto_refresh(self, client):
+        r = client.get("/dashboard")
+        assert "setInterval(refresh, 5000)" in r.text
+
+    def test_dashboard_contains_confidence_classes(self, client):
+        r = client.get("/dashboard")
+        assert "conf-high" in r.text
+        assert "conf-mid" in r.text
+        assert "conf-low" in r.text
+
+    def test_dashboard_contains_fetch_calls(self, client):
+        r = client.get("/dashboard")
+        assert "fetch('/updates" in r.text
+        assert "fetch('/entities')" in r.text
+        assert "fetch('/health')" in r.text
+
+    def test_root_redirects_to_dashboard(self, client):
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 307
+        assert r.headers["location"] == "/dashboard"
+
+
 class TestStatsEndpoint:
     def test_stats(self, client):
         r = client.get("/stats")

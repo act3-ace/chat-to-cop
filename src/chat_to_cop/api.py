@@ -4,6 +4,8 @@ Exposes extracted CoPUpdates, entity state, and system health via HTTP.
 Run with: uvicorn chat_to_cop.api:app --reload
 
 Endpoints:
+    GET /                 — HTML dashboard (redirect)
+    GET /dashboard        — HTML dashboard for operator visibility
     GET /updates          — recent CoPUpdates with filtering
     GET /entities         — current entity state
     GET /entities/{id}    — single entity with details
@@ -16,8 +18,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from chat_to_cop.dashboard import DASHBOARD_HTML
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.store import WorldStateStore
 
@@ -48,6 +51,18 @@ def _get_store() -> WorldStateStore:
     if _store is None:
         raise RuntimeError("Store not initialized")
     return _store
+
+
+@app.get("/", response_class=RedirectResponse, include_in_schema=False)
+async def root():
+    """Redirect root to dashboard."""
+    return RedirectResponse(url="/dashboard")
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    """Single-page HTML dashboard for operator visibility."""
+    return HTMLResponse(content=DASHBOARD_HTML)
 
 
 @app.get("/updates")
