@@ -1,7 +1,8 @@
 """Model evaluation harness: systematic comparison across LLM endpoints.
 
 Runs labeled synthetic data (or real data with manual labels) through the
-extraction pipeline and computes precision, recall, and F1 per update type.
+extraction pipeline and computes precision, recall, and F1 per update type
+and per entity field.
 
 Works with any OpenAI-compatible endpoint: Ollama, Groq, OpenAI, Gemini, etc.
 
@@ -31,7 +32,7 @@ from dataclasses import dataclass, field
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
 from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
-from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
+from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
 from chat_to_cop.testing.generator import generate_messages
 
@@ -42,6 +43,136 @@ GROQ_MODELS = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
     "llama-3.1-8b-instant",
 ]
+
+
+# Fields to compare for entity-level scoring. Only fields with non-None
+# values in the ground truth are checked.
+ENTITY_SCORED_FIELDS = (
+    "operational_status",
+    "fuel_state",
+    "weapon_type",
+    "affiliation",
+    "bearing",
+    "range_nm",
+    "platform_type",
+    "weapon_qty_launched",
+    "weapon_qty_remaining",
+    "subsystem_status",
+)
+
+
+def _entity_key(entity: EntityUpdate) -> str | None:
+    """Return a normalised matching key for an entity (track_number or callsign).
+
+    Returns None if the entity has neither identifier.
+    """
+    if entity.track_number:
+        return entity.track_number.strip().upper()
+    if entity.callsign:
+        return entity.callsign.strip().upper()
+    return None
+
+
+@dataclass
+class EntityScoreResult:
+    """Result of matching extracted entities against ground truth for one message."""
+
+    matched: int = 0  # Entities matched by key (hit in both expected and got)
+    expected_total: int = 0  # Total ground truth entities with a key
+    extracted_total: int = 0  # Total extracted entities with a key
+    field_correct: Counter = field(default_factory=Counter)  # Per-field correct counts
+    field_total: Counter = field(default_factory=Counter)  # Per-field comparison counts
+
+
+def _score_entities(expected: CoPUpdate | None, got: list[CoPUpdate]) -> EntityScoreResult:
+    """Compare extracted entities against ground truth entities field-by-field.
+
+    Matching strategy:
+    - Build a lookup of expected entities keyed by normalised track_number or callsign.
+    - For each extracted entity, find the matching expected entity by key.
+    - For matched pairs, compare each scored field that has a non-None expected value.
+    """
+    result = EntityScoreResult()
+
+    if expected is None or not expected.entities:
+        # No ground truth entities to compare against.
+        # Count any extracted entities as unmatched extractions (for precision).
+        if got:
+            for update in got:
+                for ent in update.entities:
+                    if _entity_key(ent) is not None:
+                        result.extracted_total += 1
+        return result
+
+    # Build expected lookup: key -> EntityUpdate
+    expected_by_key: dict[str, EntityUpdate] = {}
+    for ent in expected.entities:
+        key = _entity_key(ent)
+        if key is not None:
+            expected_by_key[key] = ent
+            result.expected_total += 1
+
+    if not got:
+        return result
+
+    # Collect all extracted entities
+    extracted_entities: list[EntityUpdate] = []
+    for update in got:
+        extracted_entities.extend(update.entities)
+
+    seen_keys: set[str] = set()
+    for ext_ent in extracted_entities:
+        ext_key = _entity_key(ext_ent)
+        if ext_key is None:
+            continue
+        result.extracted_total += 1
+
+        # Match against expected
+        exp_ent = expected_by_key.get(ext_key)
+        if exp_ent is None:
+            continue
+
+        # Avoid double-counting if the model extracts the same entity twice
+        if ext_key in seen_keys:
+            continue
+        seen_keys.add(ext_key)
+
+        result.matched += 1
+
+        # Compare scored fields
+        for fname in ENTITY_SCORED_FIELDS:
+            exp_val = getattr(exp_ent, fname, None)
+            if exp_val is None:
+                continue  # Don't score fields that aren't set in ground truth
+            result.field_total[fname] += 1
+            ext_val = getattr(ext_ent, fname, None)
+            if _field_match(exp_val, ext_val):
+                result.field_correct[fname] += 1
+
+    return result
+
+
+def _field_match(expected: object, extracted: object) -> bool:
+    """Check if an extracted field value matches the expected value.
+
+    String comparison is case-insensitive with whitespace stripped.
+    Numeric comparison allows a small tolerance for floats.
+    """
+    if expected is None:
+        return True  # Nothing expected, always passes
+    if extracted is None:
+        return False  # Expected something, got nothing
+
+    if isinstance(expected, str) and isinstance(extracted, str):
+        return expected.strip().upper() == extracted.strip().upper()
+
+    if isinstance(expected, (int, float)) and isinstance(extracted, (int, float)):
+        # Exact match for ints, tolerance for floats
+        if isinstance(expected, int) and isinstance(extracted, int):
+            return expected == extracted
+        return abs(float(expected) - float(extracted)) < 0.5
+
+    return expected == extracted
 
 
 @dataclass
@@ -69,6 +200,12 @@ class EvalMetrics:
     type_correct: Counter = field(default_factory=Counter)  # Per-type correct count
     type_total: Counter = field(default_factory=Counter)  # Per-type total count
     latencies: list[float] = field(default_factory=list)
+    # Entity-level metrics
+    entity_matched: int = 0  # Entities correctly matched by key
+    entity_expected: int = 0  # Total ground truth entities
+    entity_extracted: int = 0  # Total extracted entities
+    entity_field_correct: Counter = field(default_factory=Counter)  # Per-field correct
+    entity_field_total: Counter = field(default_factory=Counter)  # Per-field total
 
     @property
     def precision(self) -> float:
@@ -84,6 +221,25 @@ class EvalMetrics:
     def f1(self) -> float:
         p, r = self.precision, self.recall
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+
+    @property
+    def entity_precision(self) -> float:
+        return self.entity_matched / self.entity_extracted if self.entity_extracted > 0 else 0.0
+
+    @property
+    def entity_recall(self) -> float:
+        return self.entity_matched / self.entity_expected if self.entity_expected > 0 else 0.0
+
+    @property
+    def entity_f1(self) -> float:
+        p, r = self.entity_precision, self.entity_recall
+        return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+
+    @property
+    def entity_field_accuracy(self) -> float:
+        total = sum(self.entity_field_total.values())
+        correct = sum(self.entity_field_correct.values())
+        return correct / total if total > 0 else 0.0
 
     @property
     def error_rate(self) -> float:
@@ -107,9 +263,14 @@ class EvalMetrics:
         lines = [
             f"Model: {self.model}",
             f"  Messages: {self.total}",
-            f"  Precision: {self.precision:.2f}  Recall: {self.recall:.2f}  F1: {self.f1:.2f}",
-            f"  TP={self.true_positives} FP={self.false_positives} "
+            "  Update-type scoring:",
+            f"    Precision: {self.precision:.2f}  Recall: {self.recall:.2f}  F1: {self.f1:.2f}",
+            f"    TP={self.true_positives} FP={self.false_positives} "
             f"FN={self.false_negatives} TN={self.true_negatives} Err={self.errors}",
+            "  Entity-level scoring:",
+            f"    Precision: {self.entity_precision:.2f}  Recall: {self.entity_recall:.2f}  F1: {self.entity_f1:.2f}",
+            f"    Matched={self.entity_matched} Expected={self.entity_expected} Extracted={self.entity_extracted}",
+            f"    Field accuracy: {self.entity_field_accuracy:.0%}",
             f"  Error rate: {self.error_rate:.1%}",
             f"  Latency: p50={self.p50_latency:.2f}s p95={self.p95_latency:.2f}s",
         ]
@@ -120,6 +281,13 @@ class EvalMetrics:
                 total = self.type_total[utype]
                 pct = correct / total if total > 0 else 0
                 lines.append(f"    {utype:20s}: {correct}/{total} ({pct:.0%})")
+        if self.entity_field_total:
+            lines.append("  Per-field accuracy:")
+            for fname in sorted(self.entity_field_total.keys()):
+                correct = self.entity_field_correct[fname]
+                total = self.entity_field_total[fname]
+                pct = correct / total if total > 0 else 0
+                lines.append(f"    {fname:25s}: {correct}/{total} ({pct:.0%})")
         return "\n".join(lines)
 
 
@@ -193,7 +361,7 @@ async def eval_model(
         metrics.total += 1
         metrics.latencies.append(elapsed)
 
-        # Score
+        # Score — update-type level
         score = _score(expected, updates)
         if score == "TP":
             metrics.true_positives += 1
@@ -212,6 +380,14 @@ async def eval_model(
             metrics.type_total[utype] += 1
             if score == "TP":
                 metrics.type_correct[utype] += 1
+
+        # Score — entity level (only when we have ground truth entities)
+        ent_result = _score_entities(expected, updates)
+        metrics.entity_matched += ent_result.matched
+        metrics.entity_expected += ent_result.expected_total
+        metrics.entity_extracted += ent_result.extracted_total
+        metrics.entity_field_correct += ent_result.field_correct
+        metrics.entity_field_total += ent_result.field_total
 
         if verbose:
             got_str = "FILTERED" if not updates else updates[0].update_type.value
@@ -269,12 +445,19 @@ async def run_comparison(url: str, api_key: str, models: list[str], count: int, 
     print(f"\n{'=' * 70}")
     print("COMPARISON SUMMARY")
     print(f"{'=' * 70}")
-    print(f"{'Model':45s} {'Prec':>6s} {'Rec':>6s} {'F1':>6s} {'Err%':>6s} {'p50':>6s} {'p95':>6s}")
-    print("-" * 81)
+    header = (
+        f"{'Model':40s} {'Prec':>5s} {'Rec':>5s} {'F1':>5s}"
+        f" {'EntP':>5s} {'EntR':>5s} {'EntF1':>5s} {'FldA':>5s}"
+        f" {'Err%':>5s} {'p50':>6s} {'p95':>6s}"
+    )
+    print(header)
+    print("-" * len(header))
     for m in sorted(all_metrics, key=lambda x: x.f1, reverse=True):
         print(
-            f"{m.model:45s} {m.precision:6.2f} {m.recall:6.2f} {m.f1:6.2f} "
-            f"{m.error_rate:5.1%} {m.p50_latency:5.2f}s {m.p95_latency:5.2f}s"
+            f"{m.model:40s} {m.precision:5.2f} {m.recall:5.2f} {m.f1:5.2f}"
+            f" {m.entity_precision:5.2f} {m.entity_recall:5.2f} {m.entity_f1:5.2f}"
+            f" {m.entity_field_accuracy:5.2f}"
+            f" {m.error_rate:4.1%} {m.p50_latency:5.2f}s {m.p95_latency:5.2f}s"
         )
 
     return all_metrics
