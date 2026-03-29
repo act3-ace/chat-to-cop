@@ -18,6 +18,7 @@ from loguru import logger
 
 from chat_to_cop.backend.base import LLMBackend
 from chat_to_cop.backend.openai_compat import DEFAULT_GLOSSARY, build_system_prompt
+from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
@@ -99,6 +100,7 @@ class ChannelAgent:
         window_minutes: float = 15.0,
         glossary: str = DEFAULT_GLOSSARY,
         use_speaker_models: bool = True,
+        calibration_model: CalibrationModel | None = None,
     ) -> None:
         self.channel = channel
         self.backend = backend
@@ -106,6 +108,7 @@ class ChannelAgent:
         self.window_minutes = window_minutes
         self.glossary = glossary
         self.use_speaker_models = use_speaker_models
+        self.calibration_model = calibration_model
         self._window: deque[IRCMessage] = deque(maxlen=window_size)
         self._message_count = 0
         self._speakers = SpeakerRegistry()
@@ -290,6 +293,12 @@ class ChannelAgent:
         result.timestamp = message.timestamp
         result.extraction_method = "llm"  # Override — LLM should not set this
         result.context_messages = [f"{m.sender}: {m.content}" for m in list(self._window)[-5:]]
+
+        # Apply confidence calibration if a model is loaded
+        if self.calibration_model is not None:
+            raw = result.confidence
+            result.confidence = self.calibration_model.calibrate(raw)
+            logger.debug("Calibrated confidence: {:.2f} -> {:.2f}", raw, result.confidence)
 
         # Filter out NONE updates (acks, noise)
         if result.update_type == UpdateType.NONE:

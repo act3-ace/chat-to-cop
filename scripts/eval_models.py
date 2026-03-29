@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
 from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
+from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
 from chat_to_cop.testing.generator import generate_messages
@@ -206,6 +207,8 @@ class EvalMetrics:
     entity_extracted: int = 0  # Total extracted entities
     entity_field_correct: Counter = field(default_factory=Counter)  # Per-field correct
     entity_field_total: Counter = field(default_factory=Counter)  # Per-field total
+    # Calibration tracking: (confidence, correct) pairs for every scored extraction
+    calibration_pairs: list[tuple[float, bool]] = field(default_factory=list)
 
     @property
     def precision(self) -> float:
@@ -288,6 +291,19 @@ class EvalMetrics:
                 total = self.entity_field_total[fname]
                 pct = correct / total if total > 0 else 0
                 lines.append(f"    {fname:25s}: {correct}/{total} ({pct:.0%})")
+        # Calibration summary
+        if self.calibration_pairs:
+            cal = CalibrationModel(n_bins=10)
+            confs = [c for c, _ in self.calibration_pairs]
+            outcomes = [o for _, o in self.calibration_pairs]
+            cal.fit(confs, outcomes)
+            lines.append("")
+            lines.append("  Confidence calibration:")
+            lines.append(f"    ECE = {cal.ece():.4f}")
+            lines.append("")
+            # Indent the reliability diagram
+            for diagram_line in cal.reliability_diagram_ascii(width=40).split("\n"):
+                lines.append(f"    {diagram_line}")
         return "\n".join(lines)
 
 
@@ -389,6 +405,12 @@ async def eval_model(
         metrics.entity_field_correct += ent_result.field_correct
         metrics.entity_field_total += ent_result.field_total
 
+        # Calibration tracking — record (confidence, correct) for every non-error extraction
+        if updates and updates[0].extraction_method != "error":
+            conf = updates[0].confidence
+            is_correct = score in ("TP", "TN")
+            metrics.calibration_pairs.append((conf, is_correct))
+
         if verbose:
             got_str = "FILTERED" if not updates else updates[0].update_type.value
             exp_str = "noise" if expected is None else expected.update_type.value
@@ -407,6 +429,7 @@ async def run_eval(
     count: int,
     verbose: bool,
     rate_delay: float = 0.0,
+    save_calibration: str | None = None,
 ):
     """Run evaluation for a single model."""
     print(f"\n{'=' * 70}")
@@ -420,6 +443,16 @@ async def run_eval(
     messages, ground_truth = generate_messages(count=count, noise_ratio=0.3)
     metrics = await eval_model(url, model, api_key, messages, ground_truth, verbose=verbose, rate_delay=rate_delay)
     print(f"\n{metrics.summary()}")
+
+    # Save calibration model if requested
+    if save_calibration and metrics.calibration_pairs:
+        cal = CalibrationModel(n_bins=10)
+        confs = [c for c, _ in metrics.calibration_pairs]
+        outcomes = [o for _, o in metrics.calibration_pairs]
+        cal.fit(confs, outcomes)
+        cal.save(save_calibration)
+        print(f"\nCalibration model saved to {save_calibration}")
+
     return metrics
 
 
@@ -476,6 +509,12 @@ def main():
         default=0.0,
         help="Seconds between LLM calls for rate-limited APIs. Groq free: use 18. Local/paid: use 0.",
     )
+    parser.add_argument(
+        "--save-calibration",
+        type=str,
+        default=None,
+        help="Path to save calibration model JSON after evaluation (e.g., calibration.json)",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("GROQ_API_KEY", "not-needed")
@@ -483,7 +522,9 @@ def main():
     if args.compare:
         asyncio.run(run_comparison(args.url, api_key, GROQ_MODELS, args.count, args.verbose, args.rate_delay))
     else:
-        asyncio.run(run_eval(args.url, args.model, api_key, args.count, args.verbose, args.rate_delay))
+        asyncio.run(
+            run_eval(args.url, args.model, api_key, args.count, args.verbose, args.rate_delay, args.save_calibration)
+        )
 
 
 if __name__ == "__main__":
