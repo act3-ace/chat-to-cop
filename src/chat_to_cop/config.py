@@ -141,6 +141,12 @@ class PipelineConfig(BaseSettings):
         description="Enable instrumentation (counters, histograms, timers)",
     )
 
+    # Calibration
+    calibration_model: str = Field(
+        default="",
+        description="Path to calibration model JSON. Empty = no calibration applied.",
+    )
+
     # Subsystem configs
     llm: LLMBackendConfig = Field(default_factory=LLMBackendConfig)
     fallback: FallbackConfig = Field(default_factory=FallbackConfig)
