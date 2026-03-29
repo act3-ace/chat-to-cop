@@ -13,7 +13,7 @@ from chat_to_cop.config import (
 class TestLLMBackendConfig:
     def test_defaults(self):
         cfg = LLMBackendConfig()
-        assert cfg.llm_url == "http://localhost:11434/v1"
+        assert cfg.llm_url == "http://127.0.0.1:11434/v1"
         assert cfg.llm_model == "qwen2.5:7b"
         assert cfg.llm_timeout == 10.0
         assert cfg.llm_max_retries == 2
@@ -73,7 +73,7 @@ class TestPipelineConfig:
         cfg = PipelineConfig()
         assert cfg.db_path == "data/world_state.db"
         assert cfg.metrics is True
-        assert cfg.llm.llm_url == "http://localhost:11434/v1"
+        assert cfg.llm.llm_url == "http://127.0.0.1:11434/v1"
         assert cfg.fallback.fallback_model == "qwen2.5:3b"
         assert cfg.degrading.circuit_fail_max == 3
         assert cfg.agent.window_size == 50

@@ -34,7 +34,7 @@ class OpenAICompatibleBackend:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434/v1",
+        base_url: str = "http://127.0.0.1:11434/v1",
         model: str = "qwen3:30b-a3b",
         api_key: str = "not-needed",
         timeout: float = 10.0,

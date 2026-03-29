@@ -5,7 +5,7 @@ Supervisor (agent lifecycle), FusionAgent (deconfliction), WorldStateStore.
 
 Usage:
     python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip
-    python -m chat_to_cop.replay path/to/logs/ --speed 0 --url http://localhost:11434/v1
+    python -m chat_to_cop.replay path/to/logs/ --speed 0 --url http://127.0.0.1:11434/v1
 """
 
 from __future__ import annotations

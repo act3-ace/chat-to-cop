@@ -14,7 +14,7 @@ Usage:
     python scripts/eval_models.py --compare --count 50
 
     # Use local Ollama
-    python scripts/eval_models.py --url http://localhost:11434/v1 --model qwen2.5:3b --count 30
+    python scripts/eval_models.py --url http://127.0.0.1:11434/v1 --model qwen2.5:3b --count 30
 
 Environment:
     OPENAI_API_KEY — API key for the endpoint (set for Groq, OpenAI, etc.)

@@ -4,7 +4,7 @@ Uses pydantic-settings for type-safe config with environment variable overrides.
 All settings have sensible defaults for local development with Ollama.
 
 Environment variables use the CHAT_TO_COP_ prefix:
-    CHAT_TO_COP_LLM_URL=http://localhost:11434/v1
+    CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
     CHAT_TO_COP_LLM_MODEL=qwen2.5:7b
     CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:3b
     CHAT_TO_COP_DB_PATH=data/world_state.db
@@ -23,7 +23,7 @@ class LLMBackendConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CHAT_TO_COP_")
 
     llm_url: str = Field(
-        default="http://localhost:11434/v1",
+        default="http://127.0.0.1:11434/v1",
         description="OpenAI-compatible API base URL",
     )
     llm_model: str = Field(
@@ -50,7 +50,7 @@ class FallbackConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CHAT_TO_COP_")
 
     fallback_url: str = Field(
-        default="http://localhost:11434/v1",
+        default="http://127.0.0.1:11434/v1",
         description="Fallback LLM endpoint (can be same as primary)",
     )
     fallback_model: str = Field(

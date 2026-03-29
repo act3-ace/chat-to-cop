@@ -52,7 +52,7 @@ ollama pull qwen2.5:7b
 Verify Ollama is running:
 
 ```bash
-curl http://localhost:11434/v1/models
+curl http://127.0.0.1:11434/v1/models
 ```
 
 You should see JSON listing the pulled model(s).
@@ -81,7 +81,7 @@ Expected output (varies by model):
 
 ```
 ============================================================
-SMOKE TEST: qwen2.5:3b @ http://localhost:11434/v1
+SMOKE TEST: qwen2.5:3b @ http://127.0.0.1:11434/v1
 ============================================================
 
 INPUT:  [#c2_coord] HYDRO_SL: SITREP / AIR: ZEUS 12,13,14 shot down by TTG; YAMA11 flight shot down by TTG
@@ -114,7 +114,7 @@ Override the model or endpoint:
 
 ```bash
 python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip \
-    --url http://localhost:11434/v1 \
+    --url http://127.0.0.1:11434/v1 \
     --model qwen2.5:7b
 ```
 
@@ -213,7 +213,7 @@ This runs all configured Groq models (qwen3-32b, llama-3.3-70b, llama-4-scout, l
 
 ```bash
 python scripts/eval_models.py \
-    --url http://localhost:11434/v1 \
+    --url http://127.0.0.1:11434/v1 \
     --model qwen2.5:3b \
     --count 30 \
     --verbose
@@ -247,7 +247,7 @@ All settings can be overridden with environment variables using the `CHAT_TO_COP
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CHAT_TO_COP_LLM_URL` | `http://localhost:11434/v1` | LLM endpoint |
+| `CHAT_TO_COP_LLM_URL` | `http://127.0.0.1:11434/v1` | LLM endpoint |
 | `CHAT_TO_COP_LLM_MODEL` | `qwen2.5:7b` | Primary model |
 | `CHAT_TO_COP_FALLBACK_MODEL` | `qwen2.5:3b` | Smaller fallback model |
 | `CHAT_TO_COP_LLM_API_KEY` | `not-needed` | API key (set for Groq/OpenAI) |
