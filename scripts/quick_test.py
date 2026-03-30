@@ -6,14 +6,12 @@ Usage:
     python scripts/quick_test.py --url http://remote:11434/v1
 """
 
-import asyncio
 import argparse
-import json
+import asyncio
 from datetime import datetime, timezone
 
-from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend, DEFAULT_GLOSSARY, build_system_prompt
 from chat_to_cop.agent.channel_agent import ChannelAgent
-from chat_to_cop.models.cop_update import CoPUpdate
+from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
 
 # Real messages from DASH 3 GBC chat data
 TEST_MESSAGES = [
@@ -26,11 +24,12 @@ TEST_MESSAGES = [
 
 
 async def run_test(url: str, model: str):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"SMOKE TEST: {model} @ {url}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     import os
+
     api_key = os.environ.get("OPENAI_API_KEY", "not-needed")
     backend = OpenAICompatibleBackend(base_url=url, model=model, api_key=api_key, timeout=120.0, max_retries=3)
     agent = ChannelAgent(channel="#c2_coord", backend=backend)
@@ -38,13 +37,17 @@ async def run_test(url: str, model: str):
     for raw_line, channel in TEST_MESSAGES:
         # Parse the message manually (simplified)
         import re
+
         m = re.match(r"\[(\d{2}:\d{2}:\d{2})\]\s+(\S+?):\s*(.*)", raw_line)
         if not m:
             continue
 
         from chat_to_cop.models.messages import IRCMessage
+
         msg = IRCMessage(
-            timestamp=datetime(2025, 9, 23, int(m.group(1)[:2]), int(m.group(1)[3:5]), int(m.group(1)[6:8]), tzinfo=timezone.utc),
+            timestamp=datetime(
+                2025, 9, 23, int(m.group(1)[:2]), int(m.group(1)[3:5]), int(m.group(1)[6:8]), tzinfo=timezone.utc
+            ),
             channel=channel,
             sender=m.group(2),
             content=m.group(3),
@@ -58,13 +61,18 @@ async def run_test(url: str, model: str):
             updates = await agent.process_message(msg)
 
             if not updates:
-                print(f"OUTPUT: [filtered — no world-state change detected]")
+                print("OUTPUT: [filtered — no world-state change detected]")
             else:
                 for u in updates:
-                    print(f"OUTPUT: type={u.update_type.value}, confidence={u.confidence:.2f}, method={u.extraction_method}")
+                    print(
+                        f"OUTPUT: type={u.update_type.value}, confidence={u.confidence:.2f},"
+                        f" method={u.extraction_method}"
+                    )
                     if u.entities:
                         for e in u.entities:
-                            fields = {k: v for k, v in e.model_dump().items() if v is not None and k != "metadata" and v != {}}
+                            fields = {
+                                k: v for k, v in e.model_dump().items() if v is not None and k != "metadata" and v != {}
+                            }
                             print(f"        entity: {fields}")
                     if u.reasoning:
                         print(f"        reasoning: {u.reasoning[:120]}")
@@ -73,9 +81,9 @@ async def run_test(url: str, model: str):
 
         print()
 
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Messages processed: {agent.message_count}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def main():

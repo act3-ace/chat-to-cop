@@ -7,14 +7,11 @@ Usage:
     python scripts/replay_test.py --count 50 --model qwen2.5:7b
 """
 
-import asyncio
 import argparse
+import asyncio
 import time
-from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from collections import Counter
 from pathlib import Path
-
-from loguru import logger
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
 from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
@@ -29,11 +26,11 @@ DASH3_PATH = Path(
 
 
 async def run_replay_test(count: int, url: str, model: str):
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"REPLAY TEST: {model} @ {url}")
     print(f"Channels: {', '.join(sorted(TYPED_CHANNELS))}")
     print(f"Message limit: {count}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     backend = OpenAICompatibleBackend(base_url=url, model=model, timeout=120.0)
     agents: dict[str, ChannelAgent] = {}
@@ -80,18 +77,18 @@ async def run_replay_test(count: int, url: str, model: str):
 
         # Progress line
         print(
-            f"[{i+1:3d}/{len(test_messages)}] "
+            f"[{i + 1:3d}/{len(test_messages)}] "
             f"{elapsed:5.1f}s | {msg.channel:15s} | {msg.sender:15s} | {status:30s} | {msg.content[:60]}"
         )
 
     # Summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("RESULTS")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Messages processed: {len(test_messages)}")
-    print(f"  Extracted:  {extracted} ({extracted/len(test_messages)*100:.0f}%)")
-    print(f"  Filtered:   {filtered} ({filtered/len(test_messages)*100:.0f}%)")
-    print(f"  Errors:     {errors} ({errors/len(test_messages)*100:.0f}%)")
+    print(f"  Extracted:  {extracted} ({extracted / len(test_messages) * 100:.0f}%)")
+    print(f"  Filtered:   {filtered} ({filtered / len(test_messages) * 100:.0f}%)")
+    print(f"  Errors:     {errors} ({errors / len(test_messages) * 100:.0f}%)")
     print()
     print("Update type distribution:")
     for utype, cnt in type_counts.most_common():
@@ -101,13 +98,13 @@ async def run_replay_test(count: int, url: str, model: str):
         latencies.sort()
         p50 = latencies[len(latencies) // 2]
         p95 = latencies[int(len(latencies) * 0.95)]
-        print(f"Latency (seconds):")
+        print("Latency (seconds):")
         print(f"  p50: {p50:.1f}s")
         print(f"  p95: {p95:.1f}s")
         print(f"  max: {max(latencies):.1f}s")
-        print(f"  avg: {sum(latencies)/len(latencies):.1f}s")
-        print(f"  total: {sum(latencies):.0f}s ({sum(latencies)/60:.1f} min)")
-    print(f"{'='*70}")
+        print(f"  avg: {sum(latencies) / len(latencies):.1f}s")
+        print(f"  total: {sum(latencies):.0f}s ({sum(latencies) / 60:.1f} min)")
+    print(f"{'=' * 70}")
 
 
 def main():
