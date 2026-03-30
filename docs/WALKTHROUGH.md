@@ -582,6 +582,22 @@ ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "n
 
 ---
 
+## Glossary
+
+| Term | Definition |
+| ------ | ----------- |
+| **Pit** | A battle management unit: pit boss + 2 battle managers |
+| **Pit Boss** | Oversees a pit, synthesizes information for higher echelons |
+| **Battle Manager (BM)** | Handles specific functions (strike, tanker, surveillance) within a pit |
+| **White Cell** | Exercise control operators who inject scenario events and play roles |
+| **CoP** | Common Operating Picture -- the shared ground-truth database |
+| **TMDA** | Transformational Model for Decision Advantage -- the broader framework the CoP sits within |
+| **HLT** | Human Language Translation team -- responsible for some real-time streaming work after the virtual vendor was cut |
+| **DASH** | Distributed Analytic Synthetic Hybrid -- prior wargame exercise series (DASH 1-3) |
+| **MASH** | Multi-domain Analytic Synthetic Hybrid -- the May 2026 exercise |
+| **STT** | Speech-to-text -- voice radio transcribed and piped into IRC channels |
+| **Bullseye** | A reference point for bearing/range position reports |
+
 ## Related Documents
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) -- Full system architecture with component details
@@ -592,3 +608,4 @@ ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "n
 - [CHAT_DATA_ANALYSIS.md](CHAT_DATA_ANALYSIS.md) -- All 13 update types with real examples
 - [LABELING_GUIDE.md](LABELING_GUIDE.md) -- Ground truth labeling protocol
 - [QUICKSTART.md](QUICKSTART.md) -- 15-minute setup guide
+- [C2ES Google Drive](https://drive.google.com/drive/u/0/folders/1po6MGtfA5GF8QRub3X5LVpA_spJ9E7zz) -- Meeting notes, DASH event data, reference library
