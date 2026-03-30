@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
 
 class CapabilityImpact(str, Enum):
@@ -43,6 +44,25 @@ class UpdateType(str, Enum):
     NONE = "none"
 
 
+def _coerce_capability_impact(v: object) -> object:
+    """Coerce invalid capability_impact values to None instead of failing.
+
+    LLMs sometimes return values like "tasking", "extraction", etc.
+    that aren't valid SDAC categories. Rather than rejecting the entire
+    entity update, we null out the field — the channel agent can fill
+    it post-extraction if needed.
+    """
+    if v is None:
+        return v
+    if isinstance(v, CapabilityImpact):
+        return v
+    if isinstance(v, str):
+        valid = {e.value for e in CapabilityImpact}
+        if v.lower() not in valid:
+            return None
+    return v
+
+
 class EntityUpdate(BaseModel):
     """A single entity state change."""
 
@@ -64,7 +84,7 @@ class EntityUpdate(BaseModel):
     fuel_state: str | None = Field(None, description="Fuel state (e.g., F+40, playtime 15 min)")
     subsystem_status: str | None = Field(None, description="Subsystem detail (e.g., radar inop, CIWS out)")
     metadata: dict[str, str] = Field(default_factory=dict, description="Overflow fields that don't map to schema")
-    capability_impact: CapabilityImpact | None = Field(
+    capability_impact: Annotated[CapabilityImpact | None, BeforeValidator(_coerce_capability_impact)] = Field(
         None, description="SDAC mapping: sense, decide, act, or collaborate"
     )
 
