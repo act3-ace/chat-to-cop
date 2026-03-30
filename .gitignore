@@ -3,6 +3,7 @@ data/
 !data/dash3/
 !data/labels/
 !data/calibration/
+!data/aibom.json
 *.zip
 !data/dash3/*.zip
 *.rar
