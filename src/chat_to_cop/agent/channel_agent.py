@@ -44,6 +44,43 @@ _URL_RE = re.compile(r"https?://\S+")
 # Radio check patterns — not operational
 _RADIO_CHECK_RE = re.compile(r"radio\s+check", re.IGNORECASE)
 
+# Banter / radio-protocol noise — only match when the phrase dominates the message.
+# These use fullmatch on stripped text (with optional trailing punctuation).
+# Do NOT match if the phrase is embedded in a longer operational message.
+#
+# Specific banter phrases that are unambiguously non-operational even in longer messages:
+_BANTER_SPECIFIC_RE = re.compile(
+    r"(?:"
+    r".*didn.t\s+say\s+over.*"  # banter about saying "over"
+    r"|.*(?:not\s+out|i.m\s+over).*"  # "not out, I'm over" radio banter
+    r"|.*what\s+you\s+want\s+\w*\??"  # "what you want girl?"
+    r"|.*talk\s+a\s+little\s+louder.*"  # "talk a little louder"
+    r"|.*can.t\s+go\s+over\s+and\s+out.*"  # "you can't go over and out"
+    r"|.*let.s\s+do\s+some\s+radio.*"  # "let's do some radio tracks"
+    r"|.*buh-?bye.*"  # "buh-bye"
+    r"|.*see\s+ya.*"  # "see ya"
+    r"|.*good\s+to\s+meet.*"  # "good to meet you"
+    r")\s*[.!?,]*\s*",
+    re.IGNORECASE,
+)
+
+# Radio-protocol phrases that CAN appear in operational messages.
+# Only match when they are the dominant content (short message, no trailing ops data).
+# "how me?" at end, "how do you hear me?", "loud and clear", "lima charlie",
+# "say again", "over and out", "copy all" — these must be the whole message.
+_BANTER_SHORT_RE = re.compile(
+    r"(?:"
+    r".*how\s+me\??"  # "how me?" at end of message (radio check)
+    r"|.*how\s+do\s+you\s+hear(?:\s+me)?\??"  # "how do you hear me?"
+    r"|.*loud\s+and\s+clear\s*"  # "loud and clear" without trailing content
+    r"|.*lima\s+charlie\s*"  # "lima charlie" without trailing content
+    r"|say\s+again\s*"  # "say again" alone
+    r"|.*over\s+and\s+out\s*"  # "over and out"
+    r"|copy\s+all"  # "copy all" as the entire message
+    r")\s*[.!?,]*\s*",
+    re.IGNORECASE,
+)
+
 # STARTEX/ENDEX patterns — exercise control, not world-state
 _EXERCISE_CONTROL_RE = re.compile(
     r"\*{3,}.*(?:STARTEX|ENDEX|START\s+EX|END\s+EX).*\*{3,}"
@@ -69,6 +106,14 @@ def _is_noise(content: str) -> bool:
 
     # Radio checks
     if _RADIO_CHECK_RE.search(stripped):
+        return True
+
+    # Banter — unambiguous phrases (safe to match even in longer messages)
+    if _BANTER_SPECIFIC_RE.fullmatch(stripped):
+        return True
+
+    # Radio-protocol phrases — only noise when they ARE the whole message (short)
+    if _BANTER_SHORT_RE.fullmatch(stripped):
         return True
 
     # Exercise control
