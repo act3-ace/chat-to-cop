@@ -90,16 +90,19 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues
 - Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE
 - Sprint 2 (Multi-Channel + Resilience): #8-#13 — ALL COMPLETE
-- Sprint 3 (Deploy + Harden): #14, #15, #17, #18, #19, #20, #21, #22, #23, #24, #27, #28, #31, #32 DONE. #16 IN PROGRESS (T4 replay running). #25, #26, #29, #30 OPEN.
-- Total: 549 tests passing, pipeline validated against real DASH 3 data
+- Sprint 3 (Deploy + Harden): #14-#24, #27-#29, #31-#34, #36, #38-#40 DONE. #16 COMPLETE (clean T4 run: 7.7s mean, 99.9% success). #25, #26, #30, #35, #37 OPEN.
+- Total: 702 tests passing, clean benchmark on real DASH 3 data (264 updates, 203 entities, 935 msgs)
 Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
 
-### Remaining Sprint 3 issues
+### Remaining open issues
 
-- `#16` Full DASH 3 replay test — in progress, T4 GPU replay running
-- `#25` OPEN
-- `#26` OPEN
-- `#29` OPEN
+- `#16` Full DASH 3 replay — COMPLETE, needs KPP computation from clean run results
+- `#17` CoP writer — infrastructure done, blocked on real contractor schema
+- `#25` Label 100 messages — partially addressed by silver labels (Groq Qwen3-32B)
+- `#26` Validate 30B on 24GB GPU — blocked on hardware
+- `#30` Calibrate confidence — unblocked once silver labels complete
+- `#35` Speaker model evaluation (RQ1) — needs silver labels + A/B comparison
+- `#37` Equifinality integration — Phases 2-4 done, Phase 1 needs Colin provenance check
 - `#30` OPEN
 
 ### Tests
