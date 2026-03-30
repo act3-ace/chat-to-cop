@@ -24,6 +24,7 @@ from chat_to_cop.agent.channel_agent import ChannelAgent
 from chat_to_cop.backend.base import LLMBackend
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
+from chat_to_cop.models.feedback import FusionFeedback
 from chat_to_cop.models.messages import CHANNEL_PRIORITIES, ChannelPriority, IRCMessage
 
 
@@ -182,6 +183,19 @@ class Supervisor:
                     reasoning=f"Supervisor routing error: {e}",
                 )
             ]
+
+    # -- Feedback routing --
+
+    def route_feedback(self, feedback_list: list[FusionFeedback]) -> None:
+        """Route fusion feedback to the appropriate channel agents.
+
+        Each feedback item targets a specific channel+speaker. The supervisor
+        forwards to the correct agent, silently skipping if the agent doesn't exist.
+        """
+        for feedback in feedback_list:
+            agent = self._agents.get(feedback.source_channel)
+            if agent is not None:
+                agent.receive_fusion_feedback(feedback)
 
     # -- Health monitoring --
 

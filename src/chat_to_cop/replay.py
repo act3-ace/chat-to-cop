@@ -122,6 +122,12 @@ async def run_replay(
             # Run fusion every 5 messages or when we have enough updates
             if total_messages % 5 == 0 and pending_updates:
                 fused = fusion.process_updates(pending_updates)
+
+                # Feedback loop: route fusion signals back to channel agents
+                feedback = fusion.generate_feedback(pending_updates)
+                if feedback:
+                    supervisor.route_feedback(feedback)
+
                 for update in fused:
                     if update.update_type.value != "none":
                         await store.write_update(update)
@@ -150,6 +156,9 @@ async def run_replay(
         # Flush remaining updates through fusion
         if pending_updates:
             fused = fusion.process_updates(pending_updates)
+            feedback = fusion.generate_feedback(pending_updates)
+            if feedback:
+                supervisor.route_feedback(feedback)
             for update in fused:
                 if update.update_type.value != "none":
                     await store.write_update(update)

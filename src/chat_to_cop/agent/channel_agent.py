@@ -21,6 +21,7 @@ from chat_to_cop.backend.openai_compat import DEFAULT_GLOSSARY, build_system_pro
 from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
+from chat_to_cop.models.feedback import FusionFeedback
 from chat_to_cop.models.messages import IRCMessage
 from chat_to_cop.models.speaker import SpeakerInference, SpeakerRegistry
 
@@ -278,6 +279,27 @@ class ChannelAgent:
         except Exception as e:
             # Speaker inference is best-effort; failures don't block extraction
             logger.warning("Speaker inference failed for {}: {}", speaker_model.username, e)
+
+    def receive_fusion_feedback(self, feedback: FusionFeedback) -> None:
+        """Apply fusion feedback to the appropriate speaker model.
+
+        Called by the supervisor after fusion processing to close the
+        feedback loop: cross-channel corroboration/contradiction signals
+        update speaker reliability scores.
+        """
+        if not self.use_speaker_models:
+            return
+        speaker = self._speakers.get(feedback.source_speaker)
+        if speaker is None:
+            return
+        speaker.update_from_fusion_feedback(feedback)
+        logger.debug(
+            "Fusion feedback for {}/{}: {} (reliability_score={:.3f})",
+            self.channel,
+            feedback.source_speaker,
+            feedback.feedback_type,
+            speaker.reliability_score,
+        )
 
     async def process_message(self, message: IRCMessage) -> list[CoPUpdate]:
         """Process a single message and return extracted CoPUpdates.
