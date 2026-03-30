@@ -238,8 +238,9 @@ def build_system_prompt(
     return "\n\n".join(parts)
 
 
-# Default glossary from DASH event analysis
-DEFAULT_GLOSSARY = """- "gadget bent" = radar failure
+# Default glossary from DASH event analysis + equifinality repo enrichment
+DEFAULT_GLOSSARY = """## Brevity / Tactical Terms
+- "gadget bent" = radar failure
 - "buzzer on" = EW jamming active
 - "splash" = target destroyed
 - "FOX 1/2/3" = missile launch (semi-active/IR/active radar)
@@ -251,24 +252,107 @@ DEFAULT_GLOSSARY = """- "gadget bent" = radar failure
 - "c" or "copy" = acknowledgment (no state change)
 - "NSTR" = nothing significant to report
 - "TTG" = terminal threat group (enemy air defense)
-- "TLAM" = Tomahawk land attack missile
-- "SM6" = Standard Missile 6
 - "BDA" = battle damage assessment
 - "SITREP" = situation report
 - "TACREP" = tactical report
-- "CSAR" = combat search and rescue
+- "INTSUM" = intelligence summary
 - "BMA" = battle management area
 - "AR" = aerial refueling
 - "on boom" = currently refueling
+- "SEAD" = suppression of enemy air defenses
+- "DEAD" = destruction of enemy air defenses
+- "ISR" = intelligence, surveillance, reconnaissance
+- "BVR" = beyond visual range
+- "WVR" = within visual range
+- "COA" or "CAO" = course of action (DASH uses both interchangeably)
+- "GBC" = generate battle course of action
+- "MEF" = match effectors to targets
+- "SCL" = station configuration loadout (weapon arrangement on aircraft)
+- "F2T2EA" = find, fix, track, target, engage, assess (kill chain)
+- "IFTU" = in-flight target update
+
+## Personnel Recovery
+- "CSAR" = combat search and rescue
 - "MISREP" = mission report (personnel recovery)
-- "TOT" = time on target
-- "JDAM" = Joint Direct Attack Munition (GPS-guided bomb)
 - "JPRC" = Joint Personnel Recovery Center
 - "SANDY" = A-10/CSAR on-scene commander callsign
 - "RESCORT" = rescue escort
 - "DUSTOFF" = medical evacuation helicopter
+
+## Fires / CAS
+- "TOT" = time on target
 - "CAS" = close air support
 - "TIC" = troops in contact
 - "FARP" = forward arming and refueling point
+
+## EW / Cyber
 - "EW" = electronic warfare
-- "SIGINT" = signals intelligence"""
+- "SIGINT" = signals intelligence
+- "COMINT" = communications intelligence
+- "ELINT" = electronic intelligence (radar, weapons systems)
+- "DRFM" = digital radio frequency memory (radar jammer)
+- "Dazzler" = laser-based sensor disruption system
+
+## Blue Platform Types
+- "F-15E" = Strike Eagle, dual-role fighter-bomber
+- "F-16C" = Fighting Falcon, multirole fighter
+- "F-22" = Raptor, 5th-gen air superiority fighter (stealth, supercruise)
+- "F-35A" = Lightning II, 5th-gen stealth multirole (USAF variant)
+- "F/A-18E" or "F/A-18F" = Super Hornet, carrier-based multirole fighter
+- "EA-18G" = Growler, electronic attack variant of Super Hornet (SEAD/DEAD)
+- "EA-37B" = Compass Call, electronic attack aircraft
+- "E-2D" = Advanced Hawkeye, carrier-based AEW (airborne early warning)
+- "E-3" = AWACS, airborne warning and control
+- "E-7" = Wedgetail, AEW&C platform (replacing E-3)
+- "B-1B" = Lancer, supersonic strategic bomber
+- "B-2" = Spirit, stealth strategic bomber
+- "B-52" = Stratofortress, long-range strategic bomber
+- "KC-135" = Stratotanker, aerial refueling tanker
+- "KC-46" = Pegasus, next-gen aerial refueling tanker
+- "MQ-9" = Reaper, armed ISR UAV
+- "RQ-4" = Global Hawk, high-altitude ISR UAV
+- "RC-135" = Rivet Joint, SIGINT reconnaissance aircraft
+- "U-2" = Dragon Lady, high-altitude reconnaissance aircraft
+- "P-8" = Poseidon, maritime patrol / ASW aircraft
+- "CVN" = nuclear aircraft carrier (Nimitz/Ford-class)
+- "DDG" = guided missile destroyer (Arleigh Burke-class, Aegis)
+- "CG" = guided missile cruiser (Ticonderoga-class, Aegis)
+- "LCS" = littoral combat ship
+- "LHD" = amphibious assault ship (can operate F-35B)
+- "SSN" = nuclear attack submarine
+- "SSGN" = guided missile submarine (154 Tomahawks)
+- "SOF" = special operations forces
+
+## Weapon Systems & Aliases
+- "AIM-9" or "Sidewinder" = short-range IR air-to-air missile
+- "AIM-120" or "AMRAAM" = medium-range radar-guided air-to-air missile
+- "AGM-84" or "Harpoon" or "SLAM" = air-launched anti-ship/land attack cruise missile
+- "AGM-88" or "HARM" = high-speed anti-radiation missile (SEAD)
+- "AGM-114" or "Hellfire" = air-to-ground missile (helicopters, UAVs)
+- "AGM-158" or "JASSM" = stealthy long-range air-to-surface standoff missile
+- "AGM-158C" or "LRASM" = long-range anti-ship missile
+- "JDAM" = Joint Direct Attack Munition (GPS-guided bomb: GBU-31/32/38)
+- "GBU-39" or "SDB" = small diameter bomb (250 lb GPS-guided)
+- "GBU-53" or "Stormbreaker" or "SDB II" = multi-mode guided bomb (moving targets)
+- "TLAM" = Tomahawk land attack missile (ship/sub-launched cruise missile)
+- "MST" = Maritime Strike Tomahawk (anti-ship Tomahawk variant)
+- "SM6" or "SM-6" = Standard Missile 6 (multi-role: air defense, BMD, anti-surface)
+- "SM3" or "SM-3" = Standard Missile 3 (ballistic missile defense interceptor)
+- "PAC-3" or "Patriot" = ground-based air and missile defense
+- "THAAD" = terminal high altitude area defense (ground-based BMD)
+- "ATACMS" = Army Tactical Missile System (ground-launched)
+- "ADM-160" or "MALD" = miniature air-launched decoy
+- "APKWS" or "AGR20" = advanced precision kill weapon system (laser-guided rocket)
+
+## C2 / Sensor Systems
+- "TAOC" = tactical air operations center (USMC air defense C2)
+- "CRC" = control and reporting center (air surveillance/battle management)
+- "CRE" = control and reporting element (mobile CRC)
+- "AEGIS" = ship-based combat system (SPY-1 radar + SM missiles)
+- "Link 16" = secure NATO tactical datalink
+
+## Red Force Identifiers (DASH exercise)
+- "J-20" = Chinese 5th-gen stealth fighter
+- "HQ-9" or "SA-21" = Chinese/Russian long-range SAM (surface-to-air missile)
+- "SA-20" = Russian S-300 long-range SAM system
+- "4th-gen SAM" = older-generation surface-to-air missile system"""
