@@ -37,6 +37,7 @@ def _make_degrading_backend(config: PipelineConfig) -> DegradingBackend:
         api_key=config.llm.llm_api_key,
         timeout=config.llm.llm_timeout,
         max_retries=config.llm.llm_max_retries,
+        num_ctx=config.llm.llm_num_ctx,
     )
     # Only add a separate fallback if it's a different model
     backends = [primary]
@@ -195,6 +196,12 @@ def main() -> None:
         default=None,
         help="LLM timeout in seconds (default: 120, increase for cold starts)",
     )
+    parser.add_argument(
+        "--num-ctx",
+        type=int,
+        default=None,
+        help="Context window size for Ollama models (default: 8192)",
+    )
 
     args = parser.parse_args()
 
@@ -212,6 +219,8 @@ def main() -> None:
         config.db_path = args.db
     if args.timeout:
         config.llm.llm_timeout = args.timeout
+    if args.num_ctx:
+        config.llm.llm_num_ctx = args.num_ctx
 
     asyncio.run(run_replay(args.path, config, args.speed))
 

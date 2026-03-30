@@ -42,6 +42,10 @@ class LLMBackendConfig(BaseSettings):
         default=2,
         description="Max retries for schema validation failures (instructor)",
     )
+    llm_num_ctx: int = Field(
+        default=8192,
+        description="Context window size for Ollama models (num_ctx option)",
+    )
 
 
 class FallbackConfig(BaseSettings):
