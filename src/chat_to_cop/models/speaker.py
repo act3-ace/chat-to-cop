@@ -44,6 +44,11 @@ class SpeakerModel(BaseModel):
     reliability: float = Field(0.5, description="Track record: are their reports confirmed or corrected?")
     topics: list[str] = Field(default_factory=list, description="Topics they typically discuss")
 
+    # Cross-channel fusion feedback (updated by FusionFeedback loop)
+    cross_channel_corroborations: int = Field(0, description="Times this speaker was corroborated by another channel")
+    cross_channel_contradictions: int = Field(0, description="Times this speaker was contradicted by another channel")
+    reliability_score: float = Field(0.5, description="Fusion-derived reliability: EMA of corroboration signals")
+
     # CTA framework fields
     goals: list[str] = Field(default_factory=list, description="Inferred goals/responsibilities from context")
     cues: list[str] = Field(default_factory=list, description="What triggers this speaker to communicate")
@@ -132,6 +137,25 @@ class SpeakerModel(BaseModel):
                 self.acting_count += 1
             elif cat == "collaborating":
                 self.collaborating_count += 1
+
+    def update_from_fusion_feedback(self, feedback: object) -> None:
+        """Update reliability from a FusionFeedback signal.
+
+        Uses exponential moving average (alpha=0.1) so recent evidence
+        matters more but history isn't discarded.
+
+        Accepts any object with a feedback_type attribute to avoid circular
+        imports with the feedback module.
+        """
+        feedback_type = getattr(feedback, "feedback_type", None)
+        if feedback_type == "corroborated":
+            self.cross_channel_corroborations += 1
+            self.reliability_score = 0.9 * self.reliability_score + 0.1 * 1.0
+        elif feedback_type == "contradicted":
+            self.cross_channel_contradictions += 1
+            self.reliability_score = 0.9 * self.reliability_score + 0.1 * 0.0
+        # Clamp to [0, 1]
+        self.reliability_score = max(0.0, min(1.0, self.reliability_score))
 
     @property
     def primary_sdac_role(self) -> str | None:
