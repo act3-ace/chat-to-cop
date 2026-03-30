@@ -9,6 +9,7 @@ Uses aiosqlite for async access.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -64,6 +65,21 @@ CREATE TABLE IF NOT EXISTS speakers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_speakers_channel ON speakers(channel);
+
+CREATE TABLE IF NOT EXISTS corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    update_id INTEGER NOT NULL,
+    corrected_type TEXT,
+    corrected_entities TEXT,
+    rejected INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    corrector TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (update_id) REFERENCES updates(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_corrections_update_id ON corrections(update_id);
+CREATE INDEX IF NOT EXISTS idx_corrections_created_at ON corrections(created_at);
 
 CREATE TABLE IF NOT EXISTS entities (
     entity_key TEXT PRIMARY KEY,
@@ -237,6 +253,36 @@ class WorldStateStore:
         rows = await cursor.fetchall()
         return [CoPUpdate.model_validate_json(row["data_json"]) for row in rows]
 
+    async def get_recent_updates_with_ids(
+        self,
+        channel: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Like get_recent_updates but includes the database row ID for each update."""
+        query = "SELECT id, data_json FROM updates WHERE 1=1"
+        params: list = []
+
+        if channel:
+            query += " AND source_channel = ?"
+            params.append(channel)
+        if since:
+            query += " AND timestamp >= ?"
+            params.append(since.isoformat())
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        cursor = await self.db.execute(query, params)
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            update = CoPUpdate.model_validate_json(row["data_json"])
+            d = update.model_dump(mode="json")
+            d["id"] = row["id"]
+            results.append(d)
+        return results
+
     async def count_updates(self) -> int:
         """Return total number of updates stored."""
         cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM updates")
@@ -290,3 +336,98 @@ class WorldStateStore:
         )
         rows = await cursor.fetchall()
         return [SpeakerModel.model_validate_json(row["data_json"]) for row in rows]
+
+    async def write_correction(self, update_id: int, correction: dict) -> int:
+        """Store a correction for an existing update. Returns the correction row ID."""
+        # Verify the update exists
+        cursor = await self.db.execute("SELECT id FROM updates WHERE id = ?", (update_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Update {update_id} not found")
+
+        corrected_entities = correction.get("corrected_entities")
+        entities_json = json.dumps(corrected_entities) if corrected_entities is not None else None
+
+        cursor = await self.db.execute(
+            """INSERT INTO corrections
+               (update_id, corrected_type, corrected_entities, rejected, notes, corrector)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                update_id,
+                correction.get("corrected_type"),
+                entities_json,
+                1 if correction.get("rejected") else 0,
+                correction.get("notes"),
+                correction.get("corrector"),
+            ),
+        )
+        await self.db.commit()
+        metrics.inc("store_corrections_written_total")
+        return cursor.lastrowid  # type: ignore[return-value]
+
+    async def get_corrections(self, limit: int = 50) -> list[dict]:
+        """Return recent corrections with their associated update info."""
+        cursor = await self.db.execute(
+            """SELECT c.id, c.update_id, c.corrected_type, c.corrected_entities,
+                      c.rejected, c.notes, c.corrector, c.created_at,
+                      u.source_channel, u.source_speaker, u.update_type
+               FROM corrections c
+               JOIN updates u ON c.update_id = u.id
+               ORDER BY c.created_at DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            entities = json.loads(row["corrected_entities"]) if row["corrected_entities"] else None
+            results.append(
+                {
+                    "id": row["id"],
+                    "update_id": row["update_id"],
+                    "corrected_type": row["corrected_type"],
+                    "corrected_entities": entities,
+                    "rejected": bool(row["rejected"]),
+                    "notes": row["notes"],
+                    "corrector": row["corrector"],
+                    "created_at": row["created_at"],
+                    "source_channel": row["source_channel"],
+                    "source_speaker": row["source_speaker"],
+                    "original_type": row["update_type"],
+                }
+            )
+        return results
+
+    async def correction_stats(self) -> dict:
+        """Return correction counts grouped by type, channel, and speaker."""
+        stats: dict = {"total": 0, "by_type": {}, "by_channel": {}, "by_speaker": {}}
+
+        cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM corrections")
+        row = await cursor.fetchone()
+        stats["total"] = row["cnt"]  # type: ignore[index]
+
+        cursor = await self.db.execute(
+            """SELECT u.update_type, COUNT(*) as cnt
+               FROM corrections c JOIN updates u ON c.update_id = u.id
+               GROUP BY u.update_type ORDER BY cnt DESC"""
+        )
+        for row in await cursor.fetchall():
+            stats["by_type"][row["update_type"]] = row["cnt"]
+
+        cursor = await self.db.execute(
+            """SELECT u.source_channel, COUNT(*) as cnt
+               FROM corrections c JOIN updates u ON c.update_id = u.id
+               GROUP BY u.source_channel ORDER BY cnt DESC"""
+        )
+        for row in await cursor.fetchall():
+            stats["by_channel"][row["source_channel"]] = row["cnt"]
+
+        cursor = await self.db.execute(
+            """SELECT u.source_speaker, COUNT(*) as cnt
+               FROM corrections c JOIN updates u ON c.update_id = u.id
+               GROUP BY u.source_speaker ORDER BY cnt DESC"""
+        )
+        for row in await cursor.fetchall():
+            stats["by_speaker"][row["source_speaker"]] = row["cnt"]
+
+        return stats
