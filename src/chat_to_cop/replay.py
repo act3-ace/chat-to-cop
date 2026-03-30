@@ -189,6 +189,12 @@ def main() -> None:
         default=None,
         help="SQLite database path (overrides CHAT_TO_COP_DB_PATH)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="LLM timeout in seconds (default: 120, increase for cold starts)",
+    )
 
     args = parser.parse_args()
 
@@ -204,6 +210,8 @@ def main() -> None:
         config.llm.llm_model = args.model
     if args.db:
         config.db_path = args.db
+    if args.timeout:
+        config.llm.llm_timeout = args.timeout
 
     asyncio.run(run_replay(args.path, config, args.speed))
 
