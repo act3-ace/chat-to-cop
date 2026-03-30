@@ -162,7 +162,7 @@ It checks its speaker model for `HYDRO_SL`:
 - **Role:** Pit Boss, Hydro BMA
 - **Area of interest:** Hydro battle management area
 - **Pattern:** Issues SITREPs, uses structured format with `/` separators
-- **Reliability:** High (confirmed by other channels 4 times, contradicted 0)
+- **Reliability:** High (12 SITREPs issued this session, consistent format, no schema errors)
 
 **Step 3: LLM extraction**
 
@@ -343,7 +343,7 @@ Each channel agent maintains:
    - Role: tanker controller for Hydro BMA
    - Tracks: RR15, RL36, MR26, BG01 (tanker assets)
    - Pattern: reports fuel states using `F+XX` notation
-   - Reliability: consistently confirmed by other channels
+   - Reliability: consistent format across 15+ messages, low schema error rate
 
 3. **World state snapshot** -- the agent's current belief about the battlespace. When a message says "4 more launched," the agent knows the current weapons inventory and can produce a delta.
 
