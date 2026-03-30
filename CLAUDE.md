@@ -91,7 +91,7 @@ All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es
 - Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE
 - Sprint 2 (Multi-Channel + Resilience): #8-#13 — ALL COMPLETE
 - Sprint 3 (Deploy + Harden): #14-#24, #27-#29, #31-#34, #36, #38-#40 DONE. #16 COMPLETE (clean T4 run: 7.7s mean, 99.9% success). #25, #26, #30, #35, #37 OPEN.
-- Total: 702 tests passing, clean benchmark on real DASH 3 data (264 updates, 203 entities, 935 msgs)
+- Total: 725 tests passing, clean benchmark on real DASH 3 data (264 updates, 203 entities, 935 msgs)
 Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
 
 ### Remaining open issues

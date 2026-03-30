@@ -172,6 +172,8 @@ The system gets better under stress, not just resilient:
 
 - **Contradictory reports** are the most valuable data. When two agents disagree about the same entity, the fusion agent flags it. These disagreements reveal where understanding is weakest and where human attention should focus.
 
+- **Fusion feedback loop** (implemented in MR !59): The fusion agent now feeds corroboration/contradiction signals back to channel agents via `FusionFeedback`. Speaker models receive `reliability_score` updates based on cross-channel validation — a speaker consistently corroborated by other channels becomes more trusted, one frequently contradicted gets down-weighted. This is the stress-to-strength loop: fusion contradictions produce information that improves future extraction. The feedback uses an exponential moving average (EMA) bounded to [0, 1].
+
 - **Speaker corrections** produce reliability information. When an operator corrects a previous report ("Disregard last, TN 44504 is NOT DDG1"), the speaker model and trust score are updated. Future reports from ambiguous tracks get higher scrutiny.
 
 ### Two Research Questions Map to FACS-Core Problems
