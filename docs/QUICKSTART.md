@@ -239,7 +239,7 @@ Before making any code changes, confirm all tests pass:
 ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -v
 ```
 
-Current test count: 344 passing.
+Current test count: 588 passing (549 unit + 15 integration + worktree tests).
 
 ## Configuration
 
@@ -251,9 +251,12 @@ All settings can be overridden with environment variables using the `CHAT_TO_COP
 | `CHAT_TO_COP_LLM_MODEL` | `qwen2.5:7b` | Primary model |
 | `CHAT_TO_COP_FALLBACK_MODEL` | `qwen2.5:3b` | Smaller fallback model |
 | `CHAT_TO_COP_LLM_API_KEY` | `not-needed` | API key (set for Groq/OpenAI) |
-| `CHAT_TO_COP_LLM_TIMEOUT` | `10.0` | Seconds per LLM call |
+| `CHAT_TO_COP_LLM_TIMEOUT` | `120.0` | Seconds per LLM call (generous for cold starts) |
+| `CHAT_TO_COP_LLM_NUM_CTX` | `8192` | Context window size for Ollama |
 | `CHAT_TO_COP_DB_PATH` | `data/world_state.db` | SQLite database path |
 | `CHAT_TO_COP_METRICS` | `true` | Enable instrumentation |
+| `CHAT_TO_COP_COP_API_URL` | `` (empty=dry-run) | CoP REST API URL |
+| `CHAT_TO_COP_COP_AUTO_THRESHOLD` | `0.7` | Confidence for auto-write to CoP |
 
 ## Docker (alternative)
 
