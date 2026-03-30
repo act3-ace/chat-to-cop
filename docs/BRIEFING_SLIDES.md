@@ -228,20 +228,30 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 | CPU (AG m7i) | qwen2.5:7b | 8.3 | 4-6 min | No |
 | CPU (laptop) | qwen2.5:3b | ~3 | 33s | No |
 
-**Full pipeline (935 messages, 11 channels, fusion feedback run):**
-- **100% LLM success rate** (945/945 calls, zero regex fallback)
-- 255 updates extracted, 196 entities tracked
-- 7.6s mean latency (3.4s min, 60.4s max)
-- CoP writer: 470 auto, 3 flagged, 115 human-queued, 0 errors
-- 2 fusion contradictions detected, 2 deduplicates
-- Zero messages dropped
+**Full pipeline (935 messages, 11 channels) -- two validated backends:**
+
+| Metric | Qwen 7B (T4 local) | Claude Sonnet 4.5 (Bedrock) |
+|--------|--------------------|-----------------------------|
+| Mean latency | 7.6s | **4.8s** (37% faster) |
+| Max latency | 60.4s | **10.3s** (6x lower tail) |
+| LLM success | 100% (945/945) | 99.6% (941/945) |
+| Updates | 255 | 256 |
+| Entities | 196 | **206** |
+| Tasking | 51 | **69** (+35%) |
+| Threat | 32 | **54** (+69%) |
+| Cyber/EW | **25** | 4 (prompt-tuned for Qwen) |
+| CoP auto-writes | 470 | **582** |
+| Duration | ~2.5 hrs | **~1.3 hrs** |
+
+**Model-agnostic design proven:** Same pipeline, zero code changes, swap backend via config.
 
 **Target for MASH:**
-- Desktop workstation with RTX 4090/5090 (24GB VRAM)
-- Qwen3-32B (F1=0.96) or Qwen3-30B-A3B MoE (3B active parameters)
+- Option A: Desktop workstation with RTX 4090/5090 (24GB VRAM), local Qwen3-32B
+- Option B: AWS Bedrock with Claude Sonnet 4.5 (no GPU needed, 4.8s latency)
+- Option C: Hybrid -- Bedrock primary, local Ollama fallback
 - Single `docker compose up`, <10 minute setup
 
-**Speaker notes:** The performance story is straightforward: GPU is mandatory. 6.5 seconds per extraction on T4 means we can keep up with typical message rates (2-7/min). During spikes (12/min), the supervisor sheds load by prioritizing typed chat over STT. For Jennifer/pipeline engineers: this is a single Ollama instance serving all 10 agents sequentially. With vLLM and batching, throughput would be significantly higher. For leadership: the hardware ask is one desktop workstation with a 24GB GPU. That's it. No cloud, no cluster, no special infrastructure.
+**Speaker notes:** The performance story now has two validated paths. Local GPU (T4 with Qwen 7B) gives 100% success at 7.6s mean. Cloud (Bedrock with Claude Sonnet 4.5) gives 99.6% success at 4.8s mean with dramatically lower tail latency -- 10.3s max vs 60.4s. The model-agnostic design is proven: zero code changes between local Ollama and AWS Bedrock. Claude finds more tasking (+35%) and threat (+69%) updates; Qwen finds more cyber/EW and fire missions (prompt-tuned). For leadership: we now have options -- GPU workstation, cloud API, or hybrid. Internet at H2O is expected, so Bedrock is viable. For engineers: the architecture's model-agnostic promise is validated. For Jennifer: piping in Bedrock was a config change, not a code change.
 
 ---
 
@@ -355,9 +365,10 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 - Degrading backend with circuit breakers (tenacity + pybreaker)
 - Regex fallback with 50+ military patterns
 - Speaker model learning
-- Full DASH 3 replay (935 messages, 11 channels, **100% LLM success**)
+- Full DASH 3 replay (935 messages, 11 channels, **100% LLM success** on Qwen, **99.6%** on Claude Sonnet 4.5)
+- **AWS Bedrock validated** -- Claude Sonnet 4.5, 4.8s mean latency, no GPU needed, zero code changes
 - Fusion feedback loop (cross-channel speaker corroboration)
-- Eval harness + benchmark results across 5 models
+- Eval harness + benchmark results across 5+ models (local + cloud)
 - Tiered write authority + kill switch
 - 25 MRs merged, 725 tests
 - Docker containerization
@@ -378,7 +389,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 2. **No ground truth labels** -- real-data accuracy is unknown without labeled test set
 3. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
 
-**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. The latest benchmark achieved 100% LLM success rate on 935 real DASH 3 messages -- zero failures, zero regex fallback. Single box, single GPU is confirmed sufficient. Internet at H2O is expected, enabling commercial model access with sub-second latency. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 725 test count and 25 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Mia's first priority is commercial model integration; Colin or Jennifer will assist with piping those into the chat system and database. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end with 100% reliability.
+**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Two backends are now validated on real data: Qwen 7B on T4 GPU (100% success, 7.6s) and Claude Sonnet 4.5 on AWS Bedrock (99.6% success, 4.8s, no GPU). The model-agnostic architecture works -- zero code changes between local and cloud inference. Internet at H2O is expected, making Bedrock a viable primary or hybrid option. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 725 test count and 25 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Commercial model integration (Bedrock) is now proven; Mia and team can focus on prompt tuning and the remaining open issues. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end on both local and cloud backends.
 
 ---
 

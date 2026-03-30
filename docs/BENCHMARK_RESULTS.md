@@ -174,6 +174,79 @@ Duration: **~2.5 hours**.
 
 Fire mission (16, up from 9) and cyber/EW (25, up from 21) both improved significantly. CSAR dropped from 8 to 6 -- likely noise reduction rather than recall loss.
 
+### AWS Bedrock + Claude Sonnet 4.5 (completed 2026-03-30 evening)
+
+935 messages through full pipeline via AWS Bedrock (`us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0`). Runs on AG CPU instance -- **no GPU required**. Zero code changes from the Qwen/Ollama runs; model-agnostic design validated end-to-end.
+Duration: **~1.3 hours** (vs 2.5 hrs for Qwen 7B on T4).
+
+| Metric | Value |
+|--------|-------|
+| Total messages | 935 |
+| Updates extracted (after fusion) | **256** |
+| Entities tracked | **206** |
+| Channels | 11 |
+| LLM calls | 945 |
+| LLM successes | **941** (99.6%) |
+| LLM permanent failures | **4** |
+| Regex fallback | **4** |
+| Extraction latency (mean) | **4.8s** |
+| Extraction latency (min) | 2.2s |
+| Extraction latency (max) | 10.3s |
+| CoP auto-writes | 582 |
+| CoP flagged-writes | 20 |
+| CoP human-review queued | 75 |
+| CoP errors | **0** |
+| Fusion deduplicates | 10 |
+| Fusion contradictions detected | 1 |
+| Fusion corroborations | 1 |
+
+**Update type distribution (Bedrock Claude Sonnet 4.5):**
+
+| Type | Count |
+|------|-------|
+| tasking | 69 |
+| threat | 54 |
+| location | 51 |
+| status_change | 19 |
+| fuel | 15 |
+| entity_id | 14 |
+| sitrep | 11 |
+| csar | 8 |
+| fire_mission | 6 |
+| weapons | 4 |
+| cyber_ew | 4 |
+| handover | 1 |
+
+**Key observations:**
+- **37% faster mean latency** than Qwen 7B on T4 (4.8s vs 7.6s), with dramatically lower tail latency (10.3s max vs 60.4s).
+- **No GPU needed.** Bedrock is a cloud API -- runs from any AG instance with network access.
+- **Richer speaker models.** Claude produces "Battle Captain / C2 Coordinator" vs Qwen's "controller" -- more detailed operator role inference.
+- **More tasking (+35%) and threat (+69%) extractions** than Qwen, suggesting better semantic understanding of military domain.
+- **Qwen wins on cyber/EW (25 vs 4) and fire_mission (16 vs 6)** -- these categories had prompt tuning specifically for the Qwen pipeline.
+- **10 fusion deduplicates** (vs 2 for Qwen) -- Claude produces more cross-channel overlap that fusion catches.
+
+### Comparison: Qwen 7B (T4 local) vs Claude Sonnet 4.5 (Bedrock)
+
+| Metric | Qwen 7B (T4 local) | Claude Sonnet 4.5 (Bedrock) |
+|--------|--------------------|-----------------------------|
+| Mean latency | 7.6s | **4.8s** (37% faster) |
+| Max latency | 60.4s | **10.3s** (6x lower tail) |
+| LLM success | 945/945 (100%) | 941/945 (99.6%) |
+| Updates | 255 | 256 |
+| Entities | 196 | **206** |
+| Tasking | 51 | **69** (35% more) |
+| Threat | 32 | **54** (69% more) |
+| Location | 41 | **51** |
+| CSAR | 6 | **8** |
+| Sitrep | 5 | **11** |
+| Cyber/EW | **25** | 4 (Qwen wins -- prompt tuned) |
+| Fire mission | **16** | 6 (Qwen wins -- prompt tuned) |
+| Fusion deduplicates | 2 | **10** |
+| CoP auto-writes | 470 | **582** |
+| Duration | ~2.5 hrs | **~1.3 hrs** |
+
+**Analysis:** Both models produce comparable update counts (~255) but with different strengths. Claude excels at high-level semantic categories (tasking, threat, sitrep) while Qwen excels at categories that received prompt-specific tuning (cyber/EW, fire_mission). This validates the equifinality principle: different models, different paths, converging on similar CoP coverage. The combination of both (or prompt-tuning Claude for the gaps) would likely exceed either alone.
+
 ### Comparison: Old Code vs Clean Run vs Fusion Feedback
 
 | Metric | Old Code (4K ctx) | Clean (8K ctx) | Fusion Feedback | Improvement (old -> fusion) |
@@ -291,9 +364,13 @@ All 13 update types represented. CSAR and fire_mission both extracted (were 0% b
 |------------|--------|
 | Single 24GB GPU | Need g5 (A10G) or equivalent — not available on AG as of March 2026 |
 | Real-time latency | 6.5s p50 on T4 with 7B — meets requirement |
-| Model selection | Qwen3-32B (F1=0.96) needs 24GB VRAM; Qwen2.5:7b (F1=0.92) fits in 16GB |
+| **Bedrock (cloud)** | **Validated: 4.8s mean, no GPU needed, zero code changes** |
+| Model selection | Qwen3-32B (F1=0.96) needs 24GB VRAM; Qwen2.5:7b (F1=0.92) fits in 16GB; Claude Sonnet 4.5 via Bedrock needs only network access |
 | Degradation path | Validated: LLM -> regex -> passthrough, no data loss |
 | Multi-channel | 10+ simultaneous channels working with single Ollama instance |
+| Model-agnostic | **Proven: same pipeline, zero code changes between Ollama local and Bedrock cloud** |
+
+**Bedrock as deployment option:** AWS Bedrock with Claude Sonnet 4.5 is now a validated deployment path. It requires no GPU, delivers 37% faster mean latency than local T4 inference, and eliminates tail latency spikes (10.3s max vs 60.4s). Internet connectivity at H2O Las Vegas is expected, making this a viable primary or hybrid option for MASH. The model-agnostic architecture means switching between local Ollama and Bedrock is a config change, not a code change.
 
 ## Reproduction
 

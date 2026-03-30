@@ -364,13 +364,14 @@ This also prevents **overtrust** -- the "Phantom Signature" problem where a conf
 
 ### Hardware comparison
 
-| Environment | GPU | Model | Tokens/s | Per-extraction (p50) | Viable for MASH? |
-|-------------|-----|-------|----------|---------------------|-------------------|
-| AG GPU (g4dn.xlarge) | T4 16GB | qwen2.5:7b | 41.0 | ~6.5s | Yes |
-| AG CPU (m7i.2xlarge) | None | qwen2.5:7b | 8.3 | ~4-6 min | No |
-| Laptop CPU | None | qwen2.5:3b | ~3 | ~33s | No |
+| Environment | GPU | Model | Per-extraction (mean) | Viable for MASH? |
+|-------------|-----|-------|-----------------------|-------------------|
+| **AWS Bedrock** | None (cloud API) | Claude Sonnet 4.5 | **4.8s** | **Yes** |
+| AG GPU (g4dn.xlarge) | T4 16GB | qwen2.5:7b | 7.6s | Yes |
+| AG CPU (m7i.2xlarge) | None | qwen2.5:7b | ~4-6 min | No |
+| Laptop CPU | None | qwen2.5:3b | ~33s | No |
 
-**Key finding:** GPU is required for real-time operations. CPU inference is 5x slower on tokens per second and 30-50x slower on wall clock per extraction.
+**Key finding:** Both local GPU and cloud API (Bedrock) meet real-time requirements. The architecture is model-agnostic -- switching between Ollama (local) and Bedrock (cloud) requires zero code changes. Bedrock is 37% faster on mean latency and has dramatically lower tail latency (10.3s max vs 60.4s). CPU-only local inference remains non-viable.
 
 ### Model quality comparison
 
@@ -403,7 +404,9 @@ Tested via eval harness against synthetic labeled data with entity-level scoring
 
 ### Full DASH 3 replay statistics
 
-935 real messages from the 23 September exercise, 11 channels, run through the complete pipeline. Latest results from the fusion feedback run (T4 GPU, qwen2.5:7b-8k, all fixes + fusion feedback loop):
+935 real messages from the 23 September exercise, 11 channels, run through the complete pipeline. Two backends validated:
+
+**Qwen 2.5 7B on T4 GPU (fusion feedback run):**
 
 | Metric | Value |
 |--------|-------|
@@ -413,27 +416,42 @@ Tested via eval harness against synthetic labeled data with entity-level scoring
 | Updates extracted (after fusion) | 255 |
 | Entities tracked | 196 |
 | Fusion deduplicates | 2 |
-| Fusion contradictions detected | 2 |
 | Mean extraction latency | 7.6s |
 | CoP auto-writes | 470 |
-| CoP flagged-writes | 3 |
-| CoP human-review queued | 115 |
 | CoP errors | 0 |
-| Messages dropped | 0 |
+| Duration | ~2.5 hrs |
 
-**Update type highlights:** fire mission (16), cyber/EW (25), CSAR (6), tasking (51), location (41), threat (32).
+**Claude Sonnet 4.5 on AWS Bedrock (zero code changes):**
 
-For comparison, the earlier laptop CPU run achieved only 100 LLM extractions out of 935 because the circuit breaker tripped constantly on CPU-bound inference. The T4 GPU with 8K context and fusion feedback eliminated all failures.
+| Metric | Value |
+|--------|-------|
+| Total messages | 935 |
+| LLM success rate | **99.6%** (941/945 calls) |
+| Regex fallback | 4 |
+| Updates extracted (after fusion) | 256 |
+| Entities tracked | **206** |
+| Fusion deduplicates | **10** |
+| Mean extraction latency | **4.8s** (2.2s min, 10.3s max) |
+| CoP auto-writes | **582** |
+| CoP errors | 0 |
+| Duration | **~1.3 hrs** |
+
+**Head-to-head highlights:** Claude finds more tasking (69 vs 51, +35%), threat (54 vs 32, +69%), and CSAR (8 vs 6). Qwen finds more cyber/EW (25 vs 4) and fire_mission (16 vs 6) -- these had prompt-specific tuning. Claude produces richer speaker models ("Battle Captain / C2 Coordinator" vs "controller"). Both converge on ~256 total updates, validating equifinality.
+
+**Model-agnostic design validated:** The Bedrock run required zero code changes from the Ollama/Qwen runs. The OpenAI-compatible API abstraction works as designed -- swap the URL and model name in config, everything else stays the same.
+
+For comparison, the earlier laptop CPU run achieved only 100 LLM extractions out of 935 because the circuit breaker tripped constantly on CPU-bound inference.
 
 ### What we got right
 
-- **100% LLM success rate.** The fusion feedback run achieved 945/945 LLM calls with zero failures and zero regex fallback -- the degradation path was never needed.
+- **Model-agnostic design proven.** The same pipeline runs on local Ollama (Qwen 7B, T4 GPU) and AWS Bedrock (Claude Sonnet 4.5, no GPU) with zero code changes. This validates the core architectural decision.
+- **100% LLM success rate (Qwen).** The fusion feedback run achieved 945/945 LLM calls with zero failures and zero regex fallback.
+- **99.6% success + 37% faster latency (Claude Bedrock).** 4.8s mean with 10.3s max tail -- dramatically tighter latency distribution than local inference (60.4s max).
 - **Fusion feedback loop works.** Cross-channel speaker corroboration via the fusion-to-channel feedback loop (MR !59) improves extraction quality.
 - **Degradation path works.** Zero messages dropped across 935 messages. The fallback chain (LLM -> regex -> passthrough) operates exactly as designed.
-- **Multi-channel simultaneous processing.** 11 channels with a single Ollama instance, no message loss.
+- **Multi-channel simultaneous processing.** 11 channels, no message loss on either backend.
 - **Entity identification is near-perfect.** Track number resolution (`TN 44504 is DDG1`) is 100% recall.
-- **Fuel and weapons extraction is strong.** Both regex and LLM handle the abbreviated formats well.
-- **Fire mission and cyber/EW extraction improved significantly.** Fire mission went from 3 (old code) to 16, cyber/EW from 9 to 25.
+- **Richer semantic extraction from larger models.** Claude Sonnet finds 69% more threats and 35% more tasking than Qwen 7B, suggesting that larger models recover more domain semantics without additional prompt tuning.
 
 ### What needs improvement
 

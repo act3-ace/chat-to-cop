@@ -37,7 +37,7 @@ The system is designed as a miniature FACS (Family of Autonomous Combat Systems)
 
 **Users:** White cell battle managers, exercise controllers, and analysts who monitor the CoP during the exercise. The system augments human staff -- it does not replace them.
 
-**Operating Environment:** Desktop workstation with GPU (RTX 4090/5090), running Docker Compose with Ollama for local LLM inference. Single-machine deployment, air-gapped from operational networks.
+**Operating Environment:** Desktop workstation with GPU (RTX 4090/5090) for local inference via Ollama, or CPU-only instance with AWS Bedrock for cloud inference. Docker Compose deployment. Single-machine, connected to IRC server network. Internet connectivity enables Bedrock as a validated alternative to local GPU inference.
 
 ## Out-of-Scope Use
 
@@ -56,10 +56,11 @@ The system is model-agnostic by design. All LLM calls go through an OpenAI-compa
 
 ### Current Models
 
-| Model | Role | Parameters | Quantization | Source |
-|-------|------|-----------|--------------|--------|
-| [Qwen 2.5 7B](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) | Primary local inference | 7B | Q4_K_M (Ollama) | Alibaba Cloud / Qwen Team |
-| [Qwen 2.5 3B](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) | Fallback (degraded mode) | 3B | Q4_K_M (Ollama) | Alibaba Cloud / Qwen Team |
+| Model | Role | Parameters | Quantization | Transport | Source |
+|-------|------|-----------|--------------|-----------|--------|
+| [Qwen 2.5 7B](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) | Primary local inference | 7B | Q4_K_M (Ollama) | Local (Ollama) | Alibaba Cloud / Qwen Team |
+| [Qwen 2.5 3B](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) | Fallback (degraded mode) | 3B | Q4_K_M (Ollama) | Local (Ollama) | Alibaba Cloud / Qwen Team |
+| [Claude Sonnet 4.5](https://docs.anthropic.com/en/docs/about-claude/models) | Cloud inference (validated) | N/A (proprietary) | N/A | AWS Bedrock (`us-gov`) | Anthropic |
 
 ### Target MASH Model
 
@@ -178,33 +179,38 @@ Detailed results are in [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md). Summary:
 | status_change | 71% |
 | csar | 0% |
 
-### Full Pipeline (935 real DASH 3 messages, T4 GPU, qwen2.5:7b-8k)
+### Full Pipeline (935 real DASH 3 messages)
 
-Latest: fusion feedback run (2026-03-30 evening, all fixes + fusion feedback loop):
+Two backends validated (2026-03-30):
 
-| Metric | Value |
-|--------|-------|
-| Messages processed | 935 |
-| LLM success rate | **100%** (945/945 calls) |
-| Regex fallback | **0** |
-| Updates extracted (after fusion) | 255 |
-| Entities tracked | 196 |
-| Mean LLM latency | 7.6s |
-| CoP auto-writes | 470 |
-| CoP human-review queued | 115 |
-| CoP errors | 0 |
+| Metric | Qwen 7B (T4 GPU) | Claude Sonnet 4.5 (Bedrock) |
+|--------|-------------------|------------------------------|
+| Messages processed | 935 | 935 |
+| LLM success rate | **100%** (945/945) | **99.6%** (941/945) |
+| Regex fallback | 0 | 4 |
+| Updates extracted (after fusion) | 255 | 256 |
+| Entities tracked | 196 | **206** |
+| Mean LLM latency | 7.6s | **4.8s** |
+| Max LLM latency | 60.4s | **10.3s** |
+| CoP auto-writes | 470 | **582** |
+| CoP human-review queued | 115 | 75 |
+| CoP errors | 0 | 0 |
+| Duration | ~2.5 hrs | **~1.3 hrs** |
+
+Zero code changes between backends -- model-agnostic design validated.
 
 Previous laptop CPU run: 100 LLM extractions out of 935 (remainder fell to regex due to CPU timeouts).
 
-### Latency (GPU)
+### Latency
 
-| Hardware | Model | Mean Latency | Meets Real-Time? |
-|----------|-------|------------|-----------------|
-| T4 16GB (AG) | qwen2.5:7b-8k | 7.6s | Yes |
-| CPU (AG m7i) | qwen2.5:7b | 4-6 min | No |
-| CPU (laptop) | qwen2.5:3b | 33.2s | No |
+| Hardware | Model | Mean Latency | Max Latency | Meets Real-Time? |
+|----------|-------|------------|-------------|-----------------|
+| **AWS Bedrock** | Claude Sonnet 4.5 | **4.8s** | **10.3s** | **Yes** |
+| T4 16GB (AG) | qwen2.5:7b-8k | 7.6s | 60.4s | Yes |
+| CPU (AG m7i) | qwen2.5:7b | 4-6 min | -- | No |
+| CPU (laptop) | qwen2.5:3b | 33.2s | -- | No |
 
-GPU is required for real-time operation. CPU-only deployment is not viable for MASH.
+Both local GPU and AWS Bedrock meet real-time requirements. Bedrock has lower mean and dramatically lower tail latency. CPU-only local deployment is not viable for MASH.
 
 ## Known Limitations
 
@@ -306,5 +312,6 @@ Additional provenance captured at the system level (implementation in progress, 
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-30 | 0.1.2 | Added Claude Sonnet 4.5 via AWS Bedrock as validated backend (99.6% success, 4.8s latency, no GPU) |
 | 2026-03-30 | 0.1.1 | Updated evaluation results with fusion feedback run (100% LLM success, 255 updates, 7.6s latency) |
 | 2026-03-29 | 0.1.0 | Initial system card (pre-deployment) |
