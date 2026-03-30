@@ -68,6 +68,44 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .affil-hostile { color: #f85149; }
   .affil-neutral { color: #d29922; }
   .affil-unknown { color: #8b949e; }
+  .correct-btn {
+    background: #21262d; color: #8b949e; border: 1px solid #30363d;
+    padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75em;
+    white-space: nowrap;
+  }
+  .correct-btn:hover { background: #30363d; color: #c9d1d9; }
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center;
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 20px; width: 400px; max-width: 90%;
+  }
+  .modal h3 { color: #58a6ff; margin-bottom: 12px; font-size: 1.1em; }
+  .modal label { display: block; color: #8b949e; font-size: 0.85em; margin: 8px 0 4px; }
+  .modal select, .modal textarea, .modal input[type="text"] {
+    width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 4px; padding: 6px 8px; font-size: 0.85em; font-family: inherit;
+  }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .modal .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .modal .checkbox-row input { width: auto; }
+  .modal .btn-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .modal .btn-submit {
+    background: #238636; color: #fff; border: none; padding: 6px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 0.85em;
+  }
+  .modal .btn-submit:hover { background: #2ea043; }
+  .modal .btn-cancel {
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+    padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85em;
+  }
+  .modal .btn-cancel:hover { background: #30363d; }
+  .modal .feedback-msg { font-size: 0.85em; margin-top: 8px; }
+  .modal .feedback-msg.ok { color: #3fb950; }
+  .modal .feedback-msg.err { color: #f85149; }
 </style>
 </head>
 <body>
@@ -78,6 +116,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="stats-bar">
   <div><span class="stat-label">Updates:</span><span class="stat-value" id="stat-updates">-</span></div>
   <div><span class="stat-label">Entities:</span><span class="stat-value" id="stat-entities">-</span></div>
+  <div><span class="stat-label">Corrections:</span><span class="stat-value" id="stat-corrections">-</span></div>
   <div><span class="stat-label">Status:</span><span class="stat-value" id="stat-status">loading</span></div>
 </div>
 
@@ -94,10 +133,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <th>Method</th>
         <th>Entities</th>
         <th>Message</th>
+        <th></th>
       </tr>
     </thead>
     <tbody id="updates-body">
-      <tr><td colspan="8" class="empty-msg">Loading...</td></tr>
+      <tr><td colspan="9" class="empty-msg">Loading...</td></tr>
     </tbody>
   </table>
 </div>
@@ -119,6 +159,44 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <tr><td colspan="6" class="empty-msg">Loading...</td></tr>
     </tbody>
   </table>
+</div>
+
+<div class="modal-overlay" id="correct-modal">
+  <div class="modal">
+    <h3>Correct Extraction <span id="modal-update-id"></span></h3>
+    <input type="hidden" id="modal-uid" value="">
+    <label for="modal-type">Corrected Type</label>
+    <select id="modal-type">
+      <option value="">(no change)</option>
+      <option value="entity_id">entity_id</option>
+      <option value="status_change">status_change</option>
+      <option value="weapons">weapons</option>
+      <option value="fuel">fuel</option>
+      <option value="location">location</option>
+      <option value="threat">threat</option>
+      <option value="tasking">tasking</option>
+      <option value="handover">handover</option>
+      <option value="csar">csar</option>
+      <option value="fire_mission">fire_mission</option>
+      <option value="cyber_ew">cyber_ew</option>
+      <option value="environmental">environmental</option>
+      <option value="sitrep">sitrep</option>
+      <option value="none">none</option>
+    </select>
+    <div class="checkbox-row">
+      <input type="checkbox" id="modal-rejected">
+      <label for="modal-rejected" style="margin:0">Reject this extraction</label>
+    </div>
+    <label for="modal-notes">Notes</label>
+    <textarea id="modal-notes" placeholder="Optional correction notes"></textarea>
+    <label for="modal-corrector">Corrector</label>
+    <input type="text" id="modal-corrector" placeholder="Your username">
+    <div id="modal-feedback"></div>
+    <div class="btn-row">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-submit" onclick="submitCorrection()">Submit</button>
+    </div>
+  </div>
 </div>
 
 <div class="refresh-indicator" id="refresh-ind">auto-refresh: 5s</div>
@@ -189,7 +267,7 @@ function formatPosition(lat, lon) {
 function renderUpdates(updates) {
   var tbody = document.getElementById('updates-body');
   if (!updates || updates.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">No updates yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">No updates yet</td></tr>';
     return;
   }
   var html = '';
@@ -209,6 +287,8 @@ function renderUpdates(updates) {
     html += '<td class="msg-snippet" title="'
           + escapeHtml(u.source_message) + '">'
           + escapeHtml(u.source_message) + '</td>';
+    html += '<td><button class="correct-btn" onclick="openModal('
+          + u.id + ')">correct</button></td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
@@ -238,6 +318,56 @@ function renderEntities(entities) {
   tbody.innerHTML = html;
 }
 
+function openModal(updateId) {
+  document.getElementById('modal-uid').value = updateId;
+  document.getElementById('modal-update-id').textContent = '#' + updateId;
+  document.getElementById('modal-type').value = '';
+  document.getElementById('modal-rejected').checked = false;
+  document.getElementById('modal-notes').value = '';
+  document.getElementById('modal-corrector').value = '';
+  document.getElementById('modal-feedback').innerHTML = '';
+  document.getElementById('correct-modal').className = 'modal-overlay visible';
+}
+
+function closeModal() {
+  document.getElementById('correct-modal').className = 'modal-overlay';
+}
+
+function submitCorrection() {
+  var uid = document.getElementById('modal-uid').value;
+  var payload = {};
+  var t = document.getElementById('modal-type').value;
+  if (t) payload.corrected_type = t;
+  var rej = document.getElementById('modal-rejected').checked;
+  if (rej) payload.rejected = true;
+  var notes = document.getElementById('modal-notes').value.trim();
+  if (notes) payload.notes = notes;
+  var corrector = document.getElementById('modal-corrector').value.trim();
+  if (corrector) payload.corrector = corrector;
+
+  if (!payload.corrected_type && !payload.rejected && !payload.notes) {
+    document.getElementById('modal-feedback').innerHTML =
+      '<p class="feedback-msg err">Provide at least a type, rejection, or notes.</p>';
+    return;
+  }
+
+  fetch('/updates/' + uid + '/correct', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  }).then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Failed'); });
+    return r.json();
+  }).then(function(data) {
+    document.getElementById('modal-feedback').innerHTML =
+      '<p class="feedback-msg ok">Correction recorded (id: ' + data.id + ')</p>';
+    setTimeout(function() { closeModal(); refresh(); }, 1000);
+  }).catch(function(err) {
+    document.getElementById('modal-feedback').innerHTML =
+      '<p class="feedback-msg err">' + escapeHtml(err.message) + '</p>';
+  });
+}
+
 function refresh() {
   var ind = document.getElementById('refresh-ind');
   ind.className = 'refresh-indicator active';
@@ -245,13 +375,15 @@ function refresh() {
   Promise.all([
     fetch('/updates?limit=100').then(function(r) { return r.json(); }),
     fetch('/entities').then(function(r) { return r.json(); }),
-    fetch('/health').then(function(r) { return r.json(); })
+    fetch('/health').then(function(r) { return r.json(); }),
+    fetch('/corrections/stats').then(function(r) { return r.json(); })
   ]).then(function(results) {
     renderUpdates(results[0]);
     renderEntities(results[1]);
     document.getElementById('stat-updates').textContent = results[2].updates_count;
     document.getElementById('stat-entities').textContent = results[2].entities_count;
     document.getElementById('stat-status').textContent = results[2].status;
+    document.getElementById('stat-corrections').textContent = results[3].total;
     ind.className = 'refresh-indicator';
   }).catch(function(err) {
     console.error('Refresh error:', err);
