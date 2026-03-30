@@ -159,6 +159,21 @@ class CoPWriterConfig(BaseSettings):
     )
 
 
+class ReferenceDataConfig(BaseSettings):
+    """Configuration for optional reference data (entity catalogs, theater geometry)."""
+
+    model_config = SettingsConfigDict(env_prefix="CHAT_TO_COP_")
+
+    entity_catalog_dir: str = Field(
+        default="",
+        description="Directory containing schema_assets.csv and dash_target_taxonomy.csv. Empty = disabled.",
+    )
+    geometry_path: str = Field(
+        default="",
+        description="Path to theater_geometry_polygons.geojson. Empty = disabled.",
+    )
+
+
 class PipelineConfig(BaseSettings):
     """Top-level configuration aggregating all subsystem configs.
 
@@ -193,3 +208,4 @@ class PipelineConfig(BaseSettings):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
     cop_writer: CoPWriterConfig = Field(default_factory=CoPWriterConfig)
+    reference: ReferenceDataConfig = Field(default_factory=ReferenceDataConfig)
