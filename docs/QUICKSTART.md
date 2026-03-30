@@ -305,6 +305,23 @@ List available models:
 ollama list
 ```
 
+### Ollama context window (num_ctx)
+
+By default, Ollama models use a 2048-token context window, which is too small for our system prompt (~2000 tokens) plus conversation history. The pipeline sets `num_ctx=8192` via the OpenAI SDK's `extra_body` parameter, and this is forwarded through instructor to Ollama's `/v1/chat/completions` endpoint.
+
+If you need to guarantee the context window (e.g., for production deployments), create a derived model with a Modelfile:
+
+```bash
+# Create a model with 8192-token context baked in
+echo 'FROM qwen2.5:7b
+PARAMETER num_ctx 8192' | ollama create qwen2.5-7b-8k -f -
+
+# Use it
+python -m chat_to_cop.replay path/to/chat.zip --model qwen2.5-7b-8k
+```
+
+Both approaches work. The `extra_body` passthrough is simpler (no custom model needed), while the Modelfile approach is more explicit and doesn't depend on client-side configuration.
+
 ### Slow performance (>5s per message)
 
 - Use a smaller model: `qwen2.5:3b` instead of `7b`
