@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from loguru import logger
 
@@ -258,8 +258,9 @@ class FusionAgent:
         groups: dict[str, list[CoPUpdate]] = {}
         group_counter = 0
 
-        # Sort by timestamp for consistent grouping
-        sorted_updates = sorted(updates, key=lambda u: u.timestamp)
+        # Sort by timestamp for consistent grouping (None sorts first)
+        _epoch = datetime.min.replace(tzinfo=timezone.utc)
+        sorted_updates = sorted(updates, key=lambda u: u.timestamp or _epoch)
 
         # Track which updates have been assigned to a group
         assigned: set[int] = set()
@@ -279,7 +280,7 @@ class FusionAgent:
                         continue
                     other = sorted_updates[j]
                     # Outside time window — stop looking
-                    if other.timestamp - update.timestamp > self.temporal_window:
+                    if (other.timestamp or _epoch) - (update.timestamp or _epoch) > self.temporal_window:
                         break
                     if _entity_key(other) == key:
                         group.append(other)
