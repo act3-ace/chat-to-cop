@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CapabilityImpact(str, Enum):
@@ -67,6 +67,46 @@ class EntityUpdate(BaseModel):
     capability_impact: CapabilityImpact | None = Field(
         None, description="SDAC mapping: sense, decide, act, or collaborate"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_bullseye_bearing(cls, data: object) -> object:
+        """Parse bullseye notation (e.g. '240/405') in bearing field.
+
+        LLMs sometimes return bearing as a bullseye string like '240/405'.
+        This extracts the bearing (first number) as a float and stores the
+        range portion in metadata['bullseye_range'] if present.
+        """
+        if not isinstance(data, dict):
+            return data
+        bearing = data.get("bearing")
+        if bearing is None or isinstance(bearing, (int, float)):
+            return data
+        if isinstance(bearing, str):
+            bearing = bearing.strip()
+            if "/" in bearing:
+                parts = bearing.split("/", 1)
+                try:
+                    data["bearing"] = float(parts[0])
+                except ValueError:
+                    data["bearing"] = None
+                    return data
+                try:
+                    range_val = float(parts[1])
+                    metadata = data.get("metadata") or {}
+                    metadata["bullseye_range"] = str(range_val)
+                    data["metadata"] = metadata
+                    # Also set range_nm if not already provided
+                    if data.get("range_nm") is None:
+                        data["range_nm"] = range_val
+                except (ValueError, IndexError):
+                    pass
+            else:
+                try:
+                    data["bearing"] = float(bearing)
+                except ValueError:
+                    data["bearing"] = None
+        return data
 
 
 class CoPUpdate(BaseModel):

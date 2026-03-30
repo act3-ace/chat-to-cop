@@ -55,10 +55,52 @@ class TestBuildSystemPrompt:
         assert "CURRENT WORLD STATE" in prompt
         assert "KNOWN SPEAKERS" in prompt
 
+    def test_prompt_contains_csar_examples(self):
+        prompt = build_system_prompt()
+        assert "MISREP" in prompt
+        assert "CSAR" in prompt
+        assert "csar" in prompt
+        assert "ZEUS14 pilot ejected" in prompt
+        assert "pilot recovered" in prompt
+        assert "RESCORT01" in prompt
+
+    def test_prompt_contains_fire_mission_examples(self):
+        prompt = build_system_prompt()
+        assert "fire_mission" in prompt
+        assert "fire mission TGT AQ1234" in prompt
+        assert "JDAM" in prompt
+        assert "CAS request" in prompt
+        assert "BDA TGT AQ1234" in prompt
+
+    def test_prompt_contains_cyber_ew_examples(self):
+        prompt = build_system_prompt()
+        assert "cyber_ew" in prompt
+        assert "GPS jamming" in prompt
+        assert "SA-20 battery activating" in prompt
+        assert "SIGINT" in prompt
+
     def test_default_glossary_content(self):
         assert "gadget bent" in DEFAULT_GLOSSARY
         assert "splash" in DEFAULT_GLOSSARY
         assert "F+XX" in DEFAULT_GLOSSARY
+
+    def test_default_glossary_csar_terms(self):
+        assert "MISREP" in DEFAULT_GLOSSARY
+        assert "JPRC" in DEFAULT_GLOSSARY
+        assert "SANDY" in DEFAULT_GLOSSARY
+        assert "RESCORT" in DEFAULT_GLOSSARY
+        assert "DUSTOFF" in DEFAULT_GLOSSARY
+
+    def test_default_glossary_fire_mission_terms(self):
+        assert "TOT" in DEFAULT_GLOSSARY
+        assert "JDAM" in DEFAULT_GLOSSARY
+        assert "CAS" in DEFAULT_GLOSSARY
+        assert "TIC" in DEFAULT_GLOSSARY
+        assert "FARP" in DEFAULT_GLOSSARY
+
+    def test_default_glossary_ew_terms(self):
+        assert "EW" in DEFAULT_GLOSSARY
+        assert "SIGINT" in DEFAULT_GLOSSARY
 
 
 class TestOpenAICompatibleBackend:

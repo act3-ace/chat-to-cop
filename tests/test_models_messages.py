@@ -1,7 +1,8 @@
-"""Tests for IRCMessage model and routing types."""
+"""Tests for IRCMessage model, routing types, and EntityUpdate validators."""
 
 from datetime import datetime, timezone
 
+from chat_to_cop.models.cop_update import EntityUpdate
 from chat_to_cop.models.messages import ChannelPriority, IRCMessage
 
 
@@ -162,3 +163,86 @@ class TestChannelPriority:
         order = {ChannelPriority.HIGH: 0, ChannelPriority.MEDIUM: 1, ChannelPriority.LOW: 2}
         sorted_priorities = sorted(priorities, key=lambda p: order[p])
         assert sorted_priorities == [ChannelPriority.HIGH, ChannelPriority.MEDIUM, ChannelPriority.LOW]
+
+
+class TestEntityUpdateBullseyeValidator:
+    """Test the bearing/bullseye notation validator on EntityUpdate."""
+
+    def test_float_bearing_unchanged(self):
+        ent = EntityUpdate(bearing=240.0)
+        assert ent.bearing == 240.0
+
+    def test_int_bearing_converted_to_float(self):
+        ent = EntityUpdate(bearing=240)
+        assert ent.bearing == 240.0
+
+    def test_none_bearing_stays_none(self):
+        ent = EntityUpdate(bearing=None)
+        assert ent.bearing is None
+
+    def test_bullseye_string_parsed(self):
+        """'240/405' should parse bearing=240.0, range_nm=405.0."""
+        ent = EntityUpdate.model_validate({"bearing": "240/405"})
+        assert ent.bearing == 240.0
+        assert ent.range_nm == 405.0
+        assert ent.metadata["bullseye_range"] == "405.0"
+
+    def test_bullseye_does_not_overwrite_existing_range(self):
+        """If range_nm is already set, bullseye range should not overwrite it."""
+        ent = EntityUpdate.model_validate({"bearing": "240/405", "range_nm": 100.0})
+        assert ent.bearing == 240.0
+        assert ent.range_nm == 100.0
+        assert ent.metadata["bullseye_range"] == "405.0"
+
+    def test_bullseye_three_digit_bearing(self):
+        ent = EntityUpdate.model_validate({"bearing": "316/398"})
+        assert ent.bearing == 316.0
+        assert ent.range_nm == 398.0
+
+    def test_string_number_parsed(self):
+        """A plain string number like '180' should parse to float."""
+        ent = EntityUpdate.model_validate({"bearing": "180"})
+        assert ent.bearing == 180.0
+
+    def test_invalid_string_bearing_becomes_none(self):
+        ent = EntityUpdate.model_validate({"bearing": "north"})
+        assert ent.bearing is None
+
+    def test_invalid_bullseye_bearing_part(self):
+        ent = EntityUpdate.model_validate({"bearing": "abc/405"})
+        assert ent.bearing is None
+
+    def test_invalid_bullseye_range_part(self):
+        """Invalid range part should still parse the bearing."""
+        ent = EntityUpdate.model_validate({"bearing": "240/abc"})
+        assert ent.bearing == 240.0
+        assert ent.range_nm is None
+
+    def test_bullseye_with_whitespace(self):
+        ent = EntityUpdate.model_validate({"bearing": " 240/405 "})
+        assert ent.bearing == 240.0
+        assert ent.range_nm == 405.0
+
+    def test_metadata_preserved_with_bullseye(self):
+        """Existing metadata should be preserved when bullseye adds to it."""
+        ent = EntityUpdate.model_validate(
+            {
+                "bearing": "240/405",
+                "metadata": {"source": "SIGINT"},
+            }
+        )
+        assert ent.bearing == 240.0
+        assert ent.metadata["bullseye_range"] == "405.0"
+        assert ent.metadata["source"] == "SIGINT"
+
+    def test_normal_construction_unaffected(self):
+        """Normal keyword construction with float bearing should work as before."""
+        ent = EntityUpdate(
+            track_number="TM677",
+            bearing=316.0,
+            range_nm=398.0,
+            affiliation="HOSTILE",
+        )
+        assert ent.bearing == 316.0
+        assert ent.range_nm == 398.0
+        assert ent.track_number == "TM677"
