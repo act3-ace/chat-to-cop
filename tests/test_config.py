@@ -15,7 +15,7 @@ class TestLLMBackendConfig:
         cfg = LLMBackendConfig()
         assert cfg.llm_url == "http://127.0.0.1:11434/v1"
         assert cfg.llm_model == "qwen2.5:7b"
-        assert cfg.llm_timeout == 10.0
+        assert cfg.llm_timeout == 120.0
         assert cfg.llm_max_retries == 2
 
     def test_env_override(self, monkeypatch):
@@ -30,7 +30,7 @@ class TestFallbackConfig:
     def test_defaults(self):
         cfg = FallbackConfig()
         assert cfg.fallback_model == "qwen2.5:3b"
-        assert cfg.fallback_timeout == 5.0
+        assert cfg.fallback_timeout == 30.0
 
 
 class TestDegradingConfig:

@@ -35,8 +35,8 @@ class LLMBackendConfig(BaseSettings):
         description="API key (not needed for Ollama)",
     )
     llm_timeout: float = Field(
-        default=10.0,
-        description="Timeout in seconds per LLM call",
+        default=120.0,
+        description="Timeout in seconds per LLM call (generous to handle model cold starts)",
     )
     llm_max_retries: int = Field(
         default=2,
@@ -58,8 +58,8 @@ class FallbackConfig(BaseSettings):
         description="Smaller/faster fallback model",
     )
     fallback_timeout: float = Field(
-        default=5.0,
-        description="Timeout for fallback model (shorter = faster degradation)",
+        default=30.0,
+        description="Timeout for fallback model",
     )
 
 
