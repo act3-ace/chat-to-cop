@@ -72,6 +72,36 @@ class TestOpenAICompatibleBackend:
         assert backend.base_url == "http://localhost:11434/v1"
         assert backend.model == "qwen2.5:7b"
 
+    def test_default_num_ctx(self):
+        backend = OpenAICompatibleBackend()
+        assert backend.num_ctx == 8192
+
+    def test_custom_num_ctx(self):
+        backend = OpenAICompatibleBackend(num_ctx=16384)
+        assert backend.num_ctx == 16384
+
+    def test_num_ctx_passed_in_extract(self):
+        """Verify num_ctx is sent via extra_body in the API call."""
+        backend = OpenAICompatibleBackend(num_ctx=32768)
+
+        captured_kwargs = {}
+
+        async def mock_create(**kwargs):
+            captured_kwargs.update(kwargs)
+            return SimpleExtraction(update_type="none", confidence=0.0, summary="")
+
+        backend._client.chat.completions.create = mock_create
+
+        asyncio.run(
+            backend.extract(
+                messages=[{"role": "user", "content": "test"}],
+                schema=SimpleExtraction,
+            )
+        )
+
+        assert "extra_body" in captured_kwargs
+        assert captured_kwargs["extra_body"] == {"options": {"num_ctx": 32768}}
+
     def test_repr(self):
         backend = OpenAICompatibleBackend(model="test-model")
         assert "test-model" in repr(backend)
