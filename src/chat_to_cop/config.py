@@ -124,6 +124,41 @@ class SupervisorConfig(BaseSettings):
     )
 
 
+class CoPWriterConfig(BaseSettings):
+    """Configuration for the CoP REST API writer."""
+
+    model_config = SettingsConfigDict(env_prefix="CHAT_TO_COP_")
+
+    cop_api_url: str = Field(
+        default="",
+        description="CoP REST API base URL. Empty string = dry-run mode (log only, no HTTP).",
+    )
+    cop_auto_threshold: float = Field(
+        default=0.7,
+        description="Minimum confidence for AUTO write authority (written immediately).",
+    )
+    cop_flag_threshold: float = Field(
+        default=0.4,
+        description="Minimum confidence for FLAGGED write authority. Below this -> HUMAN review.",
+    )
+    cop_high_risk_types: list[str] = Field(
+        default_factory=lambda: ["weapons", "csar", "fire_mission", "cyber_ew"],
+        description="Update types that always require human review regardless of confidence.",
+    )
+    cop_max_queue_size: int = Field(
+        default=1000,
+        description="Max size of pause queue and human review queue.",
+    )
+    cop_write_timeout: float = Field(
+        default=10.0,
+        description="HTTP timeout in seconds for CoP REST API writes.",
+    )
+    cop_retry_attempts: int = Field(
+        default=3,
+        description="Number of retry attempts for transient HTTP failures.",
+    )
+
+
 class PipelineConfig(BaseSettings):
     """Top-level configuration aggregating all subsystem configs.
 
@@ -157,3 +192,4 @@ class PipelineConfig(BaseSettings):
     degrading: DegradingConfig = Field(default_factory=DegradingConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
+    cop_writer: CoPWriterConfig = Field(default_factory=CoPWriterConfig)
