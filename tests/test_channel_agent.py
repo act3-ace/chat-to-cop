@@ -3,9 +3,10 @@
 import asyncio
 from datetime import datetime, timezone
 
+import pytest
 from pydantic import BaseModel
 
-from chat_to_cop.agent.channel_agent import ChannelAgent
+from chat_to_cop.agent.channel_agent import ChannelAgent, _is_noise
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
 
@@ -184,5 +185,108 @@ class TestConversationWindow:
 
             assert len(updates) == 1
             assert len(updates[0].context_messages) > 0
+
+        asyncio.run(run())
+
+
+class TestNoiseDetectionRadioChecks:
+    """Radio check messages should be filtered as noise."""
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "radio check",
+            "Radio Check Radio Check C2 cord.",
+            "Jarhead you're loud and clear the Vegas SL how me?",
+            "How do you hear me?",
+            "All right, let's do some radio tracks. How do you hear me?",
+            "loud and clear",
+            "Lima Charlie",
+            "say again",
+        ],
+    )
+    def test_radio_check_is_noise(self, msg):
+        assert _is_noise(msg), f"Expected noise: {msg!r}"
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "over and out",
+            "You can't go over and out.",
+        ],
+    )
+    def test_over_and_out_is_noise(self, msg):
+        assert _is_noise(msg), f"Expected noise: {msg!r}"
+
+
+class TestNoiseDetectionBanter:
+    """Banter and greetings should be filtered as noise."""
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "Buh-bye now.",
+            "buhbye",
+            "see ya",
+            "Oh, did you finish talking and you didn't say over, over",
+            "No, my transmission was over, but I'm not out, I'm over",
+            "Hey, what you want girl?",
+            "Talk a little louder, sorry.",
+            "copy all",
+        ],
+    )
+    def test_banter_is_noise(self, msg):
+        assert _is_noise(msg), f"Expected noise: {msg!r}"
+
+
+class TestNoiseDetectionOperationalNotFiltered:
+    """Operational messages containing radio-check-like phrases must NOT be filtered."""
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "loud and clear, SITREP follows: ZEUS12 RTB",
+            "copy all, ZEUS12 shot down",
+            "say again, TM636 bearing 315 range 80",
+            "RR15 F+40, RL36 F+50",
+            "ZEUS 12,13,14 shot down by TTG",
+            "tacrep, 4th-gen sam active, cigar 316/398, jtn TM677",
+            "ORCA01 gadget bent, RTB",
+        ],
+    )
+    def test_operational_not_noise(self, msg):
+        assert not _is_noise(msg), f"Should NOT be noise: {msg!r}"
+
+
+class TestNoiseDetectionIntegration:
+    """Test that radio check and banter messages are filtered in the full agent pipeline."""
+
+    def test_radio_check_skips_llm(self):
+        async def run():
+            backend = FakeBackend()
+            agent = ChannelAgent("#stt_c2", backend)
+            updates = await agent.process_message(_msg("Jarhead you're loud and clear the Vegas SL how me?"))
+            assert updates == []
+            assert backend.call_count == 0  # LLM should NOT be called
+
+        asyncio.run(run())
+
+    def test_banter_skips_llm(self):
+        async def run():
+            backend = FakeBackend()
+            agent = ChannelAgent("#stt_c2", backend)
+            updates = await agent.process_message(_msg("Buh-bye now."))
+            assert updates == []
+            assert backend.call_count == 0
+
+        asyncio.run(run())
+
+    def test_operational_message_reaches_llm(self):
+        async def run():
+            backend = FakeBackend()
+            agent = ChannelAgent("#stt_c2", backend)
+            updates = await agent.process_message(_msg("copy all, ZEUS12 shot down by TTG"))
+            assert len(updates) == 1
+            assert backend.call_count == 1
 
         asyncio.run(run())
