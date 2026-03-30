@@ -89,10 +89,62 @@ Per-type recall (7B on T4):
 - #stt_taipanBMA: 6 updates
 - #fires: 5 updates
 
-### AG GPU (T4) + qwen2.5:7b (completed 2026-03-30)
+### AG GPU (T4) + qwen2.5:7b-8k — CLEAN RUN (completed 2026-03-30 afternoon)
 
-935 messages through full pipeline (supervisor + fusion + store) on g4dn.xlarge.
-Duration: ~5.85 hours. **Note:** This run used pre-fix code (no timestamp/capability_impact/num_ctx fixes). A clean re-run will have significantly fewer validation failures.
+935 messages through full pipeline with ALL fixes applied: 8K context (Modelfile), timestamp/capability_impact validators, CSAR/fire/EW examples, banter noise filter, enriched glossary, CoP writer dry-run.
+Duration: **~2.4 hours** (down from 5.85 hrs on old code).
+
+| Metric | Value |
+|--------|-------|
+| Total messages | 935 |
+| Updates extracted (after fusion) | **264** |
+| Entities tracked | **203** |
+| Channels | 11 |
+| LLM calls (7b-8k) | 976 |
+| LLM successes | **975** (99.9%) |
+| LLM permanent failures | **1** |
+| Regex fallback | **1** |
+| Extraction latency (mean) | **7.7s** |
+| Extraction latency (min) | 3.5s |
+| Extraction latency (max) | 57.1s |
+| CoP auto-writes | 467 |
+| CoP flagged-writes | 2 |
+| CoP human-review queued | 107 |
+| CoP errors | **0** |
+| Fusion deduplicates | 1 |
+| Fusion contradictions detected | 2 |
+
+**Update type distribution (clean run):**
+
+| Type | Count |
+|------|-------|
+| tasking | 53 |
+| location | 47 |
+| threat | 33 |
+| fuel | 31 |
+| status_change | 23 |
+| cyber_ew | 21 |
+| environmental | 14 |
+| entity_id | 14 |
+| fire_mission | 9 |
+| sitrep | 8 |
+| csar | 8 |
+| weapons | 3 |
+
+All 12 non-none update types represented. CSAR (8), fire_mission (9), and cyber_ew (21) all significantly improved from previous runs.
+
+### Comparison: Old Code vs Clean Run
+
+| Metric | Old Code (4K ctx) | Clean (8K ctx) | Improvement |
+|--------|-------------------|----------------|-------------|
+| Duration | 5.85 hrs | 2.4 hrs | 2.4x faster |
+| Mean latency | 20.0s | 7.7s | 2.6x faster |
+| LLM failures | 62 | 1 | 98% reduction |
+| Regex fallback | 70 | 1 | 99% reduction |
+| status_change (over-classified) | 161 | 23 | Noise filter working |
+| Entities | 121 | 203 | 68% more |
+
+### Previous Run (pre-fix code, for reference)
 
 | Metric | Value |
 |--------|-------|
