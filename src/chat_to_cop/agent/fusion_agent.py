@@ -29,6 +29,7 @@ from loguru import logger
 
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
+from chat_to_cop.models.feedback import FusionFeedback
 
 # --- Adversarial input detection patterns ---
 # Basic prompt injection / jailbreak patterns in chat messages
@@ -120,6 +121,9 @@ class FusionAgent:
         # Per-channel noise estimation: channel -> (noise_count, total)
         self._channel_stats: dict[str, list[int]] = defaultdict(lambda: [0, 0])
 
+        # Feedback generated during the last process_updates() call
+        self._last_feedback: list[FusionFeedback] = []
+
     # --- Public API ---
 
     def process_updates(self, updates: list[CoPUpdate]) -> list[CoPUpdate]:
@@ -130,6 +134,8 @@ class FusionAgent:
 
         Degrades to pass-through if fusion fails.
         """
+        self._last_feedback = []
+
         if not updates:
             return []
 
@@ -139,6 +145,15 @@ class FusionAgent:
             logger.error("Fusion failed, passing through raw updates: {}", e)
             metrics.inc("fusion_errors_total")
             return updates  # Pass-through on failure
+
+    def generate_feedback(self, updates: list[CoPUpdate]) -> list[FusionFeedback]:
+        """Return feedback from the most recent process_updates() call.
+
+        This returns the feedback accumulated during the last _fuse() run.
+        Must be called after process_updates() with the same updates list.
+        The feedback is cleared on each new process_updates() call.
+        """
+        return list(self._last_feedback)
 
     def speaker_reliability(self, username: str) -> float:
         """Get the trust score for a speaker (0.0-1.0, default 0.5)."""
@@ -170,6 +185,7 @@ class FusionAgent:
     def _fuse(self, updates: list[CoPUpdate]) -> list[CoPUpdate]:
         """Core fusion pipeline."""
         result: list[CoPUpdate] = []
+        self._last_feedback = []
 
         # Step 1: Adversarial input detection
         updates = self._scan_adversarial(updates)
@@ -333,7 +349,30 @@ class FusionAgent:
             for update in group[1:]:
                 if _updates_contradict(primary, update):
                     self.record_speaker_outcome(update.source_speaker, confirmed=False)
+                    other_channels = [u.source_channel for u in group if u is not update]
+                    self._last_feedback.append(
+                        FusionFeedback(
+                            update_id=key,
+                            source_channel=update.source_channel,
+                            source_speaker=update.source_speaker,
+                            feedback_type="contradicted",
+                            corroborating_channels=other_channels,
+                            confidence_delta=-self.contradiction_penalty,
+                        )
+                    )
             self.record_speaker_outcome(primary.source_speaker, confirmed=True)
+            # Primary speaker gets a corroboration signal (they "won")
+            other_channels = [u.source_channel for u in group if u is not primary]
+            self._last_feedback.append(
+                FusionFeedback(
+                    update_id=key,
+                    source_channel=primary.source_channel,
+                    source_speaker=primary.source_speaker,
+                    feedback_type="corroborated",
+                    corroborating_channels=other_channels,
+                    confidence_delta=self.corroboration_boost,
+                )
+            )
 
         elif is_cross_channel:
             # Corroborated by independent channels — boost confidence
@@ -343,13 +382,35 @@ class FusionAgent:
             )
             metrics.inc("fusion_corroborations_total")
 
-            # Record all speakers as confirmed
+            # Record all speakers as confirmed and emit feedback
             for update in group:
                 self.record_speaker_outcome(update.source_speaker, confirmed=True)
+                other_channels = [u.source_channel for u in group if u is not update]
+                self._last_feedback.append(
+                    FusionFeedback(
+                        update_id=key,
+                        source_channel=update.source_channel,
+                        source_speaker=update.source_speaker,
+                        feedback_type="corroborated",
+                        corroborating_channels=other_channels,
+                        confidence_delta=self.corroboration_boost,
+                    )
+                )
 
         else:
             # Same channel duplicate — just deduplicate
             metrics.inc("fusion_deduplicates_total")
+            for update in group:
+                self._last_feedback.append(
+                    FusionFeedback(
+                        update_id=key,
+                        source_channel=update.source_channel,
+                        source_speaker=update.source_speaker,
+                        feedback_type="deduplicated",
+                        corroborating_channels=[],
+                        confidence_delta=0.0,
+                    )
+                )
 
         # Combine provenance from all source updates
         primary.context_messages = list(
