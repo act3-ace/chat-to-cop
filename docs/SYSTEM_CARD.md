@@ -75,6 +75,17 @@ Qwen models produce 0% schema errors on structured JSON extraction tasks compare
 
 Qwen 2.5 models are released under the Apache 2.0 license. Qwen 3 models are released under the Apache 2.0 license. Both permit commercial and government use without restriction.
 
+### Modelfile Variant Naming Convention
+
+When deploying with Ollama, we create custom model variants using Ollama Modelfiles to override default parameters -- most commonly the context window size. These variants follow a `-<param>` suffix convention:
+
+- **`qwen2.5:7b-8k`** is created from `qwen2.5:7b` with `PARAMETER num_ctx 8192` (8K context window instead of the default 4096).
+- **`qwen2.5:14b-8k`** follows the same pattern for the 14B model.
+
+**Important for provenance:** The `-8k` suffix indicates a deployment configuration override, NOT a different model. The underlying model weights are identical to the base model (`qwen2.5:7b`). The Modelfile only changes Ollama runtime parameters (context window, temperature, etc.). The provenance `model_name` field will report the Ollama model name including the suffix (e.g., `qwen2.5:7b-8k`) because that is the name Ollama returns in API responses. When interpreting provenance records, treat `qwen2.5:7b-8k` and `qwen2.5:7b` as the same model weights with different context configurations.
+
+See [ANALYTICS_GATEWAY_DEPLOYMENT.md](ANALYTICS_GATEWAY_DEPLOYMENT.md) for the Modelfile creation commands.
+
 ## Architecture
 
 ```
