@@ -26,6 +26,7 @@ from chat_to_cop.backend.regex_fallback import RegexBackend
 from chat_to_cop.config import PipelineConfig
 from chat_to_cop.ingestion.replay import replay_messages
 from chat_to_cop.metrics import metrics
+from chat_to_cop.output.cop_writer import CoPWriter
 from chat_to_cop.output.store import WorldStateStore
 
 
@@ -76,6 +77,7 @@ async def run_replay(
 
     supervisor = Supervisor(backend_factory=backend_factory)
     fusion = FusionAgent()
+    cop_writer = CoPWriter.from_config(config.cop_writer)
     type_counts: dict[str, int] = defaultdict(int)
     total_messages = 0
     total_updates = 0
@@ -87,6 +89,8 @@ async def run_replay(
             logger.info(f"Fallback: {config.fallback.fallback_model}")
         logger.info("Degradation: LLM -> regex -> passthrough")
         logger.info(f"Store: {config.db_path}")
+        cop_mode = "dry-run" if not config.cop_writer.cop_api_url else config.cop_writer.cop_api_url
+        logger.info(f"CoP writer: {cop_mode}")
         logger.info(f"Speed: {'instant' if speed == 0 else f'{speed}x'}")
         logger.info("---")
 
@@ -111,6 +115,7 @@ async def run_replay(
                 for update in fused:
                     if update.update_type.value != "none":
                         await store.write_update(update)
+                        await cop_writer.push_update(update)
                         total_updates += 1
                         type_counts[update.update_type.value] += 1
                         logger.info(
@@ -137,6 +142,7 @@ async def run_replay(
             for update in fused:
                 if update.update_type.value != "none":
                     await store.write_update(update)
+                    await cop_writer.push_update(update)
                     total_updates += 1
                     type_counts[update.update_type.value] += 1
 
@@ -150,6 +156,15 @@ async def run_replay(
             logger.info("Update types:")
             for utype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
                 logger.info(f"  {utype}: {count}")
+
+        # CoP writer stats
+        writer_stats = cop_writer.stats
+        logger.info("CoP writer stats:")
+        logger.info(f"  auto_writes: {writer_stats['auto_writes']}")
+        logger.info(f"  flagged_writes: {writer_stats['flagged_writes']}")
+        logger.info(f"  human_queued: {writer_stats['human_queued']}")
+        logger.info(f"  errors: {writer_stats['errors']}")
+        logger.info(f"  human_review_pending: {cop_writer.human_queue_size}")
 
         # Fusion stats
         logger.info("Fusion stats:")
