@@ -28,6 +28,7 @@ from chat_to_cop.ingestion.replay import replay_messages
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.cop_writer import CoPWriter
 from chat_to_cop.output.store import WorldStateStore
+from chat_to_cop.tracking import PipelineTracker
 
 
 def _make_degrading_backend(config: PipelineConfig) -> DegradingBackend:
@@ -78,6 +79,15 @@ async def run_replay(
     supervisor = Supervisor(backend_factory=backend_factory)
     fusion = FusionAgent()
     cop_writer = CoPWriter.from_config(config.cop_writer)
+    tracker = PipelineTracker()
+    tracker.start_run(
+        model=config.llm.llm_model,
+        url=config.llm.llm_url,
+        timeout=config.llm.llm_timeout,
+        num_ctx=config.llm.llm_num_ctx,
+        window_size=config.agent.window_size,
+        run_name=f"replay-{path.stem}",
+    )
     type_counts: dict[str, int] = defaultdict(int)
     total_messages = 0
     total_updates = 0
@@ -116,6 +126,7 @@ async def run_replay(
                     if update.update_type.value != "none":
                         await store.write_update(update)
                         await cop_writer.push_update(update)
+                        tracker.log_extraction(update)
                         total_updates += 1
                         type_counts[update.update_type.value] += 1
                         logger.info(
@@ -143,6 +154,7 @@ async def run_replay(
                 if update.update_type.value != "none":
                     await store.write_update(update)
                     await cop_writer.push_update(update)
+                    tracker.log_extraction(update)
                     total_updates += 1
                     type_counts[update.update_type.value] += 1
 
@@ -173,6 +185,16 @@ async def run_replay(
             logger.info(f"  {ch}: noise_rate={noise:.2f}")
 
         metrics.log_summary()
+
+        # End MLflow tracking run with summary metrics
+        tracker.end_run(
+            {
+                "total_messages": total_messages,
+                "total_updates": total_updates,
+                "channels": len(supervisor.active_channels),
+                "entities_tracked": await store.count_entities(),
+            }
+        )
 
 
 def main() -> None:

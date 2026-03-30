@@ -9,6 +9,7 @@ Uses `instructor` for structured output with Pydantic validation.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 
 import instructor
 from openai import AsyncOpenAI
@@ -45,6 +46,7 @@ class OpenAICompatibleBackend:
         self.model = model
         self.timeout = timeout
         self.num_ctx = num_ctx
+        self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
         self._client = instructor.from_openai(
             AsyncOpenAI(
@@ -102,6 +104,10 @@ class OpenAICompatibleBackend:
                 raise RetryableError(str(e)) from e
             metrics.inc("backend_failures_total", labels={**labels, "reason": "permanent"})
             raise PermanentError(str(e)) from e
+
+    @property
+    def prompt_hash(self) -> str:
+        return self._prompt_hash
 
     def __repr__(self) -> str:
         return f"OpenAICompatibleBackend(url={self.base_url!r}, model={self.model!r})"
