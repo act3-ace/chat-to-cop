@@ -294,6 +294,10 @@ class ChannelAgent:
         result.extraction_method = "llm"  # Override — LLM should not set this
         result.context_messages = [f"{m.sender}: {m.content}" for m in list(self._window)[-5:]]
 
+        # RAI provenance: attach model name and prompt hash if backend exposes them
+        result.model_name = getattr(self.backend, "model", "")
+        result.prompt_hash = getattr(self.backend, "prompt_hash", "")
+
         # Apply confidence calibration if a model is loaded
         if self.calibration_model is not None:
             raw = result.confidence
