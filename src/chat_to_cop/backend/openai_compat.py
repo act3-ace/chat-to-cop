@@ -39,10 +39,12 @@ class OpenAICompatibleBackend:
         api_key: str = "not-needed",
         timeout: float = 10.0,
         max_retries: int = 2,
+        num_ctx: int = 8192,
     ) -> None:
         self.base_url = base_url
         self.model = model
         self.timeout = timeout
+        self.num_ctx = num_ctx
 
         self._client = instructor.from_openai(
             AsyncOpenAI(
@@ -82,6 +84,7 @@ class OpenAICompatibleBackend:
                     messages=messages,
                     response_model=schema,
                     max_retries=self._max_retries,
+                    extra_body={"options": {"num_ctx": self.num_ctx}},
                 )
             metrics.inc("backend_successes_total", labels=labels)
             return result
