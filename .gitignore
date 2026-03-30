@@ -1,6 +1,8 @@
 # Data (downloaded separately via scripts)
 data/
+!data/dash3/
 *.zip
+!data/dash3/*.zip
 *.rar
 *.7z
 *.flac
