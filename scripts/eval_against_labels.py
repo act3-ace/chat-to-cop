@@ -437,12 +437,23 @@ Examples:
         --model llama-3.3-70b-versatile \\
         --api-key $GROQ_API_KEY \\
         --rate-delay 2
+
+    # Auto-discover and merge all labels from a directory (trust priority dedup)
+    python scripts/eval_against_labels.py \\
+        --labels-dir data/labels/ \\
+        --url http://127.0.0.1:11434/v1 \\
+        --model qwen2.5:7b
         """,
     )
     parser.add_argument(
         "--labels",
         default="data/labels/dash3_silver_labels.jsonl",
         help="Path to silver labels JSONL. Default: data/labels/dash3_silver_labels.jsonl",
+    )
+    parser.add_argument(
+        "--labels-dir",
+        default=None,
+        help="Directory of .jsonl label files. Auto-discovers and merges with trust priority. Overrides --labels.",
     )
     parser.add_argument(
         "--url",
@@ -482,18 +493,31 @@ Examples:
     # Resolve API key
     api_key = args.api_key or os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY", "not-needed")
 
-    # Load labels
-    labels_path = Path(args.labels)
-    if not labels_path.exists():
-        print(f"ERROR: Labels file not found: {labels_path}")
-        print("Run generate_silver_labels.py first to create the reference labels.")
-        sys.exit(1)
+    # Load labels: --labels-dir takes precedence over --labels
+    if args.labels_dir:
+        from chat_to_cop.labels import load_labels as load_labels_dir
 
-    labels = load_labels(str(labels_path))
-    if not labels:
-        print(f"ERROR: No labels found in {labels_path}")
-        sys.exit(1)
-    print(f"Loaded {len(labels)} silver labels from {labels_path}")
+        labels_dir = Path(args.labels_dir)
+        if not labels_dir.is_dir():
+            print(f"ERROR: Labels directory not found: {labels_dir}")
+            sys.exit(1)
+        labels = load_labels_dir(str(labels_dir))
+        if not labels:
+            print(f"ERROR: No labels found in {labels_dir}")
+            sys.exit(1)
+        print(f"Loaded {len(labels)} labels from {labels_dir} (auto-discovered, trust-priority deduped)")
+    else:
+        labels_path = Path(args.labels)
+        if not labels_path.exists():
+            print(f"ERROR: Labels file not found: {labels_path}")
+            print("Run generate_silver_labels.py first to create the reference labels.")
+            sys.exit(1)
+
+        labels = load_labels(str(labels_path))
+        if not labels:
+            print(f"ERROR: No labels found in {labels_path}")
+            sys.exit(1)
+        print(f"Loaded {len(labels)} silver labels from {labels_path}")
 
     asyncio.run(
         eval_against_labels(
