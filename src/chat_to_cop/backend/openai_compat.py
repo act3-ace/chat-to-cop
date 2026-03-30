@@ -87,7 +87,12 @@ class OpenAICompatibleBackend:
                     response_model=schema,
                     max_retries=self._max_retries,
                 )
-                # Only pass num_ctx for Ollama (other providers reject unknown options)
+                # Pass num_ctx to Ollama via extra_body. The OpenAI SDK merges
+                # extra_body into the top-level request JSON, and Ollama's
+                # /v1/chat/completions endpoint reads options.num_ctx from there.
+                # Verified: instructor >=1.11 forwards extra_body through its
+                # patch/retry pipeline without stripping it (see #39).
+                # Only set for Ollama — other providers reject unknown options.
                 if self.num_ctx and ("11434" in self.base_url or "ollama" in self.base_url.lower()):
                     kwargs["extra_body"] = {"options": {"num_ctx": self.num_ctx}}
                 result = await self._client.chat.completions.create(**kwargs)
