@@ -89,16 +89,77 @@ Per-type recall (7B on T4):
 - #stt_taipanBMA: 6 updates
 - #fires: 5 updates
 
-### AG GPU (T4) + qwen2.5:7b (in progress)
+### AG GPU (T4) + qwen2.5:7b (completed 2026-03-30)
 
-_Results pending — replay running on g4dn.xlarge, estimated completion ~3 hrs from start._
+935 messages through full pipeline (supervisor + fusion + store) on g4dn.xlarge.
+Duration: ~5.85 hours. **Note:** This run used pre-fix code (no timestamp/capability_impact/num_ctx fixes). A clean re-run will have significantly fewer validation failures.
 
-Partial results at 275 messages:
-- 52 updates extracted
-- 10 channels active, 0 shed
-- No timeout failures (120s timeout working)
-- Timestamp validation errors causing some good extractions to fall through (fixed in MR !36)
-- Prompt truncation warnings on long conversation windows (4096 token context limit)
+| Metric | Value |
+|--------|-------|
+| Total messages | 935 |
+| Updates extracted (after fusion) | **416** |
+| Entities tracked | 121 |
+| Channels | 11 |
+| LLM calls (7b) | 976 |
+| LLM successes | **906** (92.8%) |
+| LLM permanent failures | 62 (mostly timestamp validation — fixed in MR !36) |
+| LLM timeouts | 7 |
+| Regex fallback | 70 |
+| Extraction latency (mean) | 20.0s |
+| Extraction latency (min) | 3.1s |
+| Extraction latency (max) | 160.9s |
+| Fusion deduplicates | 8 |
+| Circuit breaker openings | 7 (6x for missing 3b, 1x for 7b) |
+
+**Update type distribution:**
+
+| Type | Count | % |
+|------|-------|---|
+| status_change | 161 | 38.7% |
+| tasking | 54 | 13.0% |
+| entity_id | 51 | 12.3% |
+| location | 39 | 9.4% |
+| threat | 35 | 8.4% |
+| sitrep | 23 | 5.5% |
+| fuel | 23 | 5.5% |
+| cyber_ew | 9 | 2.2% |
+| handover | 7 | 1.7% |
+| weapons | 4 | 1.0% |
+| csar | 4 | 1.0% |
+| environmental | 3 | 0.7% |
+| fire_mission | 3 | 0.7% |
+
+All 13 update types represented. CSAR and fire_mission both extracted (were 0% before few-shot examples added in MR !41).
+
+**Channel message distribution:**
+
+| Channel | Messages | Filtered (noise) | Updates Emitted |
+|---------|----------|-------------------|-----------------|
+| #vegas_internal | 185 | 73 | 112 |
+| #stt_taipanBMA | 166 | 92 | 74 |
+| #stt_crusherBMA | 146 | 83 | 63 |
+| #stt_hydroBMA | 138 | 93 | 45 |
+| #c2_coord | 106 | 43 | 63 |
+| #stt_C2Coord | 102 | 74 | 28 |
+| #stt_mesquiteBMA | 47 | 29 | 18 |
+| #isr_reports | 28 | 10 | 18 |
+| #jprc | 9 | 9 | 0 |
+| #fires | 6 | 2 | 4 |
+| #stt | 2 | 2 | 0 |
+
+**Mean confidence by channel:**
+
+| Channel | Mean Confidence |
+|---------|----------------|
+| #stt_taipanBMA | 0.95 |
+| #stt_crusherBMA | 0.93 |
+| #stt_mesquiteBMA | 0.93 |
+| #fires | 0.93 |
+| #stt_C2Coord | 0.90 |
+| #c2_coord | 0.89 |
+| #stt_hydroBMA | 0.81 |
+| #vegas_internal | 0.79 |
+| #isr_reports | 0.77 |
 
 ## Issues Discovered During Testing
 
@@ -110,12 +171,22 @@ Partial results at 275 messages:
 4. **Context bleed** — LLM extracted data from prior messages in conversation window. Fixed by separating "PRIOR CONTEXT" from "EXTRACT FROM THIS MESSAGE ONLY" in prompt.
 5. **extraction_method hallucination** — LLM set extraction_method to arbitrary values. Fixed by overriding to "llm" after extraction.
 
-### Known Limitations
+### Known Limitations (remaining after fixes)
 
-1. **4096 token context** — qwen2.5:7b default context window truncates long conversation histories. Can increase with `num_ctx` in Ollama config or reduce `window_size`.
-2. **3b fallback not pulled on AG** — The degrading backend tries qwen2.5:3b as fallback, but it wasn't pulled on the GPU instance. Either pull it or set `CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b` to skip.
-3. **CSAR extraction** — 0% recall on CSAR update type. Needs few-shot examples added to the prompt.
-4. **Bearing field validation** — LLM produces "240/405" (bullseye format) for bearing, but schema expects a float. Need to handle bullseye notation.
+1. **Mean latency 20s** — Higher than expected. Driven by context truncation (old 4096 limit) forcing retries and wasted cycles. Clean re-run with `num_ctx=8192` (MR !38) should significantly improve.
+2. **LLM produces Chinese output** — Qwen2.5 occasionally responds in Chinese (e.g., `update_type: "燃料"` = "fuel"). Happens when model is confused by truncated context. Fix: `num_ctx=8192`.
+3. **LLM invents update types** — "extraction", "passthrough", "CoPUpdate", "WF5", "goodbye". Instructor retries usually recover, but wastes latency.
+4. **3b fallback not pulled on AG** — Set `CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b` to skip, or pull 3b.
+5. **62 permanent failures** — Almost entirely timestamp validation (fixed in MR !36) and capability_impact validation (fixed in MR !46). Clean re-run expected near 0.
+
+### Previously Known, Now Fixed
+
+1. ~~4096 token context~~ — Fixed: `num_ctx=8192` default (MR !38)
+2. ~~CSAR 0% recall~~ — Fixed: few-shot examples added (MR !41), 4 CSAR extractions in T4 replay
+3. ~~Bearing/bullseye validation~~ — Fixed: BeforeValidator parses "240/405" notation (MR !41)
+4. ~~Timestamp validation failures~~ — Fixed: field made optional (MR !36)
+5. ~~capability_impact validation~~ — Fixed: invalid values coerced to None (MR !46)
+6. ~~num_ctx sent to Groq~~ — Fixed: only sent to Ollama endpoints (MR !50)
 
 ## MASH Deployment Implications
 
