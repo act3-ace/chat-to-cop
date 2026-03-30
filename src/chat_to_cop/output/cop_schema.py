@@ -249,20 +249,28 @@ HIGH_RISK_TYPES = frozenset(
 def classify_write_authority(
     confidence: float,
     update_type: str,
+    *,
+    auto_threshold: float = 0.7,
+    flag_threshold: float = 0.4,
+    high_risk_types: frozenset[str] | None = None,
 ) -> WriteAuthority:
     """Determine write authority tier for an update.
 
     Rules:
-    - confidence < 0.4 -> HUMAN (always)
+    - confidence < flag_threshold -> HUMAN (always)
     - high-risk type (weapons, CSAR, fire_mission, cyber_ew) -> HUMAN
-    - confidence 0.4-0.7 -> FLAGGED
-    - confidence >= 0.7 -> AUTO
+    - confidence flag_threshold to auto_threshold -> FLAGGED
+    - confidence >= auto_threshold -> AUTO
+
+    Thresholds are configurable to support runtime tuning.
     """
-    if confidence < 0.4:
+    if high_risk_types is None:
+        high_risk_types = HIGH_RISK_TYPES
+    if confidence < flag_threshold:
         return WriteAuthority.HUMAN
-    if update_type in HIGH_RISK_TYPES:
+    if update_type in high_risk_types:
         return WriteAuthority.HUMAN
-    if confidence < 0.7:
+    if confidence < auto_threshold:
         return WriteAuthority.FLAGGED
     return WriteAuthority.AUTO
 
@@ -371,7 +379,13 @@ def _entity_to_battle_effect(entity, update) -> BattleEffect:
     )
 
 
-def cop_update_to_records(update) -> list[CoPRecord]:
+def cop_update_to_records(
+    update,
+    *,
+    auto_threshold: float = 0.7,
+    flag_threshold: float = 0.4,
+    high_risk_types: frozenset[str] | None = None,
+) -> list[CoPRecord]:
     """Convert a CoPUpdate into one or more CoPRecords for the REST API.
 
     Each EntityUpdate in the CoPUpdate produces one CoPRecord.
@@ -381,14 +395,21 @@ def cop_update_to_records(update) -> list[CoPRecord]:
     BattleEffect records, or both.
     """
 
-    authority = classify_write_authority(update.confidence, update.update_type.value)
+    authority = classify_write_authority(
+        update.confidence,
+        update.update_type.value,
+        auto_threshold=auto_threshold,
+        flag_threshold=flag_threshold,
+        high_risk_types=high_risk_types,
+    )
+    _high_risk = high_risk_types if high_risk_types is not None else HIGH_RISK_TYPES
     review_flag = None
     if authority == WriteAuthority.FLAGGED:
         review_flag = f"Confidence {update.confidence:.2f} requires review"
     elif authority == WriteAuthority.HUMAN:
-        if update.confidence < 0.4:
+        if update.confidence < flag_threshold:
             review_flag = f"Low confidence ({update.confidence:.2f})"
-        elif update.update_type.value in HIGH_RISK_TYPES:
+        elif update.update_type.value in _high_risk:
             review_flag = f"High-risk update type: {update.update_type.value}"
 
     is_battle_effect_type = update.update_type.value in _BATTLE_EFFECT_TYPES

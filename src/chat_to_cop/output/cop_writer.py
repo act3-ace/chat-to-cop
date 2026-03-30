@@ -9,14 +9,16 @@ Design:
 - Schema pending from contractor team -- current implementation writes
   to local store only; CoP forwarding activated when API is available
 - Tiered write authority (RAI requirement):
-    AUTO:    confidence >= 0.7, low-risk type -> write immediately
-    FLAGGED: confidence 0.4-0.7 -> write with review flag
-    HUMAN:   confidence < 0.4 OR high-risk type -> queue for operator
+    AUTO:    confidence >= auto_threshold, low-risk type -> write immediately
+    FLAGGED: confidence flag_threshold to auto_threshold -> write with review flag
+    HUMAN:   confidence < flag_threshold OR high-risk type -> queue for operator
 - Kill switch: pause() / resume() halt all writes immediately
+- Integrates with CoPRESTClient for actual HTTP delivery (or dry-run)
 """
 
 from __future__ import annotations
 
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -25,6 +27,7 @@ from loguru import logger
 
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate
+from chat_to_cop.output.cop_rest_client import CoPRESTClient
 from chat_to_cop.output.cop_schema import (
     CoPRecord,
     WriteAuthority,
@@ -40,6 +43,7 @@ class WriteResult:
     success: bool
     status_code: int | None = None
     error: str | None = None
+    dry_run: bool = False
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -47,26 +51,42 @@ class CoPWriter:
     """Pushes CoPUpdates to the CoP REST API with tiered write authority.
 
     Modes:
-    - cop_base_url=None: local-only mode (records are mapped but not sent)
-    - cop_base_url set: sends HTTP requests to the CoP REST endpoint
+    - No rest_client: local-only mode (records are mapped but not sent)
+    - rest_client provided: delegates HTTP to CoPRESTClient (which may be dry-run)
+    - Legacy: cop_base_url + http_client for backward compat with existing tests
 
     Kill switch:
     - pause(): stops all writes immediately (queues incoming updates)
-    - resume(): flushes queued updates and resumes normal operation
+    - resume(): allows new writes; call flush_pause_queue() to drain backlog
+
+    Configurable thresholds:
+    - auto_threshold: minimum confidence for AUTO tier (default 0.7)
+    - flag_threshold: minimum confidence for FLAGGED tier (default 0.4)
+    - high_risk_types: update types that always require HUMAN review
     """
 
     def __init__(
         self,
         cop_base_url: str | None = None,
         http_client=None,
+        rest_client: CoPRESTClient | None = None,
         max_queue_size: int = 1000,
+        auto_threshold: float = 0.7,
+        flag_threshold: float = 0.4,
+        high_risk_types: list[str] | None = None,
     ) -> None:
         self._base_url = cop_base_url
         self._client = http_client
+        self._rest_client = rest_client
         self._paused = False
         self._pause_queue: deque[CoPUpdate] = deque(maxlen=max_queue_size)
         self._human_queue: deque[CoPRecord] = deque(maxlen=max_queue_size)
         self._max_queue_size = max_queue_size
+
+        # Configurable thresholds
+        self._auto_threshold = auto_threshold
+        self._flag_threshold = flag_threshold
+        self._high_risk_types = frozenset(high_risk_types or ["weapons", "csar", "fire_mission", "cyber_ew"])
 
         # Counters for observability
         self._stats = {
@@ -75,6 +95,7 @@ class CoPWriter:
             "human_queued": 0,
             "errors": 0,
             "paused_queued": 0,
+            "total_records": 0,
         }
 
     @property
@@ -104,7 +125,7 @@ class CoPWriter:
             metrics.inc("cop_writer_paused_total")
 
     def resume(self) -> None:
-        """Resume writes. Does NOT auto-flush — call flush_pause_queue() to drain."""
+        """Resume writes. Does NOT auto-flush -- call flush_pause_queue() to drain."""
         if self._paused:
             logger.info("CoPWriter RESUMED - {} updates queued during pause", len(self._pause_queue))
             self._paused = False
@@ -144,14 +165,20 @@ class CoPWriter:
             self._pause_queue.append(update)
             self._stats["paused_queued"] += 1
             metrics.inc("cop_writer_paused_queued_total")
-            logger.debug("CoPWriter paused — queued update (queue size: {})", len(self._pause_queue))
+            logger.debug("CoPWriter paused -- queued update (queue size: {})", len(self._pause_queue))
             return []
 
-        # Map CoPUpdate -> CoPRecord(s)
-        records = cop_update_to_records(update)
+        # Map CoPUpdate -> CoPRecord(s) using configurable thresholds
+        records = cop_update_to_records(
+            update,
+            auto_threshold=self._auto_threshold,
+            flag_threshold=self._flag_threshold,
+            high_risk_types=self._high_risk_types,
+        )
         results: list[WriteResult] = []
 
         for record in records:
+            self._stats["total_records"] += 1
             result = await self._dispatch_record(record)
             results.append(result)
 
@@ -203,54 +230,70 @@ class CoPWriter:
     async def _send_to_cop(self, record: CoPRecord) -> WriteResult:
         """Send a CoPRecord to the CoP REST API.
 
-        If no base_url is configured, runs in local-only mode (records are
-        mapped and validated but not transmitted). If a client is provided,
-        POSTs to the appropriate endpoint.
+        Dispatch order:
+        1. If a CoPRESTClient is configured, use it (preferred path).
+        2. If a legacy http_client + base_url is configured, use that.
+        3. Otherwise, local-only mode (validate mapping but don't send).
         """
-        async with metrics.async_timer("cop_writer_send_seconds"):
-            # Local-only mode: validate the record mapping but don't send
-            if self._base_url is None and self._client is None:
-                logger.trace(
-                    "Local-only mode: {} record mapped (authority={})",
-                    record.record_type,
-                    record.write_authority.value,
+        start = time.perf_counter()
+        try:
+            # Path 1: CoPRESTClient (new preferred path)
+            if self._rest_client is not None:
+                send_result = await self._rest_client.send_record(record)
+                elapsed = time.perf_counter() - start
+                metrics.observe("cop_writer_send_seconds", elapsed)
+                if not send_result.success:
+                    self._stats["errors"] += 1
+                    metrics.inc("cop_writer_errors_total")
+                return WriteResult(
+                    record=record,
+                    success=send_result.success,
+                    status_code=send_result.status_code,
+                    error=send_result.error,
+                    dry_run=send_result.dry_run,
                 )
-                return WriteResult(record=record, success=True, status_code=200)
 
-            # HTTP mode: POST to CoP REST API
-            try:
+            # Path 2: Legacy http_client
+            if self._base_url is not None and self._client is not None:
                 endpoint = self._resolve_endpoint(record)
                 payload = record.model_dump(mode="json")
-
-                if self._client is not None:
-                    response = await self._client.post(endpoint, json=payload)
-                    success = 200 <= response.status_code < 300
-                    if not success:
-                        self._stats["errors"] += 1
-                        metrics.inc("cop_writer_errors_total")
-                        logger.warning(
-                            "CoP write failed: {} {} (status={})",
-                            record.record_type,
-                            endpoint,
-                            response.status_code,
-                        )
-                    return WriteResult(
-                        record=record,
-                        success=success,
-                        status_code=response.status_code,
+                response = await self._client.post(endpoint, json=payload)
+                elapsed = time.perf_counter() - start
+                metrics.observe("cop_writer_send_seconds", elapsed)
+                success = 200 <= response.status_code < 300
+                if not success:
+                    self._stats["errors"] += 1
+                    metrics.inc("cop_writer_errors_total")
+                    logger.warning(
+                        "CoP write failed: {} {} (status={})",
+                        record.record_type,
+                        endpoint,
+                        response.status_code,
                     )
-                else:
-                    # base_url set but no client — should not happen in practice
-                    return WriteResult(record=record, success=False, error="No HTTP client configured")
+                return WriteResult(
+                    record=record,
+                    success=success,
+                    status_code=response.status_code,
+                )
 
-            except Exception as exc:
-                self._stats["errors"] += 1
-                metrics.inc("cop_writer_errors_total")
-                logger.error("CoP write exception: {}", exc)
-                return WriteResult(record=record, success=False, error=str(exc))
+            # Path 3: Local-only mode
+            elapsed = time.perf_counter() - start
+            metrics.observe("cop_writer_send_seconds", elapsed)
+            logger.trace(
+                "Local-only mode: {} record mapped (authority={})",
+                record.record_type,
+                record.write_authority.value,
+            )
+            return WriteResult(record=record, success=True, status_code=200)
+
+        except Exception as exc:
+            self._stats["errors"] += 1
+            metrics.inc("cop_writer_errors_total")
+            logger.error("CoP write exception: {}", exc)
+            return WriteResult(record=record, success=False, error=str(exc))
 
     def _resolve_endpoint(self, record: CoPRecord) -> str:
-        """Resolve the REST API endpoint for a record type."""
+        """Resolve the REST API endpoint for a record type (legacy path)."""
         base = self._base_url or ""
         if record.record_type == "track":
             return f"{base}/api/v1/tracks"
@@ -258,3 +301,19 @@ class CoPWriter:
             return f"{base}/api/v1/effects"
         else:
             return f"{base}/api/v1/records"
+
+    @classmethod
+    def from_config(cls, config) -> CoPWriter:
+        """Create a CoPWriter from a CoPWriterConfig."""
+        rest_client = CoPRESTClient(
+            base_url=config.cop_api_url,
+            timeout=config.cop_write_timeout,
+            retry_attempts=config.cop_retry_attempts,
+        )
+        return cls(
+            rest_client=rest_client,
+            max_queue_size=config.cop_max_queue_size,
+            auto_threshold=config.cop_auto_threshold,
+            flag_threshold=config.cop_flag_threshold,
+            high_risk_types=config.cop_high_risk_types,
+        )
