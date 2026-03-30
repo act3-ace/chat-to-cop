@@ -11,7 +11,6 @@ Usage:
   python scripts/explore_and_download_chat.py download --output docs/DASH/downloaded/chat
 """
 
-import os
 import re
 import sys
 import zipfile
@@ -36,12 +35,14 @@ CHAT_PATTERNS = re.compile(r"(chat|irc|mirc|log\.txt|speech.to.text)", re.IGNORE
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
+
 def get_auth():
     pat = PAT_FILE.read_text().strip()
     return (DLE_USER, pat)
 
 
 # ── Session with cert handling ───────────────────────────────────────────────
+
 
 def make_session():
     """Create a requests session. On Windows, try system certs first, fall back to no-verify."""
@@ -50,8 +51,7 @@ def make_session():
 
     # Try a test request with default certs (Windows should have DoD certs if CAC-enabled)
     try:
-        resp = s.request("PROPFIND", f"{BASE_URL}/dav/dash-mef/",
-                         headers={"Depth": "0"}, timeout=15)
+        resp = s.request("PROPFIND", f"{BASE_URL}/dav/dash-mef/", headers={"Depth": "0"}, timeout=15)
         resp.raise_for_status()
         print("[OK] Connected with system certificates")
         return s
@@ -61,10 +61,10 @@ def make_session():
         s.verify = False
         # Suppress the InsecureRequestWarning
         import urllib3
+
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         try:
-            resp = s.request("PROPFIND", f"{BASE_URL}/dav/dash-mef/",
-                             headers={"Depth": "0"}, timeout=15)
+            resp = s.request("PROPFIND", f"{BASE_URL}/dav/dash-mef/", headers={"Depth": "0"}, timeout=15)
             resp.raise_for_status()
             print("[OK] Connected (SSL verify disabled)")
             return s
@@ -77,6 +77,7 @@ def make_session():
 
 
 # ── WebDAV operations ────────────────────────────────────────────────────────
+
 
 def webdav_list(session, path):
     """PROPFIND a WebDAV path, return list of (href, is_directory) tuples."""
@@ -152,10 +153,15 @@ def explore_recursive(session, path, depth=0, max_depth=10, pattern=None, result
             elif not pattern:
                 _print(f"{indent}  {name}")
             # When filtering, don't print non-matching files (reduces noise)
-            results.append({
-                "path": href, "name": name, "is_dir": False,
-                "depth": depth, "matches": bool(matches),
-            })
+            results.append(
+                {
+                    "path": href,
+                    "name": name,
+                    "is_dir": False,
+                    "depth": depth,
+                    "matches": bool(matches),
+                }
+            )
 
     return results
 
@@ -179,25 +185,26 @@ def download_file(session, href, dest_path):
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+
 def cmd_explore(session, dav_path, pattern=None, max_depth=10):
     """Explore and print the directory tree, optionally filtering by pattern."""
     pat = re.compile(pattern, re.IGNORECASE) if pattern else None
-    _print(f"\n{'='*60}")
+    _print(f"\n{'=' * 60}")
     _print(f"Exploring: {dav_path}")
     if pat:
         _print(f"Filtering for: {pattern}")
-    _print(f"{'='*60}\n")
+    _print(f"{'=' * 60}\n")
 
     results = explore_recursive(session, dav_path, max_depth=max_depth, pattern=pat)
 
-    _print(f"\n{'='*60}")
+    _print(f"\n{'=' * 60}")
     _print(f"Explored {_dirs_explored} directories, found {_files_found} files total")
     if pat:
         matches = [r for r in results if r.get("matches")]
         _print(f"  {_matches_found} matched '{pattern}':")
         for m in matches:
             _print(f"    {m['path']}")
-    _print(f"{'='*60}")
+    _print(f"{'=' * 60}")
 
     return results
 
@@ -211,9 +218,7 @@ def cmd_download_chat(session, dav_paths, output_dir, max_depth=10):
 
     for dav_path in dav_paths:
         print(f"\nSearching for chat files under: {dav_path}")
-        results = explore_recursive(
-            session, dav_path, max_depth=max_depth, pattern=CHAT_PATTERNS
-        )
+        results = explore_recursive(session, dav_path, max_depth=max_depth, pattern=CHAT_PATTERNS)
         matches = [r for r in results if r.get("matches")]
         all_matches.extend(matches)
 
@@ -221,9 +226,9 @@ def cmd_download_chat(session, dav_paths, output_dir, max_depth=10):
         print("\nNo chat-related files found.")
         return
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Found {len(all_matches)} chat-related files. Downloading...")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     downloaded = []
     for m in all_matches:
@@ -237,7 +242,7 @@ def cmd_download_chat(session, dav_paths, output_dir, max_depth=10):
             print(f"  ✗ Failed: {m['path']}: {e}")
 
     # Auto-extract any zip files
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Extracting zip files...")
     for f in downloaded:
         if f.suffix.lower() == ".zip":
@@ -251,12 +256,13 @@ def cmd_download_chat(session, dav_paths, output_dir, max_depth=10):
             except Exception as e:
                 print(f"  ✗ Failed to extract {f.name}: {e}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Done! {len(downloaded)} files saved to {output}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+
 
 def main():
     import argparse
@@ -266,24 +272,23 @@ def main():
 
     # explore command
     p_explore = sub.add_parser("explore", help="Explore directory tree on Pydio")
-    p_explore.add_argument("path", default="/dav/dash-mef/", nargs="?",
-                           help="WebDAV path to explore")
+    p_explore.add_argument("path", default="/dav/dash-mef/", nargs="?", help="WebDAV path to explore")
     p_explore.add_argument("--pattern", "-p", help="Regex pattern to highlight matching files")
-    p_explore.add_argument("--max-depth", "-d", type=int, default=10,
-                           help="Maximum recursion depth (default: 10)")
+    p_explore.add_argument("--max-depth", "-d", type=int, default=10, help="Maximum recursion depth (default: 10)")
 
     # download command
     p_download = sub.add_parser("download", help="Find and download all chat-related files")
-    p_download.add_argument("paths", nargs="*",
-                            default=[
-                                "/dav/dash-mef/Dash1-PAE/",
-                                "/dav/dash-mef/Dash2-MEF/",
-                                "/dav/dash-mef/Dash3-GBC/",
-                            ],
-                            help="WebDAV paths to search (default: all three DASH events)")
-    p_download.add_argument("--output", "-o",
-                            default="docs/DASH/downloaded/chat",
-                            help="Local output directory")
+    p_download.add_argument(
+        "paths",
+        nargs="*",
+        default=[
+            "/dav/dash-mef/Dash1-PAE/",
+            "/dav/dash-mef/Dash2-MEF/",
+            "/dav/dash-mef/Dash3-GBC/",
+        ],
+        help="WebDAV paths to search (default: all three DASH events)",
+    )
+    p_download.add_argument("--output", "-o", default="docs/DASH/downloaded/chat", help="Local output directory")
     p_download.add_argument("--max-depth", "-d", type=int, default=10)
 
     args = parser.parse_args()
