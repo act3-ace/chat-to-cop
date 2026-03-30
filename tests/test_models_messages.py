@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from chat_to_cop.models.cop_update import EntityUpdate
+from chat_to_cop.models.cop_update import CapabilityImpact, EntityUpdate
 from chat_to_cop.models.messages import ChannelPriority, IRCMessage
 
 
@@ -246,3 +246,57 @@ class TestEntityUpdateBullseyeValidator:
         assert ent.bearing == 316.0
         assert ent.range_nm == 398.0
         assert ent.track_number == "TM677"
+
+
+class TestEntityUpdateCapabilityImpactValidator:
+    """Test that invalid capability_impact values are coerced to None."""
+
+    def test_valid_sense(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "sense"})
+        assert ent.capability_impact == CapabilityImpact.SENSE
+
+    def test_valid_decide(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "decide"})
+        assert ent.capability_impact == CapabilityImpact.DECIDE
+
+    def test_valid_act(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "act"})
+        assert ent.capability_impact == CapabilityImpact.ACT
+
+    def test_valid_collaborate(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "collaborate"})
+        assert ent.capability_impact == CapabilityImpact.COLLABORATE
+
+    def test_invalid_tasking_becomes_none(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "tasking"})
+        assert ent.capability_impact is None
+
+    def test_invalid_radar_contact_becomes_none(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "radar_contact"})
+        assert ent.capability_impact is None
+
+    def test_invalid_extraction_becomes_none(self):
+        ent = EntityUpdate.model_validate({"capability_impact": "extraction"})
+        assert ent.capability_impact is None
+
+    def test_none_stays_none(self):
+        ent = EntityUpdate.model_validate({"capability_impact": None})
+        assert ent.capability_impact is None
+
+    def test_missing_field_defaults_none(self):
+        ent = EntityUpdate.model_validate({})
+        assert ent.capability_impact is None
+
+    def test_valid_value_with_other_fields(self):
+        """Ensure the validator doesn't interfere with other fields."""
+        ent = EntityUpdate.model_validate(
+            {
+                "track_number": "TM636",
+                "callsign": "ORCA01",
+                "capability_impact": "act",
+                "bearing": "240/405",
+            }
+        )
+        assert ent.capability_impact == CapabilityImpact.ACT
+        assert ent.track_number == "TM636"
+        assert ent.bearing == 240.0
