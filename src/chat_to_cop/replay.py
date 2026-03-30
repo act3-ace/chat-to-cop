@@ -31,16 +31,26 @@ from chat_to_cop.output.store import WorldStateStore
 from chat_to_cop.tracking import PipelineTracker
 
 
-def _make_degrading_backend(config: PipelineConfig) -> DegradingBackend:
+def _make_degrading_backend(config: PipelineConfig, bedrock_config: dict | None = None) -> DegradingBackend:
     """Build the degrading backend from config: LLM -> fallback -> regex."""
-    primary = OpenAICompatibleBackend(
-        base_url=config.llm.llm_url,
-        model=config.llm.llm_model,
-        api_key=config.llm.llm_api_key,
-        timeout=config.llm.llm_timeout,
-        max_retries=config.llm.llm_max_retries,
-        num_ctx=config.llm.llm_num_ctx,
-    )
+    if bedrock_config:
+        from chat_to_cop.backend.bedrock import BedrockBackend
+
+        primary = BedrockBackend(
+            model=bedrock_config["model"],
+            aws_region=bedrock_config["region"],
+            timeout=bedrock_config["timeout"],
+            max_retries=config.llm.llm_max_retries,
+        )
+    else:
+        primary = OpenAICompatibleBackend(
+            base_url=config.llm.llm_url,
+            model=config.llm.llm_model,
+            api_key=config.llm.llm_api_key,
+            timeout=config.llm.llm_timeout,
+            max_retries=config.llm.llm_max_retries,
+            num_ctx=config.llm.llm_num_ctx,
+        )
     # Only add a separate fallback if it's a different model
     backends = [primary]
     timeouts = [config.llm.llm_timeout]
@@ -69,12 +79,13 @@ async def run_replay(
     path: Path,
     config: PipelineConfig,
     speed: float,
+    bedrock_config: dict | None = None,
 ) -> None:
     """Run the full replay pipeline with supervisor + fusion."""
 
     # Build the degrading backend factory for the supervisor
     def backend_factory():
-        return _make_degrading_backend(config)
+        return _make_degrading_backend(config, bedrock_config=bedrock_config)
 
     supervisor = Supervisor(backend_factory=backend_factory)
     fusion = FusionAgent()
@@ -248,6 +259,16 @@ def main() -> None:
         default=None,
         help="Context window size for Ollama models (default: 8192)",
     )
+    parser.add_argument(
+        "--bedrock",
+        action="store_true",
+        help="Use AWS Bedrock (Claude) instead of OpenAI-compatible endpoint",
+    )
+    parser.add_argument(
+        "--bedrock-region",
+        default="us-gov-west-1",
+        help="AWS region for Bedrock (default: us-gov-west-1)",
+    )
 
     args = parser.parse_args()
 
@@ -268,7 +289,18 @@ def main() -> None:
     if args.num_ctx:
         config.llm.llm_num_ctx = args.num_ctx
 
-    asyncio.run(run_replay(args.path, config, args.speed))
+    # Bedrock mode: override the backend factory
+    bedrock_config = None
+    if args.bedrock:
+        bedrock_config = {
+            "model": args.model or "us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "region": args.bedrock_region,
+            "timeout": args.timeout or config.llm.llm_timeout,
+        }
+        # Set the model name in config for logging
+        config.llm.llm_model = bedrock_config["model"]
+
+    asyncio.run(run_replay(args.path, config, args.speed, bedrock_config=bedrock_config))
 
 
 if __name__ == "__main__":
