@@ -102,6 +102,20 @@ class TestBuildSystemPrompt:
         assert "EW" in DEFAULT_GLOSSARY
         assert "SIGINT" in DEFAULT_GLOSSARY
 
+    def test_prompt_contains_radio_banter_noise_examples(self):
+        prompt = build_system_prompt()
+        # Radio check few-shot examples
+        assert "loud and clear the Vegas SL how me" in prompt
+        assert "Radio check, no world-state change" in prompt
+        # Banter few-shot example
+        assert "didn't say over, over" in prompt
+        assert "Communication protocol discussion" in prompt
+        # Radio setup
+        assert "let's do some radio tracks" in prompt
+        # Sign-off
+        assert "Buh-bye now" in prompt
+        assert "Sign-off, no world-state change" in prompt
+
 
 class TestOpenAICompatibleBackend:
     """Test backend initialization and error handling."""
