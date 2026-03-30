@@ -17,6 +17,7 @@ class TestLLMBackendConfig:
         assert cfg.llm_model == "qwen2.5:7b"
         assert cfg.llm_timeout == 120.0
         assert cfg.llm_max_retries == 2
+        assert cfg.llm_num_ctx == 8192
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("CHAT_TO_COP_LLM_URL", "http://remote:8080/v1")
@@ -24,6 +25,11 @@ class TestLLMBackendConfig:
         cfg = LLMBackendConfig()
         assert cfg.llm_url == "http://remote:8080/v1"
         assert cfg.llm_model == "llama3:70b"
+
+    def test_num_ctx_env_override(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_LLM_NUM_CTX", "16384")
+        cfg = LLMBackendConfig()
+        assert cfg.llm_num_ctx == 16384
 
 
 class TestFallbackConfig:
