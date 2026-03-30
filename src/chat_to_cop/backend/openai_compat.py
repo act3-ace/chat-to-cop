@@ -79,13 +79,16 @@ class OpenAICompatibleBackend:
 
         try:
             async with metrics.async_timer("extraction_latency_seconds", labels=labels):
-                result = await self._client.chat.completions.create(
+                kwargs = dict(
                     model=self.model,
                     messages=messages,
                     response_model=schema,
                     max_retries=self._max_retries,
-                    extra_body={"options": {"num_ctx": self.num_ctx}},
                 )
+                # Only pass num_ctx for Ollama (other providers reject unknown options)
+                if self.num_ctx and ("11434" in self.base_url or "ollama" in self.base_url.lower()):
+                    kwargs["extra_body"] = {"options": {"num_ctx": self.num_ctx}}
+                result = await self._client.chat.completions.create(**kwargs)
             metrics.inc("backend_successes_total", labels=labels)
             return result
 
