@@ -85,6 +85,8 @@ EOF
 OLLAMA_MODELS=/tmp/ollama-models ollama create qwen2.5:14b-8k -f /tmp/Modelfile14b
 ```
 
+**Provenance note:** The `-8k` suffix is a deployment configuration, not a different model. The weights are identical to the base model; only the context window parameter changes. Provenance records will report the Ollama model name including the suffix (e.g., `qwen2.5:7b-8k`). See [SYSTEM_CARD.md](SYSTEM_CARD.md) for details.
+
 ### 6. Clone and Install chat-to-cop
 
 ```bash
