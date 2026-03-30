@@ -2,11 +2,15 @@
 
 Slide content and speaker notes for the chat-to-cop technical briefing. Each section is one slide. Adapt talking points based on audience (battle managers, engineers, researchers, leadership).
 
+For additional context, meeting notes, and DASH event data, see the [C2ES Google Drive](https://drive.google.com/drive/u/0/folders/1po6MGtfA5GF8QRub3X5LVpA_spJ9E7zz).
+
 ---
 
 ## Slide 1: Title
 
-**Chat-to-CoP: AI Staff Officer for Real-Time World-State Extraction**
+**Chat-to-CoP: AI Staff Officer for MASH 2026**
+
+*A starting point to spark discussion -- not a finished product*
 
 ACT3 / C2ES -- Air Force Research Laboratory
 
@@ -14,7 +18,7 @@ MASH Wargame Exercise, May 2026
 
 Scott Clouse, Chief AI Officer
 
-**Speaker notes:** This is a technical overview of the chat-to-cop system. Depending on the audience, emphasize different parts: for battle managers, focus on slides 2-4 and 9-10. For engineers, focus on 3-6. For researchers and leadership, focus on 7-8 and 11-12. The system is pre-deployment, IL2 unclassified, targeting the MASH event at H2O Las Vegas.
+**Speaker notes:** This is a starting point designed to spark discussion with operators and developers. We need their input on what matters most. Depending on the audience, emphasize different parts: for battle managers, focus on slides 2-5 and 9-10. For engineers, focus on 3-7. For researchers and leadership, focus on 8, 11-12. The system is pre-deployment, IL2 unclassified, targeting the MASH event at H2O Las Vegas.
 
 ---
 
@@ -43,11 +47,38 @@ During DASH/MASH exercises:
 
 ---
 
-## Slide 3: The Solution
+## Slide 3: The Pit Structure
 
-**Architecture: AI staff officers watching every radio net**
+**Each pit = Pit Boss + 2 Battle Managers, working as a coordinated unit**
 
-```
+| Pit | Example Roles |
+| --- | ------------- |
+| Vegas | Vegas_PB (pit boss), Vegas_Strike, Vegas_Tank |
+| Hydro | HYDRO_SL (pit boss), HYDRO_Strike, HYDRO_Tank |
+| Crusher | Crusher_PB, Crusher_Strike, Crusher_Surv |
+| Taipan | Taipan_PB, Taipan_Strike, Taipan_Tank |
+| Mesquite | Mesquite_PB, Mesquite_Strike, Mesquite_Tank |
+
+Plus: Intel/Fires coordinators, White Cell (WF_* -- scenario injection, most information-dense)
+
+Operators communicate via IRC (typed) and voice radio (STT into `#stt_*` channels).
+
+**Speaker notes:** Understanding the pit structure is essential. The pit boss synthesizes information for higher echelons. The two BMs handle specific functions -- strike planning, tanker coordination, surveillance. The agent must learn the rhythm of each pit: who reports to whom, which BM tracks which assets, how the pit boss rolls up information. White cell messages are the most information-dense because they inject scenario events. Voice radio is transcribed by STT and piped into IRC as separate channels -- these are noisy but carry real-time information.
+
+---
+
+## Slide 4: The Solution -- Background Agent
+
+**An AI agent that works in the BACKGROUND on behalf of operators.**
+
+- Operators never interact with the agent directly -- **not a chatbot**
+- Agent sits on the IRC server, reads every message silently
+- Highlights relevant information, pushes structured data to the CoP
+- Keeps the human in the loop via confidence scores and flagged updates
+- Learns by observing: models each operator's rhythm and jargon
+- Works for both expert and novice operators
+
+```text
 IRC Server (WebSocket, port 8097)
         |
    Message Router
@@ -62,27 +93,24 @@ IRC Server (WebSocket, port 8097)
         |
    Write Authority (auto / flagged / human)
         |
-   CoP Database
+   CoP Database  -->  Vendor Viz Tools
 ```
 
-Each agent maintains:
-- Conversation context (last 50 messages)
-- Learned speaker profiles
-- Current world-state belief
-- Graceful fallback chain (LLM -> regex -> passthrough)
+Each agent maintains: conversation context (last 50 messages), learned speaker profiles, current world-state belief, graceful fallback chain (LLM -> regex -> passthrough).
 
-Single desktop workstation with GPU. Docker Compose. `docker compose up`.
+Single box, single GPU. Docker Compose. `docker compose up`.
 
-**Speaker notes:** One agent per IRC channel, like having a dedicated staff officer listening to each radio net. Agents are stateful -- they remember what was said 10 minutes ago, they learn who each speaker is, they track what they believe about the battlespace. The fusion agent sits on top and catches duplicates when the same event is reported on multiple channels (typed chat and voice STT often echo each other). The whole thing runs on a single workstation with a GPU, deployed via Docker. For Jennifer/pipeline engineers: this is async Python, no framework, just instructor + Pydantic + pybreaker. For Juan/711 HPW: the LLM interface is OpenAI-compatible everywhere -- swap models with one config change.
+**Speaker notes:** The key design decision from the March 2026 all-day meeting: agents work in the background on behalf of human operators. They are like a digital assistant that learns what the operator does and helps them do it faster. Nothing changes about operator workflow -- they keep typing in chat, keep talking on radio. The system watches passively and pushes structured data to the CoP. The whole thing runs on a single workstation with a GPU. Internet is expected at H2O for commercial model access as well. For Jennifer/pipeline engineers: this is async Python, no framework, just instructor + Pydantic + pybreaker. For Juan/711 HPW: the LLM interface is OpenAI-compatible everywhere -- swap models with one config change.
 
 ---
 
-## Slide 4: How It Works
+## Slide 5: How It Works
 
 **Real message, end to end**
 
 **Input (DASH 3, #c2_coord):**
-```
+
+```text
 HYDRO_SL: SITREP / AIR: ZEUS 12,13,14 shot down by TTG;
 YAMA11 flight shot down by TTG
 ```
@@ -98,16 +126,16 @@ YAMA11 flight shot down by TTG
 
 **What happened:**
 1. IRC parse -> channel agent adds to conversation window
-2. Speaker model lookup: HYDRO_SL = Section Lead, Hydro BMA, high reliability
+2. Speaker model lookup: HYDRO_SL = Pit Boss, Hydro BMA, high reliability
 3. LLM extracts 4 entity status changes with structured JSON
 4. Fusion agent: matches against STT echo, suppresses duplicate, boosts confidence
 5. Write authority: confidence 0.95, not high-risk type -> auto-write to CoP
 
-**Speaker notes:** Walk through each step. The key points for different audiences: For battle managers -- this is a SITREP that would have taken someone 2-3 minutes to manually enter into the CoP. The system does it in 6 seconds. For engineers -- the LLM output is a Pydantic model enforced by instructor, so it always conforms to schema. The fusion agent caught the STT duplicate automatically. For Jared/researchers -- notice the speaker model already knows HYDRO_SL is a Section Lead with high reliability. That was learned from prior messages in the session, not pre-configured.
+**Speaker notes:** Walk through each step. The key points for different audiences: For battle managers -- this is a SITREP that would have taken someone 2-3 minutes to manually enter into the CoP. The system does it in 6 seconds. For engineers -- the LLM output is a Pydantic model enforced by instructor, so it always conforms to schema. The fusion agent caught the STT duplicate automatically. For Jared/researchers -- notice the speaker model already knows HYDRO_SL is the Hydro Pit Boss with high reliability. That was learned from prior messages in the session, not pre-configured.
 
 ---
 
-## Slide 5: Key Innovation -- LLM as Ontology
+## Slide 6: Key Innovation -- LLM as Ontology
 
 **No predefined schema for the world. The model understands jargon.**
 
@@ -132,11 +160,11 @@ Our approach: The LLM maps all three to `{entity_type: HOSTILE_AIR, count: 2, st
 
 ---
 
-## Slide 6: Graceful Degradation
+## Slide 7: Graceful Degradation
 
 **Flow never stops. Quality degrades; output never halts.**
 
-```
+```text
 Level 1: Primary LLM (7B+)         confidence ~0.9     NORMAL
     | circuit breaker (3 fails)
 Level 2: Fallback LLM (3B)         confidence ~0.7     DEGRADED
@@ -161,7 +189,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
-## Slide 7: Results -- Quality
+## Slide 8: Results -- Quality
 
 **Extraction quality (synthetic data, entity-level scoring)**
 
@@ -190,7 +218,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
-## Slide 8: Results -- Performance
+## Slide 9: Results -- Performance
 
 **GPU is required for real-time operation.**
 
@@ -215,11 +243,11 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
-## Slide 9: Operational Context
+## Slide 10: Operational Context
 
 **Where it sits in the MASH pit**
 
-```
+```text
 +------------------+     +-------------------+
 |  Battle Mgmt Pit |     | Chat-to-CoP       |
 |  (Vegas, Hydro,  |     | Workstation       |
@@ -249,7 +277,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
-## Slide 10: Safety and Trust
+## Slide 11: Safety and Trust
 
 **Wrong CoP data is worse than no CoP data.**
 
@@ -279,7 +307,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
-## Slide 11: Research Value
+## Slide 12: Research Value
 
 **This system IS a miniature FACS research platform.**
 
@@ -309,7 +337,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
-## Slide 12: Status and Path to MASH
+## Slide 13: Status and Path to MASH
 
 **Sprint status (as of March 2026):**
 
@@ -332,6 +360,8 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 - System card, dataset cards, labeling guide
 
 **What remains:**
+
+- Commercial model integration (Mia's priority upon return, with Colin/Jennifer assisting)
 - Full GPU replay validation (#16, in progress)
 - CoP database writer (#17, blocked on contractor schema)
 - RAI provenance / MLflow integration (#18)
@@ -340,15 +370,63 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 - MASH-specific configuration (bullseye reference, channel list)
 
 **Risks:**
-1. **GPU hardware at H2O** -- need confirmation of desktop GPU availability (RTX 4090/5090)
-2. **CoP database schema** -- blocked on contractor delivery; current output goes to local SQLite
-3. **No ground truth labels** -- real-data accuracy is unknown without labeled test set
 
-**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors, GPU hardware confirmation at H2O). The 549 test count means CI is enforced on every push -- nothing merges that breaks tests. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The question is not whether it works -- the DASH 3 replay proves the pipeline operates end-to-end. The question is how good the extraction quality will be with the target model and hardware.
+1. **CoP database schema** -- blocked on contractor delivery; current output goes to local SQLite
+2. **No ground truth labels** -- real-data accuracy is unknown without labeled test set
+3. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
+
+**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Single box, single GPU is confirmed sufficient. Internet at H2O is expected, enabling commercial model access with sub-second latency. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 549 test count means CI is enforced on every push -- nothing merges that breaks tests. Mia's first priority is commercial model integration; Colin or Jennifer will assist with piping those into the chat system and database. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end.
 
 ---
 
-## Slide 13: Demo / Q&A
+## Slide 14: May Strategy -- Virtuous Cycle Infrastructure
+
+**MASH is not a product demo. It is infrastructure for a virtuous cycle.**
+
+```text
+Deploy rudimentary agent
+        |
+        v
+Process live MASH data -----> Operators see output
+        |                            |
+        v                            v
+Capture interaction data <---- Operator feedback
+        |
+        v
+Labeled training data for next version
+```
+
+- Deploy a **handwired, rudimentary agent** that works well enough to be useful
+- Establish infrastructure to capture feedback from operators and developers
+- Operator interaction generates labeled training data
+- Present a **starting point** to spark discussion -- not a finished product
+- LLMs are inevitable as a utility; the question is how to use them well
+
+**Speaker notes:** This framing comes directly from the March 2026 C2ES All-Day Meeting. The goal in May is not to impress with accuracy -- it is to establish the infrastructure so that every exercise makes the next one better. The agent processes live data, operators interact with the output, and that interaction generates the labeled training data needed to improve the model. A customized or few-shot model is necessary due to military jargon density. The feedback we need from operators: what information matters most, how should confidence be displayed, where does the agent help versus get in the way.
+
+---
+
+## Slide 15: What Vendors Need -- Structured API Output
+
+**The critical need (from C2ES All-Day Meeting, March 2026):**
+
+> "A highly structured API endpoint to augment Common Operating Picture data, rather than continuing to process unstructured data."
+
+**What chat-to-cop provides:**
+
+- Schema-conformant JSON via REST API
+- Every record: confidence score, extraction method, source channel, speaker, timestamp
+- Full provenance chain: raw message -> extraction -> fusion -> CoP write
+- Tiered write authority: auto / flagged / human review
+- Pydantic-validated output -- schema errors caught before they reach the CoP
+
+**Context:** The virtual real-time streaming vendor was cut. The HLT team and our pipeline must fill that gap. TMDA (Transformational Model for Decision Advantage) is the broader framework. Budget: ~$2M/year baseline covering key personnel.
+
+**Speaker notes:** This is what makes the system useful to the broader CoP ecosystem. Vendor visualization tools can poll our structured API endpoint. The tiered write authority prevents low-confidence updates from automatically modifying the CoP. The fact that the streaming vendor was cut increases the urgency -- someone needs to produce structured data from unstructured comms, and that is exactly what this pipeline does. The CoP database writer (#17) is blocked on the contractor delivering the schema, but the tiered write authority design is complete and tested.
+
+---
+
+## Slide 16: Demo / Q&A
 
 **Live demo options:**
 
