@@ -51,6 +51,9 @@ export OLLAMA_MODELS=/tmp/ollama-models
 mkdir -p /tmp/ollama-models
 OLLAMA_MODELS=/tmp/ollama-models ollama serve &
 sleep 5
+
+# Optional: suppress Ollama's [GIN] HTTP access logs (noisy but harmless)
+# OLLAMA_MODELS=/tmp/ollama-models ollama serve 2>/dev/null &
 ```
 
 **Important:** `/tmp` is local SSD (~34GB). Models stored here are lost when the instance shuts down. Re-pull each session.
@@ -139,6 +142,19 @@ Use `/tmp` instead of home directory for models and repo.
 
 ### Slow inference (>30s per message)
 Check that GPU is being used: look for `device=CUDA0` in Ollama logs. If it says `device=CPU`, the NVIDIA drivers aren't loaded.
+
+### Noisy `[GIN]` log lines in output
+These are Ollama's internal HTTP access logs (e.g., `[GIN] 200 | 7.75s | POST "/v1/chat/completions"`). They're harmless but noisy. Suppress by redirecting Ollama's stderr:
+
+```bash
+OLLAMA_MODELS=/tmp/ollama-models ollama serve 2>/dev/null &
+```
+
+Or if you want to keep Ollama errors but suppress GIN specifically:
+
+```bash
+OLLAMA_MODELS=/tmp/ollama-models ollama serve 2>&1 | grep -v '^\[GIN\]' &
+```
 
 ### "truncating input prompt"
 The conversation window exceeds the model's context length. This is normal for later messages in a long sequence. Consider reducing `window_size` in config.
