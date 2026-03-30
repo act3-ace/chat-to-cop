@@ -1,6 +1,8 @@
 # Data (downloaded separately via scripts)
 data/
 !data/dash3/
+!data/labels/
+!data/calibration/
 *.zip
 !data/dash3/*.zip
 *.rar

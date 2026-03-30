@@ -115,6 +115,8 @@ def _label_to_dict(msg: IRCMessage, result: CoPUpdate, model: str) -> dict:
         "extraction_method": result.extraction_method,
         "model": model,
         "reasoning": result.reasoning,
+        "source": "llm_judge",
+        "labeler": model,
     }
 
 
@@ -131,6 +133,8 @@ def _noise_label(msg: IRCMessage, model: str) -> dict:
         "extraction_method": "noise_filter",
         "model": model,
         "reasoning": "Pre-filtered as noise (ack, dot, URL, exercise control, or too short)",
+        "source": "llm_judge",
+        "labeler": model,
     }
 
 
@@ -275,6 +279,8 @@ async def generate_labels(
                             "extraction_method": "error",
                             "model": model,
                             "reasoning": f"Failed after {max_retries} retries: {e}",
+                            "source": "llm_judge",
+                            "labeler": model,
                         }
                         f.write(json.dumps(error_label, ensure_ascii=False) + "\n")
                         f.flush()
@@ -298,6 +304,8 @@ async def generate_labels(
                         "extraction_method": "error",
                         "model": model,
                         "reasoning": f"Permanent error: {e}",
+                        "source": "llm_judge",
+                        "labeler": model,
                     }
                     f.write(json.dumps(error_label, ensure_ascii=False) + "\n")
                     f.flush()
