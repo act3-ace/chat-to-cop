@@ -182,6 +182,45 @@ def build_system_prompt(
         'Message: "<WF2> Radio check Radio check C2 cord."',
         "Output: update_type=none, confidence=0.0, entities=[]",
         "  reasoning: Radio check, not operational content",
+        "",
+        'Message: "JPRC_COORD: MISREP / ZEUS14 pilot ejected vic N22.15 W078.30, initiating CSAR"',
+        "Output: update_type=csar, confidence=0.95",
+        "  entities: [{callsign:ZEUS14, operational_status:PILOT_EJECTED,",
+        "    latitude:22.15, longitude:-78.30, metadata:{event:CSAR_initiated, report_type:MISREP}}]",
+        "",
+        'Message: "RESCORT01: survivor located, SANDY21 on station, extraction in progress"',
+        "Output: update_type=csar, confidence=0.9",
+        "  entities: [{callsign:RESCORT01, metadata:{role:CSAR_escort}},",
+        "    {callsign:SANDY21, operational_status:ON_STATION, metadata:{mission:CSAR_extraction}}]",
+        "",
+        'Message: "JPRC: ZEUS14 pilot recovered, DUSTOFF inbound to FARP DELTA"',
+        "Output: update_type=csar, confidence=0.95",
+        "  entities: [{callsign:ZEUS14, operational_status:PILOT_RECOVERED,",
+        "    metadata:{recovery_status:recovered, destination:FARP DELTA}}]",
+        "",
+        'Message: "FIRES_COORD: fire mission TGT AQ1234, 2x JDAM, TOT 1430Z"',
+        "Output: update_type=fire_mission, confidence=0.9",
+        "  entities: [{track_number:AQ1234, metadata:{weapon:JDAM, qty:2, TOT:1430Z}}]",
+        "",
+        'Message: "3MARDIV_FIRES: CAS request, TIC at grid 17QNE9779269855, troops in contact"',
+        "Output: update_type=fire_mission, confidence=0.9",
+        "  entities: [{metadata:{mission_type:CAS, grid:17QNE9779269855, situation:troops_in_contact}}]",
+        "",
+        'Message: "FIRES_BDA: BDA TGT AQ1234, 2x hits, target destroyed"',
+        "Output: update_type=fire_mission, confidence=0.9",
+        "  entities: [{track_number:AQ1234, operational_status:DESTROYED,",
+        "    metadata:{BDA:2x_hits, assessment:target_destroyed}}]",
+        "",
+        'Message: "EW_COORD: GPS jamming detected vicinity waypoint ALPHA, affecting blue CAS stack"',
+        "Output: update_type=cyber_ew, confidence=0.85",
+        "  entities: [{metadata:{threat_type:GPS_jamming, location:waypoint ALPHA,",
+        "    impact:blue CAS stack affected}, capability_impact:act}]",
+        "",
+        'Message: "SIGINT01: enemy comms intercept, SA-20 battery activating, grid 38TLM1234567890"',
+        "Output: update_type=cyber_ew, confidence=0.85",
+        "  entities: [{platform_type:SA-20, affiliation:HOSTILE,",
+        "    operational_status:ACTIVE, metadata:{grid:38TLM1234567890,",
+        "    source:SIGINT, event:battery_activating}, capability_impact:sense}]",
     ]
 
     if glossary:
@@ -217,4 +256,16 @@ DEFAULT_GLOSSARY = """- "gadget bent" = radar failure
 - "CSAR" = combat search and rescue
 - "BMA" = battle management area
 - "AR" = aerial refueling
-- "on boom" = currently refueling"""
+- "on boom" = currently refueling
+- "MISREP" = mission report (personnel recovery)
+- "TOT" = time on target
+- "JDAM" = Joint Direct Attack Munition (GPS-guided bomb)
+- "JPRC" = Joint Personnel Recovery Center
+- "SANDY" = A-10/CSAR on-scene commander callsign
+- "RESCORT" = rescue escort
+- "DUSTOFF" = medical evacuation helicopter
+- "CAS" = close air support
+- "TIC" = troops in contact
+- "FARP" = forward arming and refueling point
+- "EW" = electronic warfare
+- "SIGINT" = signals intelligence"""
