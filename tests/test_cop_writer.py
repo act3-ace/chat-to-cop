@@ -1,4 +1,4 @@
-"""Tests for CoP schema mapping, write authority classification, and CoPWriter."""
+"""Tests for CoP schema mapping, write authority classification, CoPWriter, and CoPRESTClient."""
 
 import asyncio
 from datetime import datetime, timezone
@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from chat_to_cop.config import CoPWriterConfig
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
+from chat_to_cop.output.cop_rest_client import CoPRESTClient, SendResult
 from chat_to_cop.output.cop_schema import (
     Affiliation,
     BattleEffect,
@@ -88,6 +90,24 @@ class _FakeHTTPClient:
         return _FakeResponse(self._status_code)
 
 
+class _FakeRESTClient:
+    """Mock CoPRESTClient for testing writer integration."""
+
+    def __init__(self, success: bool = True, dry_run: bool = False, status_code: int = 201):
+        self.records_sent: list[CoPRecord] = []
+        self._success = success
+        self._dry_run = dry_run
+        self._status_code = status_code
+
+    async def send_record(self, record: CoPRecord) -> SendResult:
+        self.records_sent.append(record)
+        return SendResult(
+            success=self._success,
+            status_code=self._status_code,
+            dry_run=self._dry_run,
+        )
+
+
 # ===========================================================================
 # Schema mapping tests
 # ===========================================================================
@@ -128,6 +148,26 @@ class TestWriteAuthorityClassification:
 
     def test_cyber_ew_is_always_human(self):
         assert classify_write_authority(0.75, "cyber_ew") == WriteAuthority.HUMAN
+
+    def test_custom_thresholds_auto(self):
+        # With auto_threshold=0.5, a 0.55 should be AUTO (not FLAGGED)
+        assert classify_write_authority(0.55, "fuel", auto_threshold=0.5) == WriteAuthority.AUTO
+
+    def test_custom_thresholds_flagged(self):
+        # With flag_threshold=0.3, a 0.35 should be FLAGGED (not HUMAN)
+        assert classify_write_authority(0.35, "fuel", flag_threshold=0.3) == WriteAuthority.FLAGGED
+
+    def test_custom_thresholds_human(self):
+        # With flag_threshold=0.5, a 0.45 should be HUMAN
+        assert classify_write_authority(0.45, "fuel", flag_threshold=0.5) == WriteAuthority.HUMAN
+
+    def test_custom_high_risk_types(self):
+        # "fuel" is not in default high_risk, but we can make it high-risk
+        assert classify_write_authority(0.95, "fuel", high_risk_types=frozenset(["fuel"])) == WriteAuthority.HUMAN
+
+    def test_custom_high_risk_removes_default(self):
+        # With a custom set that doesn't include "weapons", weapons should follow confidence rules
+        assert classify_write_authority(0.95, "weapons", high_risk_types=frozenset(["nuclear"])) == WriteAuthority.AUTO
 
 
 class TestCoPUpdateToRecords:
@@ -251,6 +291,12 @@ class TestCoPUpdateToRecords:
         assert records[0].write_authority == WriteAuthority.HUMAN
         assert "weapons" in records[0].review_flag
 
+    def test_custom_thresholds_in_records(self):
+        # With auto_threshold=0.5, a 0.55 confidence update should be AUTO
+        update = _make_update(confidence=0.55)
+        records = cop_update_to_records(update, auto_threshold=0.5)
+        assert records[0].write_authority == WriteAuthority.AUTO
+
 
 # ===========================================================================
 # CoPWriter tests
@@ -297,9 +343,18 @@ class TestCoPWriterLocalMode:
 
         asyncio.run(run())
 
+    def test_total_records_tracked(self):
+        async def run():
+            writer = CoPWriter()
+            await writer.push_update(_make_update(confidence=0.85))
+            await writer.push_update(_make_update(confidence=0.55))
+            assert writer.stats["total_records"] == 2
+
+        asyncio.run(run())
+
 
 class TestCoPWriterHTTPMode:
-    """Test CoPWriter with a mock HTTP client."""
+    """Test CoPWriter with a mock HTTP client (legacy path)."""
 
     def test_sends_to_tracks_endpoint(self):
         async def run():
@@ -317,8 +372,6 @@ class TestCoPWriterHTTPMode:
             client = _FakeHTTPClient(status_code=201)
             writer = CoPWriter(cop_base_url="http://cop.local", http_client=client)
             # Weapons are HIGH_RISK -> HUMAN queue, so they don't hit HTTP
-            # Use a low-risk type that produces track + effect for HTTP test
-            # Actually, weapons always go to human queue. Let's verify that.
             await writer.push_update(_make_update(update_type=UpdateType.WEAPONS, confidence=0.9))
             # Weapons are human-queued, not sent via HTTP
             assert len(client.calls) == 0
@@ -346,6 +399,62 @@ class TestCoPWriterHTTPMode:
             assert results[0].success is False
             assert "refused" in results[0].error
             assert writer.stats["errors"] == 1
+
+        asyncio.run(run())
+
+
+class TestCoPWriterRESTClientMode:
+    """Test CoPWriter with a mock CoPRESTClient."""
+
+    def test_delegates_to_rest_client(self):
+        async def run():
+            rest_client = _FakeRESTClient(success=True, status_code=201)
+            writer = CoPWriter(rest_client=rest_client)
+            results = await writer.push_update(_make_update(confidence=0.85))
+            assert len(results) == 1
+            assert results[0].success is True
+            assert results[0].status_code == 201
+            assert len(rest_client.records_sent) == 1
+
+        asyncio.run(run())
+
+    def test_rest_client_dry_run_flag(self):
+        async def run():
+            rest_client = _FakeRESTClient(success=True, dry_run=True)
+            writer = CoPWriter(rest_client=rest_client)
+            results = await writer.push_update(_make_update(confidence=0.85))
+            assert results[0].dry_run is True
+
+        asyncio.run(run())
+
+    def test_rest_client_failure_increments_errors(self):
+        async def run():
+            rest_client = _FakeRESTClient(success=False, status_code=500)
+            writer = CoPWriter(rest_client=rest_client)
+            results = await writer.push_update(_make_update(confidence=0.85))
+            assert results[0].success is False
+            assert writer.stats["errors"] == 1
+
+        asyncio.run(run())
+
+    def test_human_queue_not_sent_to_rest_client(self):
+        async def run():
+            rest_client = _FakeRESTClient()
+            writer = CoPWriter(rest_client=rest_client)
+            await writer.push_update(_make_update(update_type=UpdateType.WEAPONS, confidence=0.9))
+            # Weapons -> human queue, never sent to REST client
+            assert len(rest_client.records_sent) == 0
+            assert writer.human_queue_size == 2
+
+        asyncio.run(run())
+
+    def test_flagged_sent_to_rest_client(self):
+        async def run():
+            rest_client = _FakeRESTClient(success=True, status_code=201)
+            writer = CoPWriter(rest_client=rest_client)
+            await writer.push_update(_make_update(confidence=0.55))
+            assert len(rest_client.records_sent) == 1
+            assert writer.stats["flagged_writes"] == 1
 
         asyncio.run(run())
 
@@ -408,6 +517,23 @@ class TestCoPWriterKillSwitch:
             assert len(results) == 1
             assert results[0].success is True
             assert writer.stats["auto_writes"] == 1
+
+        asyncio.run(run())
+
+    def test_pause_with_rest_client(self):
+        async def run():
+            rest_client = _FakeRESTClient()
+            writer = CoPWriter(rest_client=rest_client)
+            writer.pause()
+            await writer.push_update(_make_update(confidence=0.85))
+            # Nothing sent while paused
+            assert len(rest_client.records_sent) == 0
+            assert writer.pause_queue_size == 1
+            # Resume and flush
+            writer.resume()
+            results = await writer.flush_pause_queue()
+            assert len(results) == 1
+            assert len(rest_client.records_sent) == 1
 
         asyncio.run(run())
 
@@ -522,3 +648,179 @@ class TestCoPSchemaModels:
         restored = CoPRecord.model_validate_json(json_str)
         assert restored.track.track_id == "TM636"
         assert restored.write_authority == WriteAuthority.AUTO
+
+
+# ===========================================================================
+# CoPRESTClient tests
+# ===========================================================================
+
+
+class TestCoPRESTClientDryRun:
+    """Test CoPRESTClient in dry-run mode (empty base URL)."""
+
+    def test_dry_run_when_no_url(self):
+        client = CoPRESTClient(base_url="")
+        assert client.dry_run is True
+
+    def test_not_dry_run_when_url_set(self):
+        client = CoPRESTClient(base_url="http://cop.local")
+        assert client.dry_run is False
+
+    def test_dry_run_send_returns_success(self):
+        async def run():
+            client = CoPRESTClient(base_url="")
+            record = CoPRecord(
+                record_type="track",
+                track=Track(track_id="TM636"),
+                write_authority=WriteAuthority.AUTO,
+                extraction_confidence=0.85,
+            )
+            result = await client.send_record(record)
+            assert result.success is True
+            assert result.dry_run is True
+            assert result.status_code == 200
+
+        asyncio.run(run())
+
+    def test_dry_run_increments_stats(self):
+        async def run():
+            client = CoPRESTClient(base_url="")
+            record = CoPRecord(
+                record_type="track",
+                track=Track(track_id="TM636"),
+                write_authority=WriteAuthority.AUTO,
+                extraction_confidence=0.85,
+            )
+            await client.send_record(record)
+            await client.send_record(record)
+            assert client.stats["dry_run_logged"] == 2
+            assert client.stats["requests_sent"] == 0
+
+        asyncio.run(run())
+
+
+class TestCoPRESTClientEndpoints:
+    """Test endpoint resolution."""
+
+    def test_track_endpoint(self):
+        client = CoPRESTClient(base_url="")
+        record = CoPRecord(
+            record_type="track",
+            track=Track(track_id="TM636"),
+            write_authority=WriteAuthority.AUTO,
+            extraction_confidence=0.85,
+        )
+        assert client._resolve_endpoint(record) == "/api/v1/tracks"
+
+    def test_battle_effect_endpoint(self):
+        client = CoPRESTClient(base_url="")
+        record = CoPRecord(
+            record_type="battle_effect",
+            battle_effect=BattleEffect(effect_id="DA011"),
+            write_authority=WriteAuthority.AUTO,
+            extraction_confidence=0.85,
+        )
+        assert client._resolve_endpoint(record) == "/api/v1/effects"
+
+    def test_unknown_type_endpoint(self):
+        client = CoPRESTClient(base_url="")
+        record = CoPRecord(
+            record_type="other",
+            write_authority=WriteAuthority.AUTO,
+            extraction_confidence=0.85,
+        )
+        assert client._resolve_endpoint(record) == "/api/v1/records"
+
+
+class TestSendResult:
+    """Test SendResult data class."""
+
+    def test_success_result(self):
+        r = SendResult(success=True, status_code=201)
+        assert r.success is True
+        assert r.status_code == 201
+        assert r.error is None
+        assert r.dry_run is False
+
+    def test_failure_result(self):
+        r = SendResult(success=False, error="Connection refused")
+        assert r.success is False
+        assert r.error == "Connection refused"
+        assert r.status_code is None
+
+    def test_dry_run_result(self):
+        r = SendResult(success=True, status_code=200, dry_run=True)
+        assert r.dry_run is True
+
+
+# ===========================================================================
+# Config tests
+# ===========================================================================
+
+
+class TestCoPWriterConfig:
+    """Test CoPWriterConfig defaults and from_config factory."""
+
+    def test_defaults(self):
+        config = CoPWriterConfig()
+        assert config.cop_api_url == ""
+        assert config.cop_auto_threshold == 0.7
+        assert config.cop_flag_threshold == 0.4
+        assert "weapons" in config.cop_high_risk_types
+        assert "csar" in config.cop_high_risk_types
+        assert "fire_mission" in config.cop_high_risk_types
+        assert "cyber_ew" in config.cop_high_risk_types
+
+    def test_from_config_creates_writer(self):
+        config = CoPWriterConfig()
+        writer = CoPWriter.from_config(config)
+        assert writer._auto_threshold == 0.7
+        assert writer._flag_threshold == 0.4
+        assert writer._rest_client is not None
+
+    def test_from_config_custom_thresholds(self):
+        config = CoPWriterConfig(cop_auto_threshold=0.8, cop_flag_threshold=0.5)
+        writer = CoPWriter.from_config(config)
+        assert writer._auto_threshold == 0.8
+        assert writer._flag_threshold == 0.5
+
+    def test_from_config_custom_high_risk(self):
+        config = CoPWriterConfig(cop_high_risk_types=["weapons", "nuclear"])
+        writer = CoPWriter.from_config(config)
+        assert "nuclear" in writer._high_risk_types
+        assert "csar" not in writer._high_risk_types
+
+
+class TestCoPWriterConfigurableThresholds:
+    """Test that CoPWriter respects configurable thresholds."""
+
+    def test_custom_auto_threshold(self):
+        async def run():
+            writer = CoPWriter(auto_threshold=0.5)
+            # 0.55 would normally be FLAGGED at 0.7 threshold, but AUTO at 0.5
+            await writer.push_update(_make_update(confidence=0.55))
+            assert writer.stats["auto_writes"] == 1
+            assert writer.stats["flagged_writes"] == 0
+
+        asyncio.run(run())
+
+    def test_custom_flag_threshold(self):
+        async def run():
+            writer = CoPWriter(flag_threshold=0.3)
+            # 0.35 would normally be HUMAN at 0.4 threshold, but FLAGGED at 0.3
+            await writer.push_update(_make_update(confidence=0.35))
+            assert writer.stats["flagged_writes"] == 1
+            assert writer.stats["human_queued"] == 0
+
+        asyncio.run(run())
+
+    def test_custom_high_risk_types(self):
+        async def run():
+            # Remove weapons from high-risk -- should now follow confidence rules
+            writer = CoPWriter(high_risk_types=["nuclear"])
+            await writer.push_update(_make_update(update_type=UpdateType.WEAPONS, confidence=0.9))
+            # With confidence 0.9 and weapons NOT in high-risk, should be AUTO
+            assert writer.stats["auto_writes"] == 2  # track + effect
+            assert writer.stats["human_queued"] == 0
+
+        asyncio.run(run())
