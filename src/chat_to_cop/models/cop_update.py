@@ -148,3 +148,7 @@ class CoPUpdate(BaseModel):
         description="Surrounding conversation for audit trail",
     )
     reasoning: str | None = Field(None, description="LLM's explanation of the extraction")
+
+    # RAI provenance fields (filled by channel agent post-extraction)
+    model_name: str = Field(default="", description="Model that produced this extraction (e.g., qwen2.5:7b)")
+    prompt_hash: str = Field(default="", description="SHA-256 hash of the system prompt template")
