@@ -58,14 +58,31 @@ sleep 5
 
 **Important:** `/tmp` is local SSD (~34GB). Models stored here are lost when the instance shuts down. Re-pull each session.
 
-### 5. Pull a Model
+### 5. Pull a Model and Set Context Window
 
 ```bash
-# 7B — fits easily, good quality, 6.5s per extraction
+# 7B — fits easily, good quality
 OLLAMA_MODELS=/tmp/ollama-models ollama pull qwen2.5:7b
 
-# 14B — better quality, ~10-15s per extraction, fits in 16GB T4
+# Create a custom model with 8K context (required — default 4K truncates our prompts)
+cat > /tmp/Modelfile <<EOF
+FROM qwen2.5:7b
+PARAMETER num_ctx 8192
+EOF
+OLLAMA_MODELS=/tmp/ollama-models ollama create qwen2.5:7b-8k -f /tmp/Modelfile
+```
+
+**Important:** Always use `qwen2.5:7b-8k` (not `qwen2.5:7b`) when running the pipeline. The default 4096 context truncates our system prompt + conversation window, causing extraction failures. The Modelfile bakes 8192 context into the model.
+
+For 14B:
+
+```bash
 OLLAMA_MODELS=/tmp/ollama-models ollama pull qwen2.5:14b
+cat > /tmp/Modelfile14b <<EOF
+FROM qwen2.5:14b
+PARAMETER num_ctx 8192
+EOF
+OLLAMA_MODELS=/tmp/ollama-models ollama create qwen2.5:14b-8k -f /tmp/Modelfile14b
 ```
 
 ### 6. Clone and Install chat-to-cop
@@ -82,7 +99,7 @@ If prompted for credentials, use your DLE username and personal access token.
 ### 7. Run Smoke Test
 
 ```bash
-python scripts/quick_test.py --url http://127.0.0.1:11434/v1 --model qwen2.5:7b
+python scripts/quick_test.py --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k
 ```
 
 First message includes model loading (~90s cold start). Subsequent messages: **6-15 seconds**.
@@ -92,7 +109,7 @@ First message includes model loading (~90s cold start). Subsequent messages: **6
 ### 8. Run Eval Harness
 
 ```bash
-python scripts/eval_models.py --url http://127.0.0.1:11434/v1 --model qwen2.5:7b --count 100 -v
+python scripts/eval_models.py --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --count 100 -v
 ```
 
 ### 9. Run Full Pipeline Replay
@@ -102,7 +119,7 @@ If you have DASH chat data available:
 ```bash
 python -m chat_to_cop.replay /path/to/chat.zip \
     --url http://127.0.0.1:11434/v1 \
-    --model qwen2.5:7b \
+    --model qwen2.5:7b-8k \
     --db /tmp/gpu_test.db
 ```
 
