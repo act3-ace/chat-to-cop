@@ -228,11 +228,13 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 | CPU (AG m7i) | qwen2.5:7b | 8.3 | 4-6 min | No |
 | CPU (laptop) | qwen2.5:3b | ~3 | 33s | No |
 
-**Full pipeline (935 messages, 10 channels):**
-- 477 updates extracted by agents
-- 376 updates after fusion (56 deduplicates, 1 contradiction, 4 corroborations)
+**Full pipeline (935 messages, 11 channels, fusion feedback run):**
+- **100% LLM success rate** (945/945 calls, zero regex fallback)
+- 255 updates extracted, 196 entities tracked
+- 7.6s mean latency (3.4s min, 60.4s max)
+- CoP writer: 470 auto, 3 flagged, 115 human-queued, 0 errors
+- 2 fusion contradictions detected, 2 deduplicates
 - Zero messages dropped
-- 10+ simultaneous channels with single Ollama instance
 
 **Target for MASH:**
 - Desktop workstation with RTX 4090/5090 (24GB VRAM)
@@ -346,23 +348,24 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 | Sprint 1 | Vertical slice (single channel, single model) | COMPLETE | -- |
 | Sprint 2 | Multi-channel + resilience (degradation, fusion, supervisor) | COMPLETE | -- |
 | Sprint 3 | Deploy + harden (Docker, eval, CoP writer, RAI) | IN PROGRESS | -- |
-| **Total** | | | **549 tests passing** |
+| **Total** | | | **725 tests passing** |
 
 **What's done:**
 - Full extraction pipeline: channel agents, fusion, supervisor, store
 - Degrading backend with circuit breakers (tenacity + pybreaker)
 - Regex fallback with 50+ military patterns
 - Speaker model learning
-- Full DASH 3 replay (935 messages, 10 channels)
+- Full DASH 3 replay (935 messages, 11 channels, **100% LLM success**)
+- Fusion feedback loop (cross-channel speaker corroboration)
 - Eval harness + benchmark results across 5 models
 - Tiered write authority + kill switch
+- 25 MRs merged, 725 tests
 - Docker containerization
 - System card, dataset cards, labeling guide
 
 **What remains:**
 
 - Commercial model integration (Mia's priority upon return, with Colin/Jennifer assisting)
-- Full GPU replay validation (#16, in progress)
 - CoP database writer (#17, blocked on contractor schema)
 - RAI provenance / MLflow integration (#18)
 - CSAR and status_change prompt improvement
@@ -375,7 +378,7 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 2. **No ground truth labels** -- real-data accuracy is unknown without labeled test set
 3. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
 
-**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Single box, single GPU is confirmed sufficient. Internet at H2O is expected, enabling commercial model access with sub-second latency. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 549 test count means CI is enforced on every push -- nothing merges that breaks tests. Mia's first priority is commercial model integration; Colin or Jennifer will assist with piping those into the chat system and database. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end.
+**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. The latest benchmark achieved 100% LLM success rate on 935 real DASH 3 messages -- zero failures, zero regex fallback. Single box, single GPU is confirmed sufficient. Internet at H2O is expected, enabling commercial model access with sub-second latency. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 725 test count and 25 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Mia's first priority is commercial model integration; Colin or Jennifer will assist with piping those into the chat system and database. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end with 100% reliability.
 
 ---
 

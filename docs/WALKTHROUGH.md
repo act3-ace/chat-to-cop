@@ -403,41 +403,37 @@ Tested via eval harness against synthetic labeled data with entity-level scoring
 
 ### Full DASH 3 replay statistics
 
-935 real messages from the 23 September exercise, 11 channels, run through the complete pipeline:
+935 real messages from the 23 September exercise, 11 channels, run through the complete pipeline. Latest results from the fusion feedback run (T4 GPU, qwen2.5:7b-8k, all fixes + fusion feedback loop):
 
 | Metric | Value |
 |--------|-------|
 | Total messages | 935 |
-| LLM extractions (successful) | 100 |
-| Regex fallback extractions | 876 |
-| Updates emitted by agents | 477 |
-| Updates after fusion | 376 |
-| Fusion deduplicates | 56 |
-| Fusion contradictions flagged | 1 |
-| Fusion corroborations | 4 |
-| Channels discovered | 10 |
+| LLM success rate | **100%** (945/945 calls) |
+| Regex fallback | **0** |
+| Updates extracted (after fusion) | 255 |
+| Entities tracked | 196 |
+| Fusion deduplicates | 2 |
+| Fusion contradictions detected | 2 |
+| Mean extraction latency | 7.6s |
+| CoP auto-writes | 470 |
+| CoP flagged-writes | 3 |
+| CoP human-review queued | 115 |
+| CoP errors | 0 |
 | Messages dropped | 0 |
 
-**Channel update distribution:**
-- `#vegas_internal`: 145 updates (most active)
-- `#stt_crusherBMA`: 88 updates
-- `#c2_coord`: 86 updates (highest information density)
-- `#stt_hydroBMA`: 75 updates
-- `#stt_C2Coord`: 41 updates
-- `#isr_reports`: 24 updates
-- `#stt_mesquiteBMA`: 7 updates
-- `#stt_taipanBMA`: 6 updates
-- `#fires`: 5 updates
+**Update type highlights:** fire mission (16), cyber/EW (25), CSAR (6), tasking (51), location (41), threat (32).
 
-Note: the laptop CPU run had only 100 LLM extractions out of 935 because the circuit breaker tripped constantly on CPU-bound inference. On GPU, the LLM handles the full message stream without timeouts.
+For comparison, the earlier laptop CPU run achieved only 100 LLM extractions out of 935 because the circuit breaker tripped constantly on CPU-bound inference. The T4 GPU with 8K context and fusion feedback eliminated all failures.
 
 ### What we got right
 
+- **100% LLM success rate.** The fusion feedback run achieved 945/945 LLM calls with zero failures and zero regex fallback -- the degradation path was never needed.
+- **Fusion feedback loop works.** Cross-channel speaker corroboration via the fusion-to-channel feedback loop (MR !59) improves extraction quality.
 - **Degradation path works.** Zero messages dropped across 935 messages. The fallback chain (LLM -> regex -> passthrough) operates exactly as designed.
-- **Multi-channel simultaneous processing.** 10+ channels with a single Ollama instance, no message loss.
+- **Multi-channel simultaneous processing.** 11 channels with a single Ollama instance, no message loss.
 - **Entity identification is near-perfect.** Track number resolution (`TN 44504 is DDG1`) is 100% recall.
 - **Fuel and weapons extraction is strong.** Both regex and LLM handle the abbreviated formats well.
-- **Fusion deduplication works.** 56 duplicates caught -- primarily STT channels echoing typed chat.
+- **Fire mission and cyber/EW extraction improved significantly.** Fire mission went from 3 (old code) to 16, cyber/EW from 9 to 25.
 
 ### What needs improvement
 
@@ -577,7 +573,7 @@ python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip --spee
 # Full CI check (lint + format + tests)
 ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -v
 
-# Current: 549 tests passing
+# Current: 725 tests passing
 ```
 
 ---

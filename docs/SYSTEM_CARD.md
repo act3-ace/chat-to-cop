@@ -178,22 +178,29 @@ Detailed results are in [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md). Summary:
 | status_change | 71% |
 | csar | 0% |
 
-### Full Pipeline (935 real DASH 3 messages, laptop CPU, qwen2.5:3b)
+### Full Pipeline (935 real DASH 3 messages, T4 GPU, qwen2.5:7b-8k)
+
+Latest: fusion feedback run (2026-03-30 evening, all fixes + fusion feedback loop):
 
 | Metric | Value |
 |--------|-------|
 | Messages processed | 935 |
-| LLM extractions | 100 (remainder fell to regex due to CPU timeouts) |
-| Regex fallback extractions | 876 |
-| Updates after fusion | 376 |
-| Fusion deduplicates | 56 |
-| Mean LLM latency | 33.2s (CPU -- not viable for production) |
+| LLM success rate | **100%** (945/945 calls) |
+| Regex fallback | **0** |
+| Updates extracted (after fusion) | 255 |
+| Entities tracked | 196 |
+| Mean LLM latency | 7.6s |
+| CoP auto-writes | 470 |
+| CoP human-review queued | 115 |
+| CoP errors | 0 |
+
+Previous laptop CPU run: 100 LLM extractions out of 935 (remainder fell to regex due to CPU timeouts).
 
 ### Latency (GPU)
 
-| Hardware | Model | p50 Latency | Meets Real-Time? |
+| Hardware | Model | Mean Latency | Meets Real-Time? |
 |----------|-------|------------|-----------------|
-| T4 16GB (AG) | qwen2.5:7b | 6.5s | Yes |
+| T4 16GB (AG) | qwen2.5:7b-8k | 7.6s | Yes |
 | CPU (AG m7i) | qwen2.5:7b | 4-6 min | No |
 | CPU (laptop) | qwen2.5:3b | 33.2s | No |
 
@@ -299,4 +306,5 @@ Additional provenance captured at the system level (implementation in progress, 
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-30 | 0.1.1 | Updated evaluation results with fusion feedback run (100% LLM success, 255 updates, 7.6s latency) |
 | 2026-03-29 | 0.1.0 | Initial system card (pre-deployment) |

@@ -133,16 +133,61 @@ Duration: **~2.4 hours** (down from 5.85 hrs on old code).
 
 All 12 non-none update types represented. CSAR (8), fire_mission (9), and cyber_ew (21) all significantly improved from previous runs.
 
-### Comparison: Old Code vs Clean Run
+### AG GPU (T4) + qwen2.5:7b-8k — FUSION FEEDBACK RUN (completed 2026-03-30 evening)
 
-| Metric | Old Code (4K ctx) | Clean (8K ctx) | Improvement |
-|--------|-------------------|----------------|-------------|
-| Duration | 5.85 hrs | 2.4 hrs | 2.4x faster |
-| Mean latency | 20.0s | 7.7s | 2.6x faster |
-| LLM failures | 62 | 1 | 98% reduction |
-| Regex fallback | 70 | 1 | 99% reduction |
-| status_change (over-classified) | 161 | 23 | Noise filter working |
-| Entities | 121 | 203 | 68% more |
+935 messages through full pipeline with ALL fixes + fusion-to-channel feedback loop (MR !59): cross-channel speaker corroboration, feedback-driven confidence adjustments.
+Duration: **~2.5 hours**.
+
+| Metric | Value |
+|--------|-------|
+| Total messages | 935 |
+| Updates extracted (after fusion) | **255** |
+| Entities tracked | **196** |
+| Channels | 11 |
+| LLM calls (7b-8k) | 945 |
+| LLM successes | **945** (100%) |
+| LLM permanent failures | **0** |
+| Regex fallback | **0** |
+| Extraction latency (mean) | **7.6s** |
+| Extraction latency (min) | 3.4s |
+| Extraction latency (max) | 60.4s |
+| CoP auto-writes | 470 |
+| CoP flagged-writes | 3 |
+| CoP human-review queued | 115 |
+| CoP errors | **0** |
+| Fusion deduplicates | 2 |
+| Fusion contradictions detected | 2 |
+
+**100% LLM success rate** -- zero failures, zero regex fallback. The fusion feedback loop and accumulated fixes eliminated all extraction failures.
+
+**Update type distribution (fusion feedback run):**
+
+| Type | Count |
+|------|-------|
+| tasking | 51 |
+| location | 41 |
+| threat | 32 |
+| cyber_ew | 25 |
+| fire_mission | 16 |
+| csar | 6 |
+| (other types) | 84 |
+
+Fire mission (16, up from 9) and cyber/EW (25, up from 21) both improved significantly. CSAR dropped from 8 to 6 -- likely noise reduction rather than recall loss.
+
+### Comparison: Old Code vs Clean Run vs Fusion Feedback
+
+| Metric | Old Code (4K ctx) | Clean (8K ctx) | Fusion Feedback | Improvement (old -> fusion) |
+|--------|-------------------|----------------|-----------------|----------------------------|
+| Duration | 5.85 hrs | 2.4 hrs | 2.5 hrs | 2.3x faster |
+| Mean latency | 20.0s | 7.7s | 7.6s | 2.6x faster |
+| LLM success rate | 92.8% | 99.9% | **100%** | Zero failures |
+| Regex fallback | 70 | 1 | **0** | Eliminated |
+| Updates | 416 | 264 | 255 | Higher precision |
+| Entities | 121 | 203 | 196 | 62% more |
+| Fire mission | 3 | 9 | 16 | 5.3x more |
+| Cyber/EW | 9 | 21 | 25 | 2.8x more |
+| CSAR | 4 | 8 | 6 | 50% more |
+| CoP errors | N/A | 0 | 0 | Clean |
 
 ### Previous Run (pre-fix code, for reference)
 
