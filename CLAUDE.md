@@ -38,7 +38,7 @@ src/chat_to_cop/
     backend/         base.py (protocol), openai_compat.py (instructor), regex_fallback.py, degrading.py
     ingestion/       irc_client.py (live WebSocket), replay.py (DASH log parser)
     models/          messages.py (IRCMessage), cop_update.py (CoPUpdate), speaker.py, world_state.py
-    output/          store.py (SQLite), cop_writer.py (CoP REST API)
+    output/          store.py (SQLite), cop_writer.py (CoP REST API), cop_rest_client.py
     metrics.py       Toggleable instrumentation (counters, histograms, timers)
     config.py        Configuration management
     replay.py        CLI entry point: python -m chat_to_cop.replay <path>
@@ -90,15 +90,17 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues
 - Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE
 - Sprint 2 (Multi-Channel + Resilience): #8-#13 — ALL COMPLETE
-- Sprint 3 (Deploy + Harden): #14 DONE, #19 DONE, #15 #16 #17 #18 OPEN
-- Total: 344 tests passing, pipeline validated against real DASH 3 data
+- Sprint 3 (Deploy + Harden): #14, #15, #17, #18, #19, #20, #21, #22, #23, #24, #27, #28, #31, #32 DONE. #16 IN PROGRESS (T4 replay running). #25, #26, #29, #30 OPEN.
+- Total: 549 tests passing, pipeline validated against real DASH 3 data
 Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
 
-### Remaining Sprint 3 issues (parallelizable)
-- `#15` Docker containerization — build + test the existing Dockerfile/compose
-- `#16` Full DASH 3 replay test — needs GPU for full corpus, can do typed-chat subset on CPU
-- `#17` CoP database writer — blocked on contractor schema, has tiered write authority design
-- `#18` RAI provenance — MLflow integration, system card, dataset cards, AIBOM
+### Remaining Sprint 3 issues
+
+- `#16` Full DASH 3 replay test — in progress, T4 GPU replay running
+- `#25` OPEN
+- `#26` OPEN
+- `#29` OPEN
+- `#30` OPEN
 
 ### Tests
 - Unit tests: `tests/test_*.py`, run with `pytest tests/ -k "not integration"`
@@ -114,10 +116,12 @@ Read the issue description before starting work — it has acceptance criteria, 
 pip install -e ".[dev]"
 
 # Replay DASH chat through agent pipeline
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip
+python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip --num-ctx 8192
 
 # Run with specific LLM
-python -m chat_to_cop.replay <path> --url http://localhost:11434/v1 --model qwen2.5:7b
+python -m chat_to_cop.replay <path> --url http://localhost:11434/v1 --model qwen2.5:7b --num-ctx 8192
+
+# Use --timeout to set per-message LLM timeout (seconds, default varies by backend)
 
 # Run tests (what CI runs)
 ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -v
