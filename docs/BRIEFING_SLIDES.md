@@ -256,6 +256,49 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 ---
 
+## Slide 9b: Can It Keep Up? Message Rate vs Extraction Latency
+
+**DASH 3 real message rates (935 messages, 4 hours, 11 channels):**
+
+| Rate Metric | Value | What it means |
+|-------------|-------|---------------|
+| Overall average | 3.9 msgs/min | Across all channels combined |
+| Per-minute p50 | 9 msgs/min | Typical active period |
+| Per-minute p90 | 20 msgs/min | Heavy engagement |
+| Per-minute p95 | 25 msgs/min | Peak combat |
+| Peak 1-minute burst | **42 msgs/min** | Maximum observed |
+| Busiest single channel | 2.0 msgs/min | STT Taipan BMA (sustained) |
+| Peak 5-min window | 26.8 msgs/min | Sustained peak across all channels |
+
+**The critical insight: each channel agent processes independently.**
+
+The busiest single channel sees 1 message every **30 seconds**. Any backend under 30s/message keeps up per-channel with zero queuing. All our backends are well under this:
+
+| Backend | Latency/msg | Msgs/min/agent | Can keep up? | CoP staleness |
+|---------|-------------|----------------|-------------|---------------|
+| V100 14B | 2.2s | 27 | **YES** (14x headroom) | ~2s |
+| Gemini Flash | 3.5s | 17 | **YES** (9x headroom) | ~4s |
+| Bedrock Sonnet | 4.8s | 12 | **YES** (6x headroom) | ~5s |
+| T4 7B | 7.6s | 8 | **YES** (4x headroom) | ~8s |
+| V100 32B | 12.0s | 5 | **YES** (2.5x headroom) | ~12s |
+| CPU 7B | 4-6 min | 0.2 | **NO** | minutes |
+
+**System-wide at peak (42 msgs/min across 11 channels):**
+
+With 11 agents processing in parallel, even the slowest GPU backend (V100 32B at 12s/msg) delivers 55 msgs/min system capacity — still ahead of the 42 msgs/min peak burst.
+
+**What "staleness" means for the battle manager:**
+
+A fuel state change at 14:20:00 with 5s extraction reaches the CoP at 14:20:05. A human checking the CoP at 14:20:10 sees data that is **10 seconds old**. With 7.6s extraction, it's **17.6 seconds old**. Both are operationally acceptable — today, humans take **minutes** to manually type the same data into the CoP. Even our slowest GPU backend is 10-50x faster than the current manual process.
+
+**The speed vs quality tradeoff:**
+
+Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/taskings. Slower backends (cloud APIs, 3.5-8.3s) extract richer semantics with higher confidence. The optimal choice depends on what matters more: update freshness or update quality. For MASH, the recommendation is cloud primary (best semantics) with local fallback (guaranteed availability).
+
+**Speaker notes:** This is the answer to "is it fast enough?" — yes, by a wide margin. The busiest single channel in DASH 3 sees 1 message every 30 seconds. Our fastest backend processes in 2.2 seconds. Even our slowest (12s) has 2.5x headroom. The real question isn't speed — it's quality. A 2-second extraction that misses the threat is worse than a 5-second extraction that catches it. The CoP staleness numbers show that even at 8 seconds, the data arrives 10-50x faster than manual entry. CPU-only is the only configuration that can't keep up — and we already knew that from the AG benchmark.
+
+---
+
 ## Slide 10: Operational Context
 
 **Where it sits in the MASH pit**
