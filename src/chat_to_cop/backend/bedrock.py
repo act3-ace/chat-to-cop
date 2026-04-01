@@ -64,7 +64,8 @@ class BedrockBackend:
         self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
         self._raw_client = AnthropicBedrock(aws_region=aws_region)
-        self._client = instructor.from_anthropic(self._raw_client)
+        # Use JSON mode to avoid tool_use/tool_result retry corruption
+        self._client = instructor.from_anthropic(self._raw_client, mode=instructor.Mode.BEDROCK_JSON)
         self._max_retries = max_retries
 
     @property
