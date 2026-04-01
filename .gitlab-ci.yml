@@ -87,6 +87,49 @@ build-apptainer:
   needs:
     - build-release
 
+# Build HPC image with CUDA + Ollama + baked models (Qwen2.5-14B + 7B).
+# This is the full offline-capable container for DSRC Narwhal (V100 32GB).
+# Model download happens during Docker build (stage 1) — no GPU needed.
+build-hpc:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - docker build
+        -f deploy/dsrc/Dockerfile.hpc
+        -t "$CONTAINER_IMAGE:hpc-${CI_COMMIT_TAG:-latest}"
+        -t "$CONTAINER_IMAGE:hpc-latest"
+        .
+    - docker push "$CONTAINER_IMAGE:hpc-${CI_COMMIT_TAG:-latest}"
+    - docker push "$CONTAINER_IMAGE:hpc-latest"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  timeout: 2h
+
+# Convert HPC Docker image to Apptainer .sif for DSRC deployment.
+# Download the .sif from the release artifacts and scp to Narwhal.
+build-hpc-sif:
+  stage: build
+  image: quay.io/singularity/singularity:v4.1.0
+  variables:
+    SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
+  script:
+    - singularity build chat-to-cop-hpc_${CI_COMMIT_TAG:-latest}.sif docker://$CONTAINER_IMAGE:hpc-${CI_COMMIT_TAG:-latest}
+  artifacts:
+    paths:
+      - "chat-to-cop-hpc_*.sif"
+    expire_in: 90 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  needs:
+    - build-hpc
+  timeout: 1h
+
 # --- Stage: release (tagged releases) ---
 
 release:
@@ -114,9 +157,12 @@ release:
       See the [CHANGELOG](CHANGELOG.md) for details.
     assets:
       links:
-        - name: "Apptainer SIF image"
+        - name: "Apptainer SIF image (slim, no LLM)"
           url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/chat-to-cop_${CI_COMMIT_TAG}.sif?job=build-apptainer"
+        - name: "Apptainer SIF image (HPC, with Ollama + Qwen2.5-14B)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/chat-to-cop-hpc_${CI_COMMIT_TAG}.sif?job=build-hpc-sif"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   needs:
     - build-apptainer
+    - build-hpc-sif

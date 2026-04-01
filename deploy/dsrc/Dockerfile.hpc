@@ -1,0 +1,101 @@
+# =============================================================================
+# Dockerfile.hpc — Chat-to-CoP with Ollama + baked models for DSRC HPC
+# =============================================================================
+#
+# This image includes everything needed to run offline on DSRC compute nodes:
+#   - CUDA 12.1 runtime (V100/A100 GPU support)
+#   - Ollama server (local LLM serving)
+#   - Qwen 2.5 14B + 7B models (pre-downloaded, no internet needed)
+#   - Full chat-to-cop Python package
+#
+# Built by GitLab CI, converted to .sif for Apptainer on Narwhal.
+#
+# To build manually:
+#   docker build -f deploy/dsrc/Dockerfile.hpc -t chat-to-cop:hpc .
+#
+# To convert to .sif:
+#   singularity build chat-to-cop-hpc.sif docker-daemon://chat-to-cop:hpc
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Download Ollama models (needs internet, doesn't need GPU)
+# ---------------------------------------------------------------------------
+FROM ubuntu:22.04 AS model-downloader
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Ollama
+RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama \
+    && chmod +x /usr/local/bin/ollama
+
+# Download models — Ollama stores them under OLLAMA_MODELS
+ENV OLLAMA_MODELS=/opt/ollama-models
+
+# Start Ollama, pull models, stop. No GPU needed for download.
+RUN ollama serve & \
+    sleep 5 && \
+    ollama pull qwen2.5:14b && \
+    ollama pull qwen2.5:7b && \
+    kill %1 2>/dev/null; exit 0
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime image with CUDA + Ollama + models + chat-to-cop
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+LABEL maintainer="ACT3 C2ES <c2es1@afrl.af.mil>"
+LABEL description="Chat-to-CoP HPC: Ollama + Qwen2.5-14B for DSRC V100 nodes"
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3-pip \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python
+
+# Install Ollama binary
+COPY --from=model-downloader /usr/local/bin/ollama /usr/local/bin/ollama
+
+# Copy pre-downloaded model blobs
+COPY --from=model-downloader /opt/ollama-models /opt/ollama-models
+
+# Python virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
+
+# Install chat-to-cop
+WORKDIR /app
+COPY pyproject.toml .
+COPY src/ src/
+RUN pip install --no-cache-dir .
+
+# Copy config files
+COPY config/ config/
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Environment defaults
+ENV OLLAMA_MODELS=/opt/ollama-models \
+    OLLAMA_HOST=127.0.0.1:11434 \
+    CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1 \
+    CHAT_TO_COP_LLM_MODEL=qwen2.5:14b \
+    CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b \
+    CHAT_TO_COP_LLM_NUM_CTX=8192 \
+    CHAT_TO_COP_LLM_TIMEOUT=120 \
+    CHAT_TO_COP_METRICS=true \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Entrypoint: start Ollama, wait, run replay
+COPY deploy/dsrc/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

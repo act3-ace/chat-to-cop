@@ -31,7 +31,11 @@ from chat_to_cop.output.store import WorldStateStore
 from chat_to_cop.tracking import PipelineTracker
 
 
-def _make_degrading_backend(config: PipelineConfig, bedrock_config: dict | None = None) -> DegradingBackend:
+def _make_degrading_backend(
+    config: PipelineConfig,
+    bedrock_config: dict | None = None,
+    anthropic_config: dict | None = None,
+) -> DegradingBackend:
     """Build the degrading backend from config: LLM -> fallback -> regex."""
     if bedrock_config:
         from chat_to_cop.backend.bedrock import BedrockBackend
@@ -40,6 +44,14 @@ def _make_degrading_backend(config: PipelineConfig, bedrock_config: dict | None 
             model=bedrock_config["model"],
             aws_region=bedrock_config["region"],
             timeout=bedrock_config["timeout"],
+            max_retries=config.llm.llm_max_retries,
+        )
+    elif anthropic_config:
+        from chat_to_cop.backend.anthropic_direct import AnthropicDirectBackend
+
+        primary = AnthropicDirectBackend(
+            model=anthropic_config["model"],
+            timeout=anthropic_config["timeout"],
             max_retries=config.llm.llm_max_retries,
         )
     else:
@@ -80,12 +92,13 @@ async def run_replay(
     config: PipelineConfig,
     speed: float,
     bedrock_config: dict | None = None,
+    anthropic_config: dict | None = None,
 ) -> None:
     """Run the full replay pipeline with supervisor + fusion."""
 
     # Build the degrading backend factory for the supervisor
     def backend_factory():
-        return _make_degrading_backend(config, bedrock_config=bedrock_config)
+        return _make_degrading_backend(config, bedrock_config=bedrock_config, anthropic_config=anthropic_config)
 
     supervisor = Supervisor(backend_factory=backend_factory)
     fusion = FusionAgent()
@@ -269,6 +282,11 @@ def main() -> None:
         default="us-gov-west-1",
         help="AWS region for Bedrock (default: us-gov-west-1)",
     )
+    parser.add_argument(
+        "--anthropic",
+        action="store_true",
+        help="Use Anthropic API directly (requires ANTHROPIC_API_KEY)",
+    )
 
     args = parser.parse_args()
 
@@ -291,16 +309,24 @@ def main() -> None:
 
     # Bedrock mode: override the backend factory
     bedrock_config = None
+    anthropic_config = None
     if args.bedrock:
         bedrock_config = {
             "model": args.model or "us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0",
             "region": args.bedrock_region,
             "timeout": args.timeout or config.llm.llm_timeout,
         }
-        # Set the model name in config for logging
         config.llm.llm_model = bedrock_config["model"]
+    elif args.anthropic:
+        anthropic_config = {
+            "model": args.model or "claude-haiku-4-5-20251001",
+            "timeout": args.timeout or 30.0,
+        }
+        config.llm.llm_model = anthropic_config["model"]
 
-    asyncio.run(run_replay(args.path, config, args.speed, bedrock_config=bedrock_config))
+    asyncio.run(
+        run_replay(args.path, config, args.speed, bedrock_config=bedrock_config, anthropic_config=anthropic_config)
+    )
 
 
 if __name__ == "__main__":

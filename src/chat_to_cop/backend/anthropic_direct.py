@@ -1,10 +1,10 @@
-"""AWS Bedrock backend for Claude models on GovCloud.
+"""Direct Anthropic API backend for Claude models.
 
-Uses the Anthropic SDK with Bedrock transport. Works on Analytics Gateway
-where Claude Sonnet 4.5 is available via AWS Bedrock in us-gov-west-1.
+Uses the Anthropic SDK directly (not Bedrock). For Claude Haiku and other
+models available on the commercial API but not on GovCloud Bedrock.
 
 Requires: pip install anthropic
-Authentication: Uses AWS credentials from environment (IAM role, credentials file, or env vars).
+Authentication: ANTHROPIC_API_KEY environment variable.
 """
 
 from __future__ import annotations
@@ -24,48 +24,40 @@ from chat_to_cop.backend.openai_compat import (
 from chat_to_cop.metrics import metrics
 
 try:
-    from anthropic import AnthropicBedrock
+    from anthropic import Anthropic
 
     HAS_ANTHROPIC = True
 except ImportError:
-    AnthropicBedrock = None  # type: ignore[assignment, misc]
+    Anthropic = None  # type: ignore[assignment, misc]
     HAS_ANTHROPIC = False
 
 
-class BedrockBackend:
-    """LLM backend using Claude via AWS Bedrock (GovCloud).
+class AnthropicDirectBackend:
+    """LLM backend using Claude via the direct Anthropic API.
 
-    Uses the Anthropic SDK's Bedrock transport with instructor for
-    structured output. Implements the same LLMBackend protocol as
-    OpenAICompatibleBackend.
-
-    The Anthropic Messages API uses a different format than OpenAI:
-    - System message is a separate parameter, not in the messages list
-    - Messages are role/content pairs (same as OpenAI)
-
-    Instructor handles the structured output extraction identically.
+    Same interface as BedrockBackend but uses commercial API endpoint.
     """
 
     def __init__(
         self,
-        model: str = "us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        aws_region: str = "us-gov-west-1",
-        timeout: float = 120.0,
+        model: str = "claude-haiku-4-5-20251001",
+        timeout: float = 30.0,
         max_retries: int = 2,
         max_tokens: int = 4096,
     ) -> None:
         if not HAS_ANTHROPIC:
-            raise ImportError("anthropic package required for Bedrock backend. Install with: pip install anthropic")
+            raise ImportError("anthropic package required. Install with: pip install anthropic")
 
         self.model = model
-        self.aws_region = aws_region
         self.timeout = timeout
         self.max_tokens = max_tokens
         self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
-        self._raw_client = AnthropicBedrock(aws_region=aws_region)
-        # Use JSON mode to avoid tool_use/tool_result retry corruption
-        self._client = instructor.from_anthropic(self._raw_client, mode=instructor.Mode.BEDROCK_JSON)
+        self._raw_client = Anthropic()
+        # Use JSON mode instead of TOOLS mode to avoid tool_use/tool_result
+        # retry corruption (Anthropic requires tool_result after every tool_use,
+        # but instructor's retry mechanism doesn't include it).
+        self._client = instructor.from_anthropic(self._raw_client, mode=instructor.Mode.ANTHROPIC_JSON)
         self._max_retries = max_retries
 
     @property
@@ -77,16 +69,10 @@ class BedrockBackend:
         messages: list[dict[str, str]],
         schema: type[BaseModel],
     ) -> BaseModel:
-        """Extract structured data from messages according to schema.
-
-        Converts OpenAI-format messages to Anthropic format:
-        - Extracts system message from the list (Anthropic takes it as separate param)
-        - Passes remaining messages as-is
-        """
-        labels = {"backend": "bedrock", "model": self.model}
+        """Extract structured data from messages according to schema."""
+        labels = {"backend": "anthropic", "model": self.model}
         metrics.inc("backend_calls_total", labels=labels)
 
-        # Anthropic API takes system as a separate parameter
         system_prompt = ""
         chat_messages = []
         for msg in messages:
@@ -97,7 +83,6 @@ class BedrockBackend:
 
         try:
             async with metrics.async_timer("extraction_latency_seconds", labels=labels):
-                # instructor.from_anthropic returns a sync client, so we run in executor
                 result = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: self._client.messages.create(
