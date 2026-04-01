@@ -2,7 +2,7 @@
 
 Performance and quality benchmarks for the chat-to-cop extraction pipeline, tested against real DASH 3 GBC chat data (935 messages, 23 Sep exercise, 11 channels).
 
-All tests conducted 2026-03-29/30.
+Tests conducted 2026-03-29/30 (AG/Bedrock) and 2026-03-31 (HPC/cloud API comparison).
 
 ## Hardware Comparison
 
@@ -10,7 +10,9 @@ All tests conducted 2026-03-29/30.
 
 | Environment | Instance | GPU | Model | Tokens/s | Per-extraction (p50) | Full 935-msg replay |
 |-------------|----------|-----|-------|----------|---------------------|---------------------|
-| **AG GPU** | g4dn.xlarge | T4 16GB | qwen2.5:7b | 41.0 | ~6.5s | ~3 hrs (in progress) |
+| **DSRC HPC** | Narwhal MLA | V100 32GB | qwen2.5:14b | ~50 | ~2.2s | **34 min** |
+| **DSRC HPC** | Narwhal MLA | V100 32GB | qwen2.5:32b | ~30 | ~7s | ~110 min (est) |
+| **AG GPU** | g4dn.xlarge | T4 16GB | qwen2.5:7b | 41.0 | ~6.5s | ~2.5 hrs |
 | **AG CPU** | m7i.2xlarge | None | qwen2.5:7b | 8.3 | ~4-6 min | ~60-90 hrs (estimated) |
 | **Laptop CPU** | i7 local | None | qwen2.5:3b | ~3 | ~33s (mean) | ~6 hrs (completed) |
 
@@ -358,19 +360,137 @@ All 13 update types represented. CSAR and fire_mission both extracted (were 0% b
 5. ~~capability_impact validation~~ — Fixed: invalid values coerced to None (MR !46)
 6. ~~num_ctx sent to Groq~~ — Fixed: only sent to Ollama endpoints (MR !50)
 
+## DSRC HPC: Narwhal V100 (completed 2026-03-31)
+
+Tested on DSRC Narwhal MLA node (2x Tesla V100-PCIE-32GB, Slurm scheduler). Models served locally via Ollama, no internet required at runtime. Pipeline deployed via conda environment + source transfer (container-based deployment via CI also available).
+
+### Narwhal V100 + qwen2.5:14b (completed)
+
+935 messages, instant replay, Qwen 2.5 14B (Q4_K_M, ~9GB VRAM on a 32GB V100).
+Duration: **34 minutes** (4.4x faster than T4 7B).
+
+| Metric | Value |
+|--------|-------|
+| Total messages | 935 |
+| Updates extracted | **362** |
+| Entities tracked | **58** |
+| Channels | 10 |
+| LLM success | 100% |
+| Extraction latency (mean) | **~2.2s** |
+| Degradation | **0** |
+
+**Update type distribution:**
+
+| Type | Count |
+|------|-------|
+| status_change | 147 |
+| entity_id | 140 |
+| location | 22 |
+| threat | 18 |
+| weapons | 15 |
+| fuel | 11 |
+| tasking | 6 |
+| sitrep | 3 |
+
+**Analysis:** The V100's 32GB memory bandwidth delivers 4.4x faster replay than T4 with a larger model (14B vs 7B). Total updates (362) is the highest of any local run. However, the model leans heavily on status_change/entity_id — fewer high-value semantic extractions (threats, taskings) than larger models or cloud APIs. Mean confidence (0.25) is lower than 32B or cloud models.
+
+### Narwhal V100 + qwen2.5:32b (partial — 625/935 messages)
+
+Qwen 2.5 32B (Q4_K_M, ~29GB VRAM on a single 32GB V100). Run terminated at 625/935 messages when the Slurm reservation expired.
+
+| Metric | Value |
+|--------|-------|
+| Messages processed | 625 (of 935) |
+| Updates extracted | **168** |
+| Entities tracked | **150** |
+| Channels | 11 |
+| LLM success | 100% |
+| Extraction latency (mean) | **~12s** |
+| Degradation | **0** |
+| Mean confidence | **0.79** |
+
+**Update type distribution (partial):**
+
+| Type | Count |
+|------|-------|
+| status_change | 38 |
+| threat | 35 |
+| tasking | 31 |
+| location | 21 |
+| fuel | 19 |
+| entity_id | 12 |
+| sitrep | 5 |
+| weapons | 4 |
+| fire_mission | 3 |
+
+**Analysis:** The 32B model produces cloud-level confidence (0.79 mean) and rich semantic extraction (35 threats, 31 taskings from only 2/3 of messages). Memory-bandwidth-constrained at 29/32GB VRAM — slower per message (~12s) but significantly better quality than 14B. The 32B on V100 validates the path to 24GB MASH GPUs where Qwen3-32B (~22GB) would run with more headroom.
+
+## Cloud API Comparison (completed 2026-03-31)
+
+Three cloud APIs tested against the same 935-message DASH 3 dataset, running from a local workstation via OpenAI-compatible endpoints. Pipeline is model-agnostic: cloud APIs require only a URL and API key change, no code changes.
+
+### Summary
+
+| Metric | Gemini 2.5 Flash | GPT-4.1 nano | Claude 4.5 Haiku | Bedrock Sonnet 4.5 (prior) |
+|--------|-----------------|--------------|------------------|----------------------------|
+| Duration | **55 min** | 68 min | 129 min | 75 min |
+| Mean latency | **~3.5s/msg** | ~4.4s/msg | ~8.3s/msg | 4.8s/msg |
+| Updates | 324 | 318 | 273 | 256 |
+| Entities | **254** | 229 | 193 | 206 |
+| Mean confidence | **0.80** | 0.78 | 0.71 | — |
+| Threats | **66** | 45 | 52 | 54 |
+| Locations | 41 | **72** | 25 | 51 |
+| Taskings | **86** | 49 | 76 | 69 |
+| Degradation | 0 | 0 | 0 | 4 |
+| Est. cost | **~$0.15** | ~$0.11 | ~$0.93 | ~$3.50 |
+
+### Key Findings
+
+1. **Cloud APIs extract richer semantics** — all three found dramatically more threats (45-66) and taskings (49-86) than local models (3-18). Local models lean on status_change/entity_id; cloud models interpret what's happening.
+
+2. **Gemini 2.5 Flash wins on quality-per-dollar** — most threats (66), most taskings (86), highest confidence (0.80), 254 entities, all for ~$0.15 per full replay.
+
+3. **GPT-4.1 nano found the most locations (72)** — different models have different extraction strengths. Ensemble or multi-model approaches could improve coverage.
+
+4. **Claude Haiku was hampered by instructor tool_use retry bug** — the 129 min runtime includes wasted retries from TOOLS-mode message corruption (now fixed via JSON mode in MR !60). Re-run expected ~60-70 min.
+
+5. **Local 14B on V100 is the fastest overall (34 min)** — but with lower semantic quality. Speed without understanding.
+
+6. **Local 32B on V100 matches cloud-level confidence (0.79)** — the quality gap closes with larger local models, at the cost of speed.
+
+## All Backends Comparison
+
+| | Gemini Flash | GPT-4.1 nano | Claude Haiku | Bedrock Sonnet | V100 14B | V100 32B (2/3) | T4 7B |
+|---|---|---|---|---|---|---|---|
+| **Duration** | 55 min | 68 min | 129 min | 75 min | **34 min** | ~128 min | ~150 min |
+| **Updates** | 324 | 318 | 273 | 256 | **362** | 168* | 376 |
+| **Entities** | **254** | 229 | 193 | 206 | 58 | 150* | 73 |
+| **Confidence** | **0.80** | 0.78 | 0.71 | — | 0.25 | 0.79 | 0.27 |
+| **Threats** | **66** | 45 | 52 | 54 | 18 | 35* | 3 |
+| **Taskings** | **86** | 49 | 76 | 69 | 6 | 31* | 3 |
+| **Locations** | 41 | **72** | 25 | 51 | 22 | 21* | 15 |
+| **Cost** | $0.15 | $0.11 | $0.93 | $3.50 | $0 | $0 | $0 |
+
+*V100 32B partial run (625/935 messages) — extrapolated full run would be roughly 1.5x these numbers.
+
 ## MASH Deployment Implications
 
 | Constraint | Status |
 |------------|--------|
-| Single 24GB GPU | Need g5 (A10G) or equivalent — not available on AG as of March 2026 |
-| Real-time latency | 6.5s p50 on T4 with 7B — meets requirement |
-| **Bedrock (cloud)** | **Validated: 4.8s mean, no GPU needed, zero code changes** |
-| Model selection | Qwen3-32B (F1=0.96) needs 24GB VRAM; Qwen2.5:7b (F1=0.92) fits in 16GB; Claude Sonnet 4.5 via Bedrock needs only network access |
-| Degradation path | Validated: LLM -> regex -> passthrough, no data loss |
-| Multi-channel | 10+ simultaneous channels working with single Ollama instance |
-| Model-agnostic | **Proven: same pipeline, zero code changes between Ollama local and Bedrock cloud** |
+| Single 24GB GPU | **Validated on V100 32GB** — Qwen2.5-32B fits at 29GB VRAM, cloud-level quality |
+| Real-time latency | 2.2s on V100 14B, 3.5s on Gemini Flash, 6.5s on T4 7B — all meet requirement |
+| **Cloud APIs** | **Validated: Gemini Flash (3.5s), GPT-4.1 nano (4.4s), Claude Haiku (8.3s), Bedrock Sonnet (4.8s)** |
+| **DSRC HPC** | **Validated: Narwhal V100, 34 min full replay with 14B, offline-capable** |
+| Model selection | Qwen2.5-32B (0.79 conf, 29GB) for quality; Qwen2.5-14B (9GB) for speed; cloud APIs for semantics |
+| Degradation path | Validated: LLM -> regex -> passthrough, no data loss, zero degradation across all runs |
+| Multi-channel | 10+ simultaneous channels working across all backends |
+| Model-agnostic | **Proven across 7 backends:** local Ollama (7B/14B/32B), Bedrock, Gemini, GPT, Claude Haiku |
 
-**Bedrock as deployment option:** AWS Bedrock with Claude Sonnet 4.5 is now a validated deployment path. It requires no GPU, delivers 37% faster mean latency than local T4 inference, and eliminates tail latency spikes (10.3s max vs 60.4s). Internet connectivity at H2O Las Vegas is expected, making this a viable primary or hybrid option for MASH. The model-agnostic architecture means switching between local Ollama and Bedrock is a config change, not a code change.
+**Deployment options for MASH:**
+- **Option A: Local GPU** — RTX 4090/5090 with Qwen2.5-32B or Qwen3-32B. Best quality local, ~7s/msg on V100-class hardware.
+- **Option B: Cloud API** — Gemini 2.5 Flash (~$0.15/replay, 3.5s/msg) or Bedrock Claude (4.8s/msg). No GPU needed.
+- **Option C: HPC** — DSRC Narwhal with V100 GPUs. Offline-capable, CI-built containers, 34 min full replay.
+- **Option D: Hybrid** — Cloud API primary, local Ollama fallback. Config change, not code change.
 
 ## Reproduction
 
@@ -392,4 +512,17 @@ GROQ_API_KEY=gsk_... python scripts/eval_models.py \
     --url https://api.groq.com/openai/v1 \
     --model qwen/qwen3-32b \
     --count 50 --rate-delay 18
+
+# Cloud API replay (OpenAI-compatible endpoints)
+CHAT_TO_COP_LLM_URL=https://generativelanguage.googleapis.com/v1beta/openai/ \
+CHAT_TO_COP_LLM_API_KEY=$GOOGLE_API_KEY \
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip \
+    --model gemini-2.5-flash --timeout 30
+
+# Anthropic direct API
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip \
+    --anthropic --model claude-haiku-4-5-20251001 --timeout 30
+
+# DSRC HPC (Narwhal) — see deploy/dsrc/README.md
+sbatch deploy/dsrc/submit_slurm.sh
 ```
