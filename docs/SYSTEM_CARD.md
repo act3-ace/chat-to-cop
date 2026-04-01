@@ -181,31 +181,32 @@ Detailed results are in [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md). Summary:
 
 ### Full Pipeline (935 real DASH 3 messages)
 
-Two backends validated (2026-03-30):
+Seven backends validated across local GPU, DSRC HPC, and cloud APIs (2026-03-29 through 2026-03-31):
 
-| Metric | Qwen 7B (T4 GPU) | Claude Sonnet 4.5 (Bedrock) |
-|--------|-------------------|------------------------------|
-| Messages processed | 935 | 935 |
-| LLM success rate | **100%** (945/945) | **99.6%** (941/945) |
-| Regex fallback | 0 | 4 |
-| Updates extracted (after fusion) | 255 | 256 |
-| Entities tracked | 196 | **206** |
-| Mean LLM latency | 7.6s | **4.8s** |
-| Max LLM latency | 60.4s | **10.3s** |
-| CoP auto-writes | 470 | **582** |
-| CoP human-review queued | 115 | 75 |
-| CoP errors | 0 | 0 |
-| Duration | ~2.5 hrs | **~1.3 hrs** |
+| Metric | V100 14B | V100 32B* | T4 7B | Gemini Flash | GPT-4.1 nano | Claude Haiku | Bedrock Sonnet |
+|--------|----------|-----------|-------|-------------|--------------|-------------|----------------|
+| Duration | **34 min** | ~110 min | 150 min | 55 min | 68 min | 129 min | 75 min |
+| Updates | 362 | 168* | 255 | 324 | 318 | 273 | 256 |
+| Entities | 58 | 150* | 196 | **254** | 229 | 193 | 206 |
+| Threats | 18 | 35* | 32 | **66** | 45 | 52 | 54 |
+| Taskings | 6 | 31* | 51 | **86** | 49 | 76 | 69 |
+| Confidence | 0.25 | 0.79 | — | **0.80** | 0.78 | 0.71 | — |
+| LLM success | 100% | 100% | 100% | 100% | 100% | 100% | 99.6% |
+| Degradation | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
 
-Zero code changes between backends -- model-agnostic design validated.
+*V100 32B partial run (625/935 messages — Slurm reservation expired).
 
-Previous laptop CPU run: 100 LLM extractions out of 935 (remainder fell to regex due to CPU timeouts).
+Zero code changes between backends — model-agnostic design validated across all seven.
 
 ### Latency
 
 | Hardware | Model | Mean Latency | Max Latency | Meets Real-Time? |
 |----------|-------|------------|-------------|-----------------|
-| **AWS Bedrock** | Claude Sonnet 4.5 | **4.8s** | **10.3s** | **Yes** |
+| **DSRC V100** | qwen2.5:14b | **2.2s** | — | **Yes** |
+| Cloud API | Gemini 2.5 Flash | 3.5s | — | **Yes** |
+| Cloud API | GPT-4.1 nano | 4.4s | — | **Yes** |
+| **AWS Bedrock** | Claude Sonnet 4.5 | 4.8s | **10.3s** | **Yes** |
+| DSRC V100 | qwen2.5:32b | ~7s | — | Yes |
 | T4 16GB (AG) | qwen2.5:7b-8k | 7.6s | 60.4s | Yes |
 | CPU (AG m7i) | qwen2.5:7b | 4-6 min | -- | No |
 | CPU (laptop) | qwen2.5:3b | 33.2s | -- | No |
