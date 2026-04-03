@@ -251,6 +251,53 @@ def build_system_prompt(
         "  entities: [{platform_type:SA-20, affiliation:HOSTILE,",
         "    operational_status:ACTIVE, metadata:{grid:38TLM1234567890,",
         "    source:SIGINT, event:battery_activating}, capability_impact:sense}]",
+        "",
+        'Message: "EW_COORD: DRAGON EYE active, degrading blue comms in sector 3"',
+        "Output: update_type=cyber_ew, confidence=0.9",
+        "  entities: [{platform_type:DRAGON EYE, affiliation:HOSTILE,",
+        "    operational_status:ACTIVE, metadata:{effect:comms_degradation,",
+        "    location:sector 3, impact:blue comms}, capability_impact:act}]",
+        "  reasoning: DRAGON EYE is an EW system — electronic attack, not a kinetic threat",
+        "",
+        'Message: "AOC_SIDO: COMINT hit, enemy DRFM jammer active on blue radar freq"',
+        "Output: update_type=cyber_ew, confidence=0.85",
+        "  entities: [{metadata:{threat_type:DRFM_jammer, target:blue radar freq,",
+        "    source:COMINT}, capability_impact:act}]",
+        "  reasoning: Electronic jamming is cyber_ew, not threat",
+        "",
+        'Message: "AOC_SIDO: SA-21 launch detected, TBM inbound, impact est 3 min"',
+        "Output: update_type=threat, confidence=0.95",
+        "  entities: [{platform_type:SA-21, affiliation:HOSTILE,",
+        "    metadata:{event:missile_launch, type:TBM, time_to_impact:3min}}]",
+        "  reasoning: Missile launch / kinetic weapon employment is threat, not cyber_ew",
+        "",
+        'Message: "AOC_SIDO: hostile fighter 4-ship, bullseye 270/50, angels 25, hot"',
+        "Output: update_type=threat, confidence=0.9",
+        "  entities: [{affiliation:HOSTILE, platform_type:fighter,",
+        "    metadata:{count:4, bearing:270, range_nm:50, altitude:25000, aspect:hot}}]",
+        "  reasoning: Hostile aircraft is a kinetic threat, not cyber_ew",
+        "",
+        'Message: "FIRES_COORD: SPOTTER21 requests fire mission, TGT BQ4567, 1x GBU-38, TOT 1515Z"',
+        "Output: update_type=fire_mission, confidence=0.9",
+        "  entities: [{track_number:BQ4567, metadata:{weapon:GBU-38, qty:1, TOT:1515Z,",
+        "    requestor:SPOTTER21}}]",
+        "  reasoning: Specific fire request with target/weapon/TOT is fire_mission, not tasking",
+        "",
+        'Message: "AOC_SIDO: BattleCOA: push ZEUS flight to BMA3, SEAD package to suppress SA-20"',
+        "Output: update_type=tasking, confidence=0.85",
+        "  entities: [{callsign:ZEUS, metadata:{task:reposition, destination:BMA3}},",
+        "    {metadata:{task:SEAD, target:SA-20}}]",
+        "  reasoning: Coordination/asset management is tasking, not fire_mission",
+        "",
+        "TYPE DISAMBIGUATION — use these rules to choose the correct update_type:",
+        "- cyber_ew: Electronic warfare, jamming, SIGINT, COMINT, ELINT, DRFM, cyber effects,",
+        "  EW systems (DRAGON EYE, GPS jamming, Dazzler, buzzer). The effect is electromagnetic or cyber.",
+        "- threat: Kinetic threats — hostile aircraft, SAM launches, TBM, missiles in flight,",
+        "  hostile ships/subs engaging. The danger is a physical weapon.",
+        "- fire_mission: A specific fire request or BDA with target designation, weapon type, and/or TOT.",
+        "  Includes CAS requests with grid/TIC. The message describes a discrete engagement.",
+        "- tasking: General coordination — BattleCOA, push assets, mission assignments, C2 handovers.",
+        "  No specific target/weapon/TOT. The message directs forces without specifying an engagement.",
     ]
 
     if glossary:
@@ -319,6 +366,7 @@ DEFAULT_GLOSSARY = """## Brevity / Tactical Terms
 - "ELINT" = electronic intelligence (radar, weapons systems)
 - "DRFM" = digital radio frequency memory (radar jammer)
 - "Dazzler" = laser-based sensor disruption system
+- "DRAGON EYE" = enemy electronic warfare / electronic attack system (cyber_ew, NOT threat)
 
 ## Blue Platform Types
 - "F-15E" = Strike Eagle, dual-role fighter-bomber

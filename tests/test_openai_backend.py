@@ -78,6 +78,35 @@ class TestBuildSystemPrompt:
         assert "GPS jamming" in prompt
         assert "SA-20 battery activating" in prompt
         assert "SIGINT" in prompt
+        # Claude disambiguation examples (#42)
+        assert "DRAGON EYE active" in prompt
+        assert "DRAGON EYE is an EW system" in prompt
+        assert "DRFM jammer" in prompt
+        assert "Electronic jamming is cyber_ew" in prompt
+
+    def test_prompt_disambiguates_threat_vs_cyber_ew(self):
+        prompt = build_system_prompt()
+        # Threat contrast examples
+        assert "SA-21 launch detected" in prompt
+        assert "Missile launch / kinetic weapon employment is threat" in prompt
+        assert "hostile fighter 4-ship" in prompt
+        assert "Hostile aircraft is a kinetic threat" in prompt
+
+    def test_prompt_disambiguates_fire_mission_vs_tasking(self):
+        prompt = build_system_prompt()
+        # fire_mission with specific target/weapon/TOT
+        assert "SPOTTER21 requests fire mission" in prompt
+        assert "fire request with target/weapon/TOT is fire_mission" in prompt
+        # tasking contrast
+        assert "BattleCOA: push ZEUS flight" in prompt
+        assert "Coordination/asset management is tasking" in prompt
+
+    def test_prompt_contains_type_disambiguation_rules(self):
+        prompt = build_system_prompt()
+        assert "TYPE DISAMBIGUATION" in prompt
+        assert "The effect is electromagnetic or cyber" in prompt
+        assert "The danger is a physical weapon" in prompt
+        assert "No specific target/weapon/TOT" in prompt
 
     def test_default_glossary_content(self):
         assert "gadget bent" in DEFAULT_GLOSSARY
@@ -101,6 +130,7 @@ class TestBuildSystemPrompt:
     def test_default_glossary_ew_terms(self):
         assert "EW" in DEFAULT_GLOSSARY
         assert "SIGINT" in DEFAULT_GLOSSARY
+        assert "DRAGON EYE" in DEFAULT_GLOSSARY
 
     def test_prompt_contains_radio_banter_noise_examples(self):
         prompt = build_system_prompt()
