@@ -172,6 +172,10 @@ class ReferenceDataConfig(BaseSettings):
         default="",
         description="Path to theater_geometry_polygons.geojson. Empty = disabled.",
     )
+    equipment_catalog_path: str = Field(
+        default="",
+        description="Path to equipment/weapon catalog JSON or CSV. Empty = disabled.",
+    )
 
 
 class PipelineConfig(BaseSettings):

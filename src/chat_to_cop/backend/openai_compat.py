@@ -405,6 +405,7 @@ DEFAULT_GLOSSARY = """## Brevity / Tactical Terms
 - "AGM-88" or "HARM" = high-speed anti-radiation missile (SEAD)
 - "AGM-114" or "Hellfire" = air-to-ground missile (helicopters, UAVs)
 - "AGM-158" or "JASSM" = stealthy long-range air-to-surface standoff missile
+- "AGM-158B" or "JASSM-ER" = JASSM Extended Range (~1,000 km cruise missile)
 - "AGM-158C" or "LRASM" = long-range anti-ship missile
 - "JDAM" = Joint Direct Attack Munition (GPS-guided bomb: GBU-31/32/38)
 - "GBU-39" or "SDB" = small diameter bomb (250 lb GPS-guided)
@@ -418,6 +419,8 @@ DEFAULT_GLOSSARY = """## Brevity / Tactical Terms
 - "ATACMS" = Army Tactical Missile System (ground-launched)
 - "ADM-160" or "MALD" = miniature air-launched decoy
 - "APKWS" or "AGR20" = advanced precision kill weapon system (laser-guided rocket)
+- "GBU-24" or "PAVEWAY III" = Mk-84 laser-guided bomb (2,000 lb class)
+- "GBU-43" or "MOAB" = Massive Ordnance Air Blast (21,600 lb GPS-guided)
 
 ## C2 / Sensor Systems
 - "TAOC" = tactical air operations center (USMC air defense C2)
