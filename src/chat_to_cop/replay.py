@@ -24,6 +24,7 @@ from chat_to_cop.backend.degrading import DegradingBackend
 from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
 from chat_to_cop.backend.regex_fallback import RegexBackend
 from chat_to_cop.config import PipelineConfig
+from chat_to_cop.equifinality import PathEntropyTracker
 from chat_to_cop.ingestion.replay import replay_messages
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.cop_writer import CoPWriter
@@ -112,6 +113,7 @@ async def run_replay(
         window_size=config.agent.window_size,
         run_name=f"replay-{path.stem}",
     )
+    entropy_tracker = PathEntropyTracker()
     type_counts: dict[str, int] = defaultdict(int)
     total_messages = 0
     total_updates = 0
@@ -157,6 +159,7 @@ async def run_replay(
                         await store.write_update(update)
                         await cop_writer.push_update(update)
                         tracker.log_extraction(update)
+                        entropy_tracker.record(update.update_type.value, update.extraction_method)
                         total_updates += 1
                         type_counts[update.update_type.value] += 1
                         logger.info(
@@ -188,6 +191,7 @@ async def run_replay(
                     await store.write_update(update)
                     await cop_writer.push_update(update)
                     tracker.log_extraction(update)
+                    entropy_tracker.record(update.update_type.value, update.extraction_method)
                     total_updates += 1
                     type_counts[update.update_type.value] += 1
 
@@ -216,6 +220,16 @@ async def run_replay(
         for ch in sorted(supervisor.active_channels):
             noise = fusion.channel_noise_rate(ch)
             logger.info(f"  {ch}: noise_rate={noise:.2f}")
+
+        # Path entropy (equifinality health)
+        entropy_report = entropy_tracker.report()
+        if entropy_report:
+            logger.info("Path entropy (equifinality):")
+            for utype, ent in entropy_report.items():
+                logger.info(f"  {utype}: {ent:.2f}")
+            fragile = entropy_tracker.fragile_types()
+            if fragile:
+                logger.warning(f"Fragile extraction paths (entropy < 0.5): {fragile}")
 
         metrics.log_summary()
 
