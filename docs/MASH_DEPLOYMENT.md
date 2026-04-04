@@ -1,0 +1,739 @@
+# MASH Deployment Guide: H2O Las Vegas, May 2026
+
+The definitive setup guide for deploying chat-to-cop at the MASH wargame event.
+
+---
+
+## 1. Overview
+
+Chat-to-cop is an AI staff officer that runs **in the background** on a single workstation. It connects to the exercise IRC server via WebSocket, reads every message across all channels, extracts world-state information using LLMs, and pushes structured updates to the Common Operating Picture (CoP) database. It is not a chatbot. Operators do not interact with it directly during the exercise.
+
+**Setup time:** Under 10 minutes if pre-event preparation is complete.
+
+**Hardware:** One workstation with GPU (recommended) or internet access for cloud APIs. No special infrastructure required.
+
+**Five deployment options:**
+
+| Option | Requires GPU? | Requires Internet? | Latency | Notes |
+|--------|--------------|-------------------|---------|-------|
+| A: Local GPU + Ollama | Yes (RTX 4090/5090) | No | ~7s | Self-contained, no external dependencies |
+| B: AWS Bedrock (Claude Sonnet) | No | Yes | ~5s | Best quality, requires AWS credentials |
+| C: Ask Sage (NIPRNet) | No | Yes (NIPRNet) | ~10-15s | CAC + VPN required |
+| D: Docker Compose | Optional | Optional | Varies | Containerized, cleanest setup |
+| E: Hybrid (recommended) | Yes | Yes | ~5s primary | Cloud primary + local fallback |
+
+---
+
+## 2. Pre-Event Setup (Do Before Arriving at H2O)
+
+Complete these steps at your desk before traveling. The event network may have surprises; eliminate all software/model issues beforehand.
+
+### 2.1 Clone and install
+
+```bash
+git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+cd chat-to-cop
+pip install -e ".[dev]"
+```
+
+Verify:
+
+```bash
+python -c "from chat_to_cop.models.cop_update import CoPUpdate; print('OK')"
+```
+
+### 2.2 Pull models (if using local GPU)
+
+```bash
+# Install Ollama: https://ollama.com/download
+ollama pull qwen2.5:7b
+
+# Create a model with 8K context (required -- default truncates our prompts)
+cat > /tmp/Modelfile <<EOF
+FROM qwen2.5:7b
+PARAMETER num_ctx 8192
+EOF
+ollama create qwen2.5:7b-8k -f /tmp/Modelfile
+```
+
+On Windows, replace `/tmp/Modelfile` with a path like `%TEMP%\Modelfile`.
+
+For better quality with 24GB+ VRAM (RTX 4090/5090):
+
+```bash
+ollama pull qwen3:30b-a3b
+cat > /tmp/Modelfile30b <<EOF
+FROM qwen3:30b-a3b
+PARAMETER num_ctx 8192
+EOF
+ollama create qwen3:30b-a3b-8k -f /tmp/Modelfile30b
+```
+
+### 2.3 Verify API keys (if using cloud)
+
+**Bedrock:**
+
+```bash
+pip install anthropic boto3
+# Verify credentials work
+python -c "import boto3; print(boto3.client('bedrock-runtime', region_name='us-gov-west-1').meta.region_name)"
+```
+
+**Ask Sage:**
+
+```bash
+pip install asksageclient pip_system_certs requests
+# Set env vars or use --asksage-email and --asksage-key flags
+export ASKSAGE_EMAIL="your.email@mail.mil"
+export ASKSAGE_API_KEY="your-key-here"
+```
+
+### 2.4 Run smoke test against DASH 3 data
+
+Download DASH 3 chat data if you don't have it:
+
+```bash
+python scripts/explore_and_download_chat.py download --output data/chat
+```
+
+Run the smoke test:
+
+```bash
+# Local Ollama
+python scripts/quick_test.py --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k
+
+# Bedrock
+python scripts/quick_test.py --bedrock
+
+# Ask Sage
+python scripts/quick_test.py --asksage --asksage-email $ASKSAGE_EMAIL --asksage-key $ASKSAGE_API_KEY
+```
+
+Run the full pipeline against a small slice:
+
+```bash
+python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip \
+    --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --db /tmp/pre_event_test.db
+```
+
+If you see `Updates extracted: N` where N > 0 in the summary, the pipeline works. Run tests to confirm nothing is broken:
+
+```bash
+ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -q
+```
+
+### 2.5 Pack list
+
+Bring to H2O:
+
+- [ ] Laptop/workstation with chat-to-cop installed and tested
+- [ ] GPU (if using local inference) -- RTX 4090/5090 or equivalent
+- [ ] Ollama installed with models already pulled
+- [ ] Power adapter, ethernet cable, ethernet-to-USB adapter if needed
+- [ ] DASH 3 chat data (for on-site testing before exercise starts)
+- [ ] This document (printed or offline copy)
+- [ ] AWS credentials configured (if using Bedrock)
+- [ ] CAC reader + VPN software (if using Ask Sage)
+
+---
+
+## 3. Option A: Local GPU + Ollama
+
+Self-contained. No internet required once models are pulled. Best for air-gapped or unreliable network scenarios.
+
+### Requirements
+
+- NVIDIA GPU with 8+ GB VRAM (RTX 4090/5090 recommended for 30B models)
+- Ollama installed
+- Model pre-pulled (see section 2.2)
+
+### Step-by-step
+
+1. Start Ollama (if not running as a service):
+
+```bash
+ollama serve &
+```
+
+2. Verify the model is available:
+
+```bash
+ollama list
+# Should show qwen2.5:7b-8k (or your chosen model)
+```
+
+3. Connect to the IRC server and start the pipeline:
+
+```bash
+python -m chat_to_cop.replay /path/to/live/feed \
+    --url http://127.0.0.1:11434/v1 \
+    --model qwen2.5:7b-8k \
+    --db data/mash_live.db
+```
+
+For live IRC (not replay), use the IRC client directly:
+
+```bash
+export CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
+export CHAT_TO_COP_LLM_MODEL=qwen2.5:7b-8k
+export CHAT_TO_COP_DB_PATH=data/mash_live.db
+python -m chat_to_cop.live --irc-url ws://IRC_SERVER_IP:8097
+```
+
+4. Start the dashboard:
+
+```bash
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+```
+
+5. Open `http://localhost:8000/dashboard` in a browser to verify updates are flowing.
+
+**Important:** Use `127.0.0.1` not `localhost` for the Ollama URL. IPv6 resolution causes connection failures on some systems.
+
+---
+
+## 4. Option B: AWS Bedrock (Claude Sonnet)
+
+No GPU needed. Best extraction quality (35% more threats, 69% more tasking vs local 7B). Requires internet connectivity and AWS GovCloud credentials.
+
+### Requirements
+
+- Internet access from H2O
+- AWS GovCloud credentials (from AG IAM role or env vars)
+- `pip install anthropic boto3`
+
+### Step-by-step
+
+1. Set AWS credentials:
+
+```bash
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_DEFAULT_REGION="us-gov-west-1"
+```
+
+Or use an AWS profile if configured.
+
+2. Start the pipeline with the `--bedrock` flag:
+
+```bash
+python -m chat_to_cop.replay /path/to/live/feed \
+    --bedrock \
+    --bedrock-region us-gov-west-1 \
+    --db data/mash_bedrock.db
+```
+
+The default Bedrock model is `us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0`. Override with `--model`:
+
+```bash
+python -m chat_to_cop.replay /path/to/live/feed \
+    --bedrock --model us-gov.anthropic.claude-haiku-4-5-20251001-v1:0 \
+    --db data/mash_bedrock.db
+```
+
+3. Start the dashboard:
+
+```bash
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+```
+
+### Verified performance (DASH 3 replay, 935 messages)
+
+| Metric | Value |
+|--------|-------|
+| LLM success rate | 99.6% |
+| Mean extraction latency | 4.8s |
+| Max latency | 10.3s |
+| Updates extracted | 256 |
+| Entities tracked | 206 |
+
+---
+
+## 5. Option C: Ask Sage (NIPRNet)
+
+Uses the Ask Sage API on NIPRNet. Requires CAC, VPN, and an Ask Sage account. Best for IL5 data handling requirements.
+
+### Requirements
+
+- NIPRNet access (VPN + CAC)
+- Ask Sage account with API key
+- `pip install asksageclient pip_system_certs requests`
+
+### Step-by-step
+
+1. Set credentials:
+
+```bash
+export ASKSAGE_EMAIL="your.email@mail.mil"
+export ASKSAGE_API_KEY="your-api-key"
+```
+
+2. Start the pipeline:
+
+```bash
+python -m chat_to_cop.replay /path/to/live/feed \
+    --asksage \
+    --asksage-email $ASKSAGE_EMAIL \
+    --asksage-key $ASKSAGE_API_KEY \
+    --model claude-opus-4-6 \
+    --db data/mash_asksage.db
+```
+
+3. Start the dashboard:
+
+```bash
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+```
+
+**Note:** Ask Sage has rate limits. For high message volume, consider pairing with a local fallback (see Option E).
+
+---
+
+## 6. Option D: Docker Compose
+
+Cleanest setup. Everything runs in containers. Good for reproducibility and isolating dependencies.
+
+### Requirements
+
+- Docker and Docker Compose installed
+- NVIDIA Container Toolkit (for GPU mode)
+
+### Step-by-step
+
+**GPU mode (default):**
+
+```bash
+docker compose up -d
+```
+
+**CPU mode (no GPU):**
+
+```bash
+docker compose --profile cpu up -d
+```
+
+After containers are running, pull a model:
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:7b
+```
+
+Create the 8K context variant:
+
+```bash
+docker compose exec ollama sh -c 'echo "FROM qwen2.5:7b
+PARAMETER num_ctx 8192" | ollama create qwen2.5:7b-8k -f -'
+```
+
+Run a replay:
+
+```bash
+docker compose exec chat-to-cop python -m chat_to_cop.replay /app/data/chat.zip
+```
+
+The FastAPI server runs automatically on port 8000. Dashboard: `http://localhost:8000/dashboard`.
+
+**For Bedrock via Docker (no local GPU):**
+
+```bash
+docker run -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... -e AWS_DEFAULT_REGION=us-gov-west-1 \
+    -v $(pwd)/data:/app/data -p 8000:8000 \
+    chat-to-cop python -m chat_to_cop.replay /app/data/chat.zip --bedrock
+```
+
+---
+
+## 7. Option E: Hybrid (Recommended)
+
+Cloud primary (Bedrock or Ask Sage) with local Ollama as automatic fallback. The degrading backend handles failover transparently. If the cloud API goes down or the network drops, extraction continues on the local GPU at reduced quality. When the cloud comes back, the circuit breaker recovers automatically.
+
+### Step-by-step
+
+1. Start Ollama with a local model:
+
+```bash
+ollama serve &
+# Model should already be pulled from pre-event setup
+```
+
+2. Set environment variables for hybrid mode:
+
+```bash
+# Primary: Bedrock
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_DEFAULT_REGION="us-gov-west-1"
+
+# Fallback: local Ollama
+export CHAT_TO_COP_FALLBACK_URL=http://127.0.0.1:11434/v1
+export CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b-8k
+```
+
+3. Start the pipeline with Bedrock as primary:
+
+```bash
+python -m chat_to_cop.replay /path/to/live/feed \
+    --bedrock \
+    --db data/mash_hybrid.db
+```
+
+The degrading backend stack is:
+
+```
+Level 1: Bedrock (Claude Sonnet)  -- cloud, best quality
+    |  [circuit breaker: 3 failures -> open, 30s cooldown]
+    v
+Level 2: Local Ollama (Qwen 7B)  -- GPU fallback
+    |  [circuit breaker]
+    v
+Level 3: Regex patterns           -- known military formats only
+    |
+    v
+Level 4: Passthrough              -- raw message, confidence 0.0 (never fails)
+```
+
+**Why hybrid is recommended:** At DASH 3, the circuit breaker recovered from cloud outages in under 60 seconds on GPU. Zero messages were dropped across 935 messages on any backend configuration. The hybrid approach gives you cloud quality when available and guaranteed continuity when not.
+
+---
+
+## 8. MASH-Specific Configuration
+
+These values will be confirmed at the event. Update before starting the pipeline.
+
+### IRC server
+
+The IRC server address will be provided by the exercise control team. At DASH 3 it was:
+
+```
+ws://10.5.185.72:8097
+```
+
+Set via environment variable or CLI flag:
+
+```bash
+export CHAT_TO_COP_IRC_URL=ws://IRC_SERVER_IP:8097
+```
+
+### Channel list
+
+Channels are auto-discovered by the supervisor when messages arrive. No pre-configuration needed. Expected channels based on DASH 3:
+
+- `#c2_coord` -- cross-BMA coordination (highest value)
+- `#fires` -- fire missions
+- `#isr_reports` -- intelligence (71% informative at DASH 3)
+- `#jprc` -- personnel recovery
+- `#vegas_internal`, `#hydro_internal`, `#crusher_internal`, `#taipan_internal`, `#mesquite_internal`
+- `#stt_hydroBMA`, `#stt_crusherBMA`, `#stt_C2Coord`, etc. (voice-to-text)
+
+### Bullseye reference point
+
+Required for converting bearing/range position reports to geographic coordinates. The exercise bullseye will be provided at the event. Configure:
+
+```bash
+export CHAT_TO_COP_BULLSEYE_LAT="..."
+export CHAT_TO_COP_BULLSEYE_LON="..."
+```
+
+### CoP REST API endpoint
+
+The CoP database endpoint will be provided by the contractor team. Until then, the pipeline runs in dry-run mode (extractions stored locally in SQLite, no HTTP writes).
+
+```bash
+# When the endpoint is available:
+export CHAT_TO_COP_COP_API_URL="http://COP_SERVER:PORT/api/updates"
+export CHAT_TO_COP_COP_AUTO_THRESHOLD=0.7
+```
+
+### All configuration variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHAT_TO_COP_LLM_URL` | `http://127.0.0.1:11434/v1` | LLM endpoint |
+| `CHAT_TO_COP_LLM_MODEL` | `qwen2.5:7b` | Primary model |
+| `CHAT_TO_COP_FALLBACK_MODEL` | `qwen2.5:3b` | Fallback model |
+| `CHAT_TO_COP_LLM_API_KEY` | `not-needed` | API key (set for cloud endpoints) |
+| `CHAT_TO_COP_LLM_TIMEOUT` | `120.0` | Seconds per LLM call |
+| `CHAT_TO_COP_LLM_NUM_CTX` | `8192` | Context window size |
+| `CHAT_TO_COP_DB_PATH` | `data/world_state.db` | SQLite database path |
+| `CHAT_TO_COP_METRICS` | `true` | Enable instrumentation |
+| `CHAT_TO_COP_COP_API_URL` | (empty = dry-run) | CoP REST API URL |
+| `CHAT_TO_COP_COP_AUTO_THRESHOLD` | `0.7` | Auto-write confidence threshold |
+
+---
+
+## 9. Pre-Event Checklist
+
+Run through this list the morning of, before the exercise starts.
+
+### Software
+
+- [ ] `python -c "from chat_to_cop.models.cop_update import CoPUpdate; print('OK')"` succeeds
+- [ ] `ruff check src/ tests/` passes (no lint errors in your checkout)
+- [ ] `pytest tests/ -k "not integration" -q` passes
+
+### LLM backend
+
+- [ ] **If local GPU:** `nvidia-smi` shows GPU. `ollama list` shows your model. `curl http://127.0.0.1:11434/v1/models` returns JSON.
+- [ ] **If Bedrock:** `python -c "import boto3; c=boto3.client('bedrock-runtime', region_name='us-gov-west-1'); print('OK')"` works.
+- [ ] **If Ask Sage:** `ASKSAGE_EMAIL` and `ASKSAGE_API_KEY` are set. NIPRNet VPN is connected. CAC is inserted.
+
+### Smoke test
+
+- [ ] `python scripts/quick_test.py` completes with at least 3/5 messages producing extractions
+- [ ] Extraction latency is under 15 seconds per message
+
+### Network
+
+- [ ] Can reach the IRC server: verify the IP and port provided by exercise control
+- [ ] Can reach the CoP API endpoint (if available)
+- [ ] Internet connectivity (if using cloud backend)
+
+### Dashboard
+
+- [ ] `uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000` starts
+- [ ] `http://localhost:8000/health` returns JSON
+- [ ] `http://localhost:8000/docs` shows Swagger UI
+
+---
+
+## 10. During Event Monitoring
+
+### Dashboard
+
+Open `http://localhost:8000/dashboard` in a browser. Key metrics to watch:
+
+| Metric | Healthy | Warning | Action |
+|--------|---------|---------|--------|
+| Extraction rate | >0 updates/min | 0 updates for 2+ min | Check IRC connection, LLM health |
+| Mean latency | <10s | >15s | Check GPU utilization, consider smaller model |
+| Circuit breaker | All closed | Any open | Check LLM endpoint, network connectivity |
+| Error rate | <5% | >10% | Check logs for schema errors, timeout issues |
+| Channels active | 5+ | <3 | Verify IRC server connection, channel list |
+
+### API endpoints for monitoring
+
+```bash
+# System health
+curl http://localhost:8000/health
+
+# Recent updates
+curl http://localhost:8000/updates?limit=10
+
+# All tracked entities
+curl http://localhost:8000/entities
+
+# Extraction statistics
+curl http://localhost:8000/stats
+
+# Filter by channel
+curl http://localhost:8000/updates?channel=%23c2_coord
+```
+
+### What to watch for
+
+**Circuit breakers opening:** The degrading backend logs when it falls back. Look for lines like:
+
+```
+WARNING | Circuit breaker OPEN for OpenAICompatibleBackend — falling back to RegexBackend
+```
+
+Brief openings (<60s) are normal under load. Sustained open breakers mean the LLM endpoint is down.
+
+**Queue depth:** If the human review queue grows large, the pipeline is producing low-confidence extractions. This is normal for noisy STT channels. High-confidence channels (#c2_coord, #fires) should be mostly auto-written.
+
+**Fusion deduplication:** The fusion agent logs when it suppresses duplicates across channels. This is working as designed -- the same event reported on IRC and STT should be deduplicated.
+
+### Kill switch
+
+To pause CoP writes without stopping extraction:
+
+```bash
+# Pause all CoP writes (extractions continue to SQLite)
+curl -X POST http://localhost:8000/cop/pause
+
+# Resume CoP writes
+curl -X POST http://localhost:8000/cop/resume
+```
+
+### Human review queue
+
+High-risk update types (weapons, CSAR, fire missions, cyber/EW) always go to human review regardless of confidence. Check the queue:
+
+```bash
+curl http://localhost:8000/cop/review-queue
+```
+
+---
+
+## 11. Post-Event Data Collection
+
+After the exercise ends, collect all artifacts for analysis.
+
+### Copy the SQLite database
+
+```bash
+cp data/mash_live.db data/mash_may2026_BACKUP.db
+```
+
+This contains every raw message, every extraction, every CoPUpdate, full provenance, and speaker models.
+
+### Run analysis
+
+```bash
+# Label analysis (compare against silver labels if available)
+python scripts/analyze_labels.py --db data/mash_live.db
+
+# Export metrics summary
+python -c "
+from chat_to_cop.output.store import WorldStateStore
+import asyncio
+async def report():
+    async with WorldStateStore('data/mash_live.db') as s:
+        print(f'Total updates: {await s.count_updates()}')
+        print(f'Total entities: {await s.count_entities()}')
+asyncio.run(report())
+"
+```
+
+### Export for further analysis
+
+```bash
+# All CoPUpdates as JSON
+curl http://localhost:8000/updates?limit=10000 > mash_updates.json
+
+# All entities
+curl http://localhost:8000/entities > mash_entities.json
+```
+
+### Collect logs
+
+Pipeline logs are written to stderr by loguru. If you started with output redirection:
+
+```bash
+python -m chat_to_cop.replay ... 2>&1 | tee mash_pipeline.log
+```
+
+---
+
+## 12. Troubleshooting
+
+### "Connection refused" to Ollama
+
+Ollama is not running.
+
+```bash
+# Linux
+systemctl start ollama
+# Or manually:
+ollama serve &
+
+# Windows
+# Start Ollama from the system tray, or run:
+ollama serve
+```
+
+### "Model not found" (404)
+
+The model was not pulled or the custom Modelfile variant was not created.
+
+```bash
+ollama list                          # See what's available
+ollama pull qwen2.5:7b               # Pull if missing
+# Recreate the 8K context variant (see section 2.2)
+```
+
+### localhost vs 127.0.0.1
+
+Some systems resolve `localhost` to IPv6 (`::1`), but Ollama only listens on IPv4. Always use `http://127.0.0.1:11434/v1`.
+
+### Noisy [GIN] log lines from Ollama
+
+Ollama logs every HTTP request with `[GIN]` prefixes. Harmless but noisy. Suppress:
+
+```bash
+ollama serve 2>/dev/null &
+# Or filter:
+ollama serve 2>&1 | grep -v '^\[GIN\]' &
+```
+
+### num_ctx / context window truncation
+
+If you see `truncating input prompt` warnings, the context window is too small. Always use a Modelfile-derived model with `num_ctx 8192` baked in (see section 2.2). The pipeline also passes `num_ctx` via the API, but baking it into the model is more reliable.
+
+### Rate limiting on cloud APIs
+
+**Bedrock:** Increase timeout with `--timeout 60`. Bedrock has per-account quotas; request a limit increase if needed.
+
+**Ask Sage:** Has built-in rate limits. The pipeline retries automatically via tenacity. If sustained 429 errors occur, reduce throughput by processing fewer channels or increasing the circuit breaker cooldown:
+
+```bash
+export CHAT_TO_COP_CIRCUIT_COOLDOWN=60
+```
+
+### Slow inference (>15s per message on GPU)
+
+1. Check GPU is being used: `nvidia-smi` should show the Ollama process with GPU memory allocated.
+2. If GPU shows 0% utilization, NVIDIA drivers may not be loaded: `sudo modprobe nvidia`.
+3. Try a smaller model: `qwen2.5:3b` instead of `7b`.
+4. Cold start: the first message after model load takes 30-90s. Subsequent messages should be 6-10s.
+
+### IRC WebSocket connection drops
+
+The IRC client has automatic reconnection with exponential backoff (1s to 60s). Check logs for:
+
+```
+WARNING | WebSocket connection lost, reconnecting...
+INFO | Reconnected to ws://...
+```
+
+If reconnection fails repeatedly, verify the IRC server IP and port with exercise control.
+
+### "disk quota exceeded" (Analytics Gateway)
+
+AG home directories have quotas. Store models and data on local disk:
+
+```bash
+export OLLAMA_MODELS=/tmp/ollama-models
+mkdir -p /tmp/ollama-models
+OLLAMA_MODELS=/tmp/ollama-models ollama serve &
+```
+
+### Import errors
+
+Make sure you installed in dev mode from the project root:
+
+```bash
+cd chat-to-cop
+pip install -e ".[dev]"
+```
+
+---
+
+## Quick Reference Card
+
+Print this and tape it to your monitor.
+
+```
+START PIPELINE (local GPU):
+  ollama serve &
+  python -m chat_to_cop.replay <data> --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --db data/mash.db
+  uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+
+START PIPELINE (Bedrock):
+  python -m chat_to_cop.replay <data> --bedrock --db data/mash.db
+  uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+
+MONITOR:
+  http://localhost:8000/dashboard
+  http://localhost:8000/health
+  http://localhost:8000/stats
+
+PAUSE CoP WRITES:
+  curl -X POST http://localhost:8000/cop/pause
+
+RESUME CoP WRITES:
+  curl -X POST http://localhost:8000/cop/resume
+
+CHECK REVIEW QUEUE:
+  curl http://localhost:8000/cop/review-queue
+```
