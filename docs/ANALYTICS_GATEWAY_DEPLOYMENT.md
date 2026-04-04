@@ -25,9 +25,9 @@ The AG GPU instances may not have NVIDIA drivers pre-installed:
 # Check if drivers are already installed
 nvidia-smi
 
-# If not found, install them:
-sudo apt-get update -qq
-sudo apt-get install -y -qq nvidia-driver-535 nvidia-cuda-toolkit
+# If not found, install the latest available driver:
+sudo apt-get update
+sudo apt-get install -y nvidia-driver-$(apt-cache search nvidia-driver | grep -oP 'nvidia-driver-\K\d+' | sort -n | tail -1)
 sudo modprobe nvidia
 
 # Verify — should show Tesla T4 with 16GB
@@ -42,21 +42,25 @@ nvidia-smi
 curl -fsSL https://ollama.ai/install.sh | sh
 ```
 
-### 4. Configure Ollama for Disk Quota
+### 4. Start Ollama Server
 
-AG home directories have a quota. Store models on local disk:
+**CRITICAL: AG does not use systemd, so Ollama will NOT auto-start.** You must manually start the server in the background:
 
 ```bash
 export OLLAMA_MODELS=/tmp/ollama-models
 mkdir -p /tmp/ollama-models
-OLLAMA_MODELS=/tmp/ollama-models ollama serve &
-sleep 5
+OLLAMA_MODELS=/tmp/ollama-models ollama serve &>/dev/null &
+sleep 10
 
-# Optional: suppress Ollama's [GIN] HTTP access logs (noisy but harmless)
-# OLLAMA_MODELS=/tmp/ollama-models ollama serve 2>/dev/null &
+# Verify it's running:
+curl -s http://127.0.0.1:11434/api/tags | head -1
 ```
 
-**Important:** `/tmp` is local SSD (~34GB). Models stored here are lost when the instance shuts down. Re-pull each session.
+If you skip this step, everything else will fail with `Connection error` or `could not connect to ollama server`.
+
+**Disk quota:** AG home directories have a quota. `/tmp` is local SSD (~34GB). Models stored here are lost when the instance shuts down — re-pull each session.
+
+To suppress noisy `[GIN]` HTTP access logs: `OLLAMA_MODELS=/tmp/ollama-models ollama serve 2>/dev/null &`
 
 ### 5. Pull a Model and Set Context Window
 
