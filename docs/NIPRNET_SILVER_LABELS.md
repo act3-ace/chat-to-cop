@@ -42,24 +42,24 @@ pip install -e ".[dev]"
 
 ## Step 3: Generate Labels
 
-### Option A: GenAI.Mil with Gemini 2.5 Pro (RECOMMENDED — 50M token budget)
+### Option A: GenAI.Mil / STARK API with Gemini 2.5 Pro (RECOMMENDED — 50M token budget)
 
-GenAI.Mil is a separate service from Ask Sage, hosting Gemini 2.5 Pro with a 50M token budget.
-Our 935 messages need ~3.3M tokens — less than 7% of your budget.
+GenAI.Mil uses the STARK API gateway at `https://genai.mil/stark/api`.
+It serves OpenAI-compatible `/v1/chat/completions`. 50M token budget — our 935 messages
+need ~3.3M tokens (6.6% of budget).
 
 ```bash
-export GENAI_MIL_API_KEY="your-genai-mil-api-key-here"
-
 python scripts/generate_silver_labels.py \
-    --url https://genai.mil/v1 \
-    --api-key $GENAI_MIL_API_KEY \
+    --url https://genai.mil/stark/api/v1 \
+    --api-key STARK_BN-vJWxuRW4ewmrXFdQg95F7bFoFJBhv0GvDfWfYpD0 \
     --model gemini-2.5-pro \
     --rate-delay 2 \
     --output data/labels/dash3_silver_labels_gemini_pro.jsonl
 ```
 
-**Note:** Verify the exact base URL from the GenAI.Mil portal — it may be different from
-`https://genai.mil/v1`. The endpoint must serve OpenAI-compatible `/v1/chat/completions`.
+**Available models:** Check with `GET /v1/models` (or check the STARK portal).
+Gemini 2.5 Pro should be listed. The model name may differ — try `gemini-2.5-pro`
+or `gemini-pro` or check the portal for the exact model ID.
 
 **Token budget:** ~3.3M of 50M = 6.6%. You can run this many times with margin to spare.
 
