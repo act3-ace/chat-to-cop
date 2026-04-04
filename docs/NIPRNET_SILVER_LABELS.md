@@ -1,0 +1,169 @@
+# Generating Silver Labels on NIPRNet
+
+Use Ask Sage (Claude Opus 4.6) or GenAI.Mil (Gemini 2.5 Pro) on NIPRNet to generate
+high-quality silver labels for free. Both are OpenAI-compatible — no code changes needed.
+
+## Prerequisites
+
+- AF VPN connected to NIPRNet
+- CAC card authenticated
+- Ask Sage API key (from https://chat.genai.army.mil portal, use CDAO-OSD link)
+- Python 3.10+ with chat-to-cop installed
+
+## Step 1: Get the Code
+
+If chat-to-cop isn't on your NIPRNet machine yet:
+
+```bash
+git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+cd chat-to-cop
+pip install -e ".[dev]"
+```
+
+If it's already there:
+
+```bash
+cd chat-to-cop
+git pull
+pip install -e ".[dev]"
+```
+
+## Step 2: Get Your API Key
+
+### Ask Sage
+1. Go to https://chat.genai.army.mil/login?code=CDAO-OSD (must use CDAO-OSD link for 4M token allocation)
+2. Log in with CAC
+3. Navigate to API settings / API keys
+4. Copy your API key
+
+### GenAI.Mil
+1. Follow your organization's GenAI.Mil enrollment process
+2. Obtain API key from the portal
+
+## Step 3: Generate Labels
+
+### Option A: Ask Sage with Claude Opus 4.6 (RECOMMENDED — best quality)
+
+```bash
+export ASKSAGE_API_KEY="your-ask-sage-api-key-here"
+
+python scripts/generate_silver_labels.py \
+    --url https://api.genai.army.mil/v1 \
+    --api-key $ASKSAGE_API_KEY \
+    --model claude-opus-4-6 \
+    --rate-delay 5 \
+    --output data/labels/dash3_silver_labels_opus.jsonl
+```
+
+**Token budget:** ~3.3M tokens for 935 messages. Fits within the 4M/month individual allocation
+but leaves little margin. Do NOT run `--model list` or other model discovery calls (wastes ~13K tokens).
+
+### Option B: Ask Sage with Gemini 2.5 Pro
+
+```bash
+python scripts/generate_silver_labels.py \
+    --url https://api.genai.army.mil/v1 \
+    --api-key $ASKSAGE_API_KEY \
+    --model gemini-2.5-pro \
+    --rate-delay 5 \
+    --output data/labels/dash3_silver_labels_gemini_pro.jsonl
+```
+
+### Option C: Run BOTH and merge (BEST — consensus labels)
+
+Run both Option A and Option B, then merge:
+
+```bash
+# After both runs complete, the label pipeline auto-merges by trust priority
+python scripts/eval_against_labels.py \
+    --labels-dir data/labels/ \
+    --url http://127.0.0.1:11434/v1 \
+    --model qwen2.5:7b-8k
+```
+
+Where Opus and Gemini Pro agree, confidence is highest. Where they disagree,
+the label pipeline uses trust priority (both are `llm_judge` tier).
+
+## Step 4: Verify Labels
+
+```bash
+# Validate format
+python scripts/validate_labels.py data/labels/dash3_silver_labels_opus.jsonl
+
+# Quick stats
+python -c "
+import json
+from collections import Counter
+types = Counter()
+with open('data/labels/dash3_silver_labels_opus.jsonl') as f:
+    for line in f:
+        types[json.loads(line).get('extracted_type','?')] += 1
+for t, c in types.most_common():
+    print(f'  {t}: {c}')
+"
+```
+
+## Step 5: Copy Labels Back
+
+Copy the generated label files from your NIPRNet machine to your development machine.
+The label files contain only extracted types and entity fields — no raw DASH data
+that would be classification-sensitive.
+
+```bash
+# On your dev machine
+scp niprnet-machine:chat-to-cop/data/labels/dash3_silver_labels_opus.jsonl \
+    data/labels/
+```
+
+Or use a USB transfer if SCP isn't available between networks.
+
+## Step 6: Recalibrate (on dev machine)
+
+Once labels are on your dev machine:
+
+```bash
+# Eval against labels
+python scripts/eval_against_labels.py \
+    --labels-dir data/labels/ \
+    --url http://127.0.0.1:11434/v1 \
+    --model qwen2.5:7b-8k
+
+# Recalibrate confidence
+python scripts/recalibrate.py \
+    --url http://127.0.0.1:11434/v1 \
+    --model qwen2.5:7b-8k
+```
+
+## Troubleshooting
+
+### "Connection refused" or timeout
+- Verify you're on AF VPN + NIPRNet
+- Verify CAC is authenticated
+- Check API key is from the CDAO-OSD link (not a different subscription)
+
+### "Model not found"
+- Ask Sage model names may differ. Try listing with:
+  ```bash
+  curl -H "Authorization: Bearer $ASKSAGE_API_KEY" https://api.genai.army.mil/v1/models
+  ```
+  WARNING: This costs ~13K tokens from your monthly budget.
+
+### Rate limiting (429 errors)
+- Increase `--rate-delay` to 10 or 15 seconds
+- Ask Sage individual quotas should not rate-limit at 5s delays
+
+### Resume after interruption
+- The script supports resume automatically — it skips messages already in the output file
+- If you need to restart, just run the same command again
+
+## Token Budget Estimate
+
+| Component | Tokens per call | Total (863 LLM calls) |
+|-----------|-----------------|----------------------|
+| System prompt | ~3,000 | ~2.6M |
+| User message | ~200 | ~0.17M |
+| Output | ~300 | ~0.26M |
+| **Total** | **~3,500** | **~3.0M** |
+
+This fits within the 4M/month individual allocation. Running both Opus AND Gemini Pro
+would require 6M tokens — split across two months or use two accounts.
