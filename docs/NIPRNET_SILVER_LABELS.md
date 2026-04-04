@@ -42,7 +42,30 @@ pip install -e ".[dev]"
 
 ## Step 3: Generate Labels
 
-### Option A: Ask Sage with Claude Opus 4.6 (RECOMMENDED — best quality)
+### Option A: GenAI.Mil with Gemini 2.5 Pro (RECOMMENDED — 50M token budget)
+
+GenAI.Mil is a separate service from Ask Sage, hosting Gemini 2.5 Pro with a 50M token budget.
+Our 935 messages need ~3.3M tokens — less than 7% of your budget.
+
+```bash
+export GENAI_MIL_API_KEY="your-genai-mil-api-key-here"
+
+python scripts/generate_silver_labels.py \
+    --url https://genai.mil/v1 \
+    --api-key $GENAI_MIL_API_KEY \
+    --model gemini-2.5-pro \
+    --rate-delay 2 \
+    --output data/labels/dash3_silver_labels_gemini_pro.jsonl
+```
+
+**Note:** Verify the exact base URL from the GenAI.Mil portal — it may be different from
+`https://genai.mil/v1`. The endpoint must serve OpenAI-compatible `/v1/chat/completions`.
+
+**Token budget:** ~3.3M of 50M = 6.6%. You can run this many times with margin to spare.
+
+### Option B: Ask Sage with Claude Opus 4.6 (best quality, tight budget)
+
+Ask Sage is a separate service at `api.genai.army.mil` with a 4M token/month budget.
 
 ```bash
 export ASKSAGE_API_KEY="your-ask-sage-api-key-here"
@@ -55,23 +78,12 @@ python scripts/generate_silver_labels.py \
     --output data/labels/dash3_silver_labels_opus.jsonl
 ```
 
-**Token budget:** ~3.3M tokens for 935 messages. Fits within the 4M/month individual allocation
-but leaves little margin. Do NOT run `--model list` or other model discovery calls (wastes ~13K tokens).
-
-### Option B: Ask Sage with Gemini 2.5 Pro
-
-```bash
-python scripts/generate_silver_labels.py \
-    --url https://api.genai.army.mil/v1 \
-    --api-key $ASKSAGE_API_KEY \
-    --model gemini-2.5-pro \
-    --rate-delay 5 \
-    --output data/labels/dash3_silver_labels_gemini_pro.jsonl
-```
+**Token budget:** ~3.3M of 4M = 82%. Tight but fits. Do NOT list models (wastes ~13K tokens).
 
 ### Option C: Run BOTH and merge (BEST — consensus labels)
 
-Run both Option A and Option B, then merge:
+With 50M on GenAI.Mil and 4M on Ask Sage, you can afford both. Run Gemini Pro first
+(cheaper budget), then Opus (tighter budget). Merge for consensus:
 
 ```bash
 # After both runs complete, the label pipeline auto-merges by trust priority
@@ -165,5 +177,6 @@ python scripts/recalibrate.py \
 | Output | ~300 | ~0.26M |
 | **Total** | **~3,500** | **~3.0M** |
 
-This fits within the 4M/month individual allocation. Running both Opus AND Gemini Pro
-would require 6M tokens — split across two months or use two accounts.
+**GenAI.Mil (Gemini 2.5 Pro):** 3.3M of 50M budget = 6.6%. Run as many times as needed.
+
+**Ask Sage (Claude Opus 4.6):** 3.3M of 4M budget = 82%. Tight but fits one run.
