@@ -267,7 +267,7 @@ The system recognizes 13 categories of world-state updates from chat data (see [
 | 12 | SITREP/handover | 1-2% | Structured status reports (5-10 entities each) |
 | 13 | Environmental | 1-2% | `Lightning within 5, ground stop` |
 
-Approximately 55-65% of all chat messages contain actionable world-state information. The rest is operational noise (acknowledgments like "copy", "."), exercise control (STARTEX/ENDEX), or non-operational chatter.
+**Ground truth from Opus silver labels (935 messages, Claude Opus 4.6 via Ask Sage):** 31% of messages are informative (290/935), 69% are noise/none (645/935). Tasking dominates at 43% of informative messages, followed by threat (22%) and status_change (12%). The densest channel is #isr_reports at 71% informative; STT channels average 20-40%. Confidence is bimodal: noise at 0.0, extractions at 0.85-0.95.
 
 ---
 
@@ -459,7 +459,7 @@ For comparison, the earlier laptop CPU run achieved only 100 LLM extractions out
 - **Status change: 71%.** Brevity codes like "gadget bent" (radar failure) and "winchester" (weapons depleted) need to be in the prompt's few-shot examples or the regex pattern set.
 - **Bullseye notation.** The system cannot convert bullseye bearing/range ("270/40") to geographic coordinates without the scenario's reference point.
 - **STT noise.** Voice channels are ~60% noise. The fusion agent helps, but noisy STT reports still produce low-confidence updates.
-- **No ground truth labels.** Benchmark numbers use synthetic data. Real DASH 3 accuracy requires human-labeled ground truth (see [LABELING_GUIDE.md](LABELING_GUIDE.md)).
+- ~~No ground truth labels.~~ **RESOLVED:** Opus silver labels now cover all 935 DASH 3 messages (Claude Opus 4.6 via Ask Sage, NIPRNet IL5). See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for the full analysis. Remaining: calibrate confidence (#30) and run speaker model A/B evaluation (#35) against these labels.
 
 ---
 
@@ -591,7 +591,7 @@ python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip --spee
 # Full CI check (lint + format + tests)
 ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -v
 
-# Current: 725 tests passing
+# Current: 832 tests passing
 ```
 
 ---

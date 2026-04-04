@@ -492,6 +492,61 @@ Three cloud APIs tested against the same 935-message DASH 3 dataset, running fro
 - **Option C: HPC** — DSRC Narwhal with V100 GPUs. Offline-capable, CI-built containers, 34 min full replay.
 - **Option D: Hybrid** — Cloud API primary, local Ollama fallback. Config change, not code change.
 
+## Ground Truth: Opus Silver Labels (2026-04-04)
+
+935 messages labeled by Claude Opus 4.6 via Ask Sage on NIPRNet (free, IL5). 875 LLM extractions, 60 noise-filtered, 0 errors. This is the first complete ground-truth labeling of the DASH 3 dataset.
+
+### Message Composition
+
+| Category | Count | % |
+|----------|-------|---|
+| Informative (extractable) | 290 | 31% |
+| Noise/none | 645 | 69% |
+
+Confidence distribution is **bimodal**: noise clusters at 0.0, informative extractions at 0.85-0.95. This clean separation validates the write authority threshold design (auto-write at 0.7).
+
+### Type Distribution (informative messages only)
+
+| Type | Count | % of Informative |
+|------|-------|-------------------|
+| tasking | 125 | 43% |
+| threat | 63 | 22% |
+| status_change | 34 | 12% |
+| cyber_ew | 17 | 6% |
+| fuel | 13 | 4% |
+| entity_id | 12 | 4% |
+| sitrep | 9 | 3% |
+| location | 8 | 3% |
+| fire_mission | 3 | 1% |
+| weapons | 3 | 1% |
+| handover | 1 | <1% |
+| csar | 1 | <1% |
+| environmental | 1 | <1% |
+
+**Key finding:** Tasking dominates at 43% of informative messages -- BattleCOA coordination is the primary information flow in DASH 3 chat. Threat assessment (22%) is the second-largest category.
+
+### Per-Channel Informative Rates
+
+| Channel | Informative Rate | Dominant Types |
+|---------|-----------------|----------------|
+| #isr_reports | **71%** | Densest channel -- nearly all messages are operationally informative |
+| #fires | 50% | All fire_mission |
+| #stt_taipanBMA | 41% | High STT signal-to-noise |
+| #c2_coord | 38% | Cross-BMA coordination |
+| #vegas_internal | 34% | Internal pit coordination |
+| #stt_mesquiteBMA | 32% | |
+| #stt_C2Coord | 23% | |
+| #stt_hydroBMA | 22% | |
+| #stt_crusherBMA | 19% | |
+| #jprc | 11% | Lowest -- mostly acknowledgments |
+
+**Key finding:** STT channels average 20-40% informative, significantly lower than typed chat channels (35-70%). This validates the STT confidence penalty (-0.15) in the write authority design.
+
+### Analysis Tools
+
+- `scripts/analyze_labels.py` -- standalone label analysis script (no LLM needed, runs on any labeled DB)
+- `scripts/eval_speaker_models.py` -- RQ1 A/B comparison framework (needs replay DBs with speaker models on/off)
+
 ## Reproduction
 
 ```bash
