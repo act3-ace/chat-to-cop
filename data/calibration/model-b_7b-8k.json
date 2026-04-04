@@ -1,0 +1,18 @@
+{
+  "n_bins": 10,
+  "method": "histogram",
+  "fitted": true,
+  "buckets": [
+    {"lower": 0.0, "upper": 0.1, "total": 630, "correct": 543},
+    {"lower": 0.1, "upper": 0.2, "total": 0, "correct": 0},
+    {"lower": 0.2, "upper": 0.3, "total": 0, "correct": 0},
+    {"lower": 0.3, "upper": 0.4, "total": 0, "correct": 0},
+    {"lower": 0.4, "upper": 0.5, "total": 0, "correct": 0},
+    {"lower": 0.5, "upper": 0.6, "total": 0, "correct": 0},
+    {"lower": 0.6, "upper": 0.7, "total": 0, "correct": 0},
+    {"lower": 0.7, "upper": 0.8, "total": 0, "correct": 0},
+    {"lower": 0.8, "upper": 0.9, "total": 17, "correct": 7},
+    {"lower": 0.9, "upper": 1.0, "total": 227, "correct": 147}
+  ],
+  "isotonic_points": []
+}
