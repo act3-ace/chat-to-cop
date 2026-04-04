@@ -342,6 +342,117 @@ def _print_progress(
     )
 
 
+async def generate_labels_asksage(
+    data_path: str,
+    email: str,
+    api_key: str,
+    model: str,
+    output: str,
+    count: int | None,
+    rate_delay: float,
+    channels: list[str] | None,
+) -> None:
+    """Generate labels using Ask Sage backend."""
+    from chat_to_cop.backend.asksage import AskSageBackend
+
+    # Parse messages
+    messages = parse_path(Path(data_path))
+    if not messages:
+        print(f"ERROR: No messages found in {data_path}")
+        sys.exit(1)
+    print(f"Parsed {len(messages)} messages from {data_path}")
+
+    if channels:
+        channel_set = set(channels)
+        messages = [m for m in messages if m.channel in channel_set]
+        print(f"Filtered to {len(messages)} messages in channels: {channels}")
+    if count is not None:
+        messages = messages[:count]
+        print(f"Limited to first {len(messages)} messages")
+
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = _load_existing_labels(output_path)
+    if existing:
+        print(f"Found {len(existing)} existing labels in {output} (will skip duplicates)")
+
+    backend = AskSageBackend(email=email, api_key=api_key, model=model)
+
+    total = len(messages)
+    extracted = 0
+    skipped_noise = 0
+    skipped_existing = 0
+    errors = 0
+    last_llm_call = 0.0
+
+    print(f"\nGenerating silver labels (Ask Sage): {total} messages -> {output}")
+    print(f"Model: {model} via Ask Sage")
+    if rate_delay > 0:
+        non_noise = sum(1 for m in messages if not _is_noise(m.content) and m.raw_line not in existing)
+        est_minutes = non_noise * rate_delay / 60
+        print(f"Rate delay: {rate_delay:.1f}s between calls (~{est_minutes:.0f} min for {non_noise} LLM calls)")
+    print()
+
+    with open(output_path, "a", encoding="utf-8") as f:
+        for i, msg in enumerate(messages):
+            if msg.raw_line in existing:
+                skipped_existing += 1
+                _print_progress(i + 1, total, extracted, skipped_noise, skipped_existing, errors)
+                continue
+
+            if _is_noise(msg.content):
+                label = _noise_label(msg, model)
+                f.write(json.dumps(label, ensure_ascii=False) + "\n")
+                f.flush()
+                skipped_noise += 1
+                _print_progress(i + 1, total, extracted, skipped_noise, skipped_existing, errors)
+                continue
+
+            if rate_delay > 0:
+                elapsed = time.perf_counter() - last_llm_call
+                if elapsed < rate_delay and last_llm_call > 0:
+                    wait = rate_delay - elapsed
+                    _print_progress(i + 1, total, extracted, skipped_noise, skipped_existing, errors, wait=wait)
+                    await asyncio.sleep(wait)
+
+            prompt = _build_single_message_prompt(msg)
+            try:
+                result = await backend.extract(prompt, CoPUpdate)
+                last_llm_call = time.perf_counter()
+                result.extraction_method = "llm"
+                label = _label_to_dict(msg, result, model)
+                f.write(json.dumps(label, ensure_ascii=False) + "\n")
+                f.flush()
+                extracted += 1
+            except Exception as e:
+                error_label = {
+                    "raw_line": msg.raw_line,
+                    "channel": msg.channel,
+                    "sender": msg.sender,
+                    "timestamp": msg.timestamp.isoformat(),
+                    "extracted_type": "none",
+                    "extracted_entities": [],
+                    "confidence": 0.0,
+                    "extraction_method": "error",
+                    "model": model,
+                    "reasoning": f"Ask Sage error: {e}",
+                    "source": "llm_judge",
+                    "labeler": model,
+                }
+                f.write(json.dumps(error_label, ensure_ascii=False) + "\n")
+                f.flush()
+                errors += 1
+
+            _print_progress(i + 1, total, extracted, skipped_noise, skipped_existing, errors)
+
+    print(f"\n\nDone! Results saved to {output}")
+    print(f"  Total messages: {total}")
+    print(f"  LLM extractions: {extracted}")
+    print(f"  Noise filtered: {skipped_noise}")
+    print(f"  Skipped (existing): {skipped_existing}")
+    print(f"  Errors: {errors}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate silver labels from DASH 3 data using a high-quality LLM",
@@ -400,31 +511,63 @@ Examples:
         default=None,
         help='Comma-separated channel filter, e.g. "#c2_coord,#isr_reports"',
     )
+    parser.add_argument(
+        "--asksage",
+        action="store_true",
+        help="Use Ask Sage API instead of OpenAI-compatible endpoint",
+    )
+    parser.add_argument(
+        "--asksage-email",
+        default=None,
+        help="Ask Sage account email (or set ASKSAGE_EMAIL env var)",
+    )
     args = parser.parse_args()
 
     # Resolve API key
     api_key = args.api_key or os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    if not args.asksage and not api_key:
         print("ERROR: No API key provided. Use --api-key or set GROQ_API_KEY / OPENAI_API_KEY env var.")
         sys.exit(1)
+
+    # Ask Sage mode: resolve email + key
+    if args.asksage:
+        api_key = args.api_key or os.environ.get("ASKSAGE_API_KEY", "")
+        asksage_email = args.asksage_email or os.environ.get("ASKSAGE_EMAIL", "")
+        if not api_key or not asksage_email:
+            print("ERROR: --asksage requires --api-key and --asksage-email (or env vars)")
+            sys.exit(1)
 
     # Parse channels
     channels = None
     if args.channels:
         channels = [c.strip() for c in args.channels.split(",")]
 
-    asyncio.run(
-        generate_labels(
-            data_path=args.data,
-            url=args.url,
-            model=args.model,
-            api_key=api_key,
-            output=args.output,
-            count=args.count,
-            rate_delay=args.rate_delay,
-            channels=channels,
+    if args.asksage:
+        asyncio.run(
+            generate_labels_asksage(
+                data_path=args.data,
+                email=asksage_email,
+                api_key=api_key,
+                model=args.model or "claude-opus-4-6",
+                output=args.output,
+                count=args.count,
+                rate_delay=args.rate_delay,
+                channels=channels,
+            )
         )
-    )
+    else:
+        asyncio.run(
+            generate_labels(
+                data_path=args.data,
+                url=args.url,
+                model=args.model,
+                api_key=api_key,
+                output=args.output,
+                count=args.count,
+                rate_delay=args.rate_delay,
+                channels=channels,
+            )
+        )
 
 
 if __name__ == "__main__":
