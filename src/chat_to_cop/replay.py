@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -36,9 +37,18 @@ def _make_degrading_backend(
     config: PipelineConfig,
     bedrock_config: dict | None = None,
     anthropic_config: dict | None = None,
+    asksage_config: dict | None = None,
 ) -> DegradingBackend:
     """Build the degrading backend from config: LLM -> fallback -> regex."""
-    if bedrock_config:
+    if asksage_config:
+        from chat_to_cop.backend.asksage import AskSageBackend
+
+        primary = AskSageBackend(
+            email=asksage_config["email"],
+            api_key=asksage_config["api_key"],
+            model=asksage_config["model"],
+        )
+    elif bedrock_config:
         from chat_to_cop.backend.bedrock import BedrockBackend
 
         primary = BedrockBackend(
@@ -94,12 +104,18 @@ async def run_replay(
     speed: float,
     bedrock_config: dict | None = None,
     anthropic_config: dict | None = None,
+    asksage_config: dict | None = None,
 ) -> None:
     """Run the full replay pipeline with supervisor + fusion."""
 
     # Build the degrading backend factory for the supervisor
     def backend_factory():
-        return _make_degrading_backend(config, bedrock_config=bedrock_config, anthropic_config=anthropic_config)
+        return _make_degrading_backend(
+            config,
+            bedrock_config=bedrock_config,
+            anthropic_config=anthropic_config,
+            asksage_config=asksage_config,
+        )
 
     supervisor = Supervisor(backend_factory=backend_factory)
     fusion = FusionAgent()
@@ -301,6 +317,21 @@ def main() -> None:
         action="store_true",
         help="Use Anthropic API directly (requires ANTHROPIC_API_KEY)",
     )
+    parser.add_argument(
+        "--asksage",
+        action="store_true",
+        help="Use Ask Sage API on NIPRNet (requires asksageclient)",
+    )
+    parser.add_argument(
+        "--asksage-email",
+        default=None,
+        help="Ask Sage account email",
+    )
+    parser.add_argument(
+        "--asksage-key",
+        default=None,
+        help="Ask Sage API key",
+    )
 
     args = parser.parse_args()
 
@@ -338,8 +369,25 @@ def main() -> None:
         }
         config.llm.llm_model = anthropic_config["model"]
 
+    # Ask Sage mode
+    asksage_config = None
+    if args.asksage:
+        asksage_config = {
+            "email": args.asksage_email or os.environ.get("ASKSAGE_EMAIL", ""),
+            "api_key": args.asksage_key or os.environ.get("ASKSAGE_API_KEY", ""),
+            "model": args.model or "claude-opus-4-6",
+        }
+        if not asksage_config["email"] or not asksage_config["api_key"]:
+            logger.error("--asksage requires --asksage-email and --asksage-key (or env vars)")
+            sys.exit(1)
+        config.llm.llm_model = asksage_config["model"]
+
     asyncio.run(
-        run_replay(args.path, config, args.speed, bedrock_config=bedrock_config, anthropic_config=anthropic_config)
+        run_replay(
+            args.path, config, args.speed,
+            bedrock_config=bedrock_config, anthropic_config=anthropic_config,
+            asksage_config=asksage_config,
+        )
     )
 
 
