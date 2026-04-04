@@ -86,42 +86,77 @@ model for 24GB desktop GPUs (RTX 4090/5090).
 These should already be set up from prior runs:
 
 ```
-$WORKDIR/
-    ollama/bin/ollama          # Ollama binary
-    ollama-models/             # Model cache (will auto-download qwen3:30b-a3b)
+/p/work1/hsclouse/
+    bin/ollama                 # Ollama binary (NOT ollama/bin/ollama)
+    ollama-models/             # Model cache
     envs/chat-to-cop/          # Conda environment with chat-to-cop installed
-    chat/Dash3-GBC/Data/23Sep/usaf/chat.zip   # DASH 3 test data
+    chat-to-cop/               # Repo (manually copied, not git clone — DLE GitLab unreachable from Narwhal)
+    chat-to-cop/data/dash3/23Sep_usaf_chat.zip  # DASH 3 test data
 ```
 
-If the conda env needs updating:
+## Critical Lessons Learned
+
+### 1. Ollama binary path is `/p/work1/hsclouse/bin/ollama`
+
+NOT `/p/work1/hsclouse/ollama/bin/ollama` (that directory is empty).
+
+### 2. Partition is `general`, not `MLA`
+
+Account: `afsnw27526ryz`. QOS: `standard`. No `--gres=gpu` needed.
+
+### 3. Compute nodes have no internet
+
+Models MUST be pre-pulled from a **login node** (which has internet):
 
 ```bash
-python scripts/narwhal_connect.py "source \$WORKDIR/envs/chat-to-cop/bin/activate && pip install -e ."
+python scripts/narwhal_connect.py "OLLAMA_MODELS=/p/work1/hsclouse/ollama-models /p/work1/hsclouse/bin/ollama serve &>/dev/null & sleep 10 && OLLAMA_MODELS=/p/work1/hsclouse/ollama-models /p/work1/hsclouse/bin/ollama pull qwen3:30b-a3b && kill %1"
 ```
 
-If Ollama needs updating:
+### 4. Always create a Modelfile for 8K context
+
+Default context is 4K which truncates our prompts:
 
 ```bash
-python scripts/narwhal_connect.py "curl -L https://ollama.com/download/ollama-linux-amd64 -o \$WORKDIR/ollama/bin/ollama && chmod +x \$WORKDIR/ollama/bin/ollama"
+cat > /tmp/Modelfile <<EOF
+FROM qwen3:32b
+PARAMETER num_ctx 8192
+EOF
+ollama create qwen3:32b-8k -f /tmp/Modelfile
+```
+
+### 5. Set CHAT_TO_COP_FALLBACK_MODEL to an available model
+
+Default fallback is `qwen2.5:3b` which may not be pulled. Set to `qwen2.5:7b`:
+
+```bash
+export CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b
+```
+
+### 6. Always warm-start the model before replay
+
+```bash
+ollama run qwen3:32b-8k "hello" --verbose
+```
+
+Verify GPU is detected and tokens/s is reasonable (~20-30 on V100 for 32B).
+
+### 7. DLE GitLab is unreachable from Narwhal
+
+Cannot `git clone` or `git pull`. Transfer files via base64 encoding through SSH:
+
+```bash
+# From Windows, encode and send a file:
+python3 -c "import base64; print(base64.b64encode(open('file.sh','rb').read()).decode())" | python3 ~/bin/narwhal-ssh.py "base64 -d > /p/work1/hsclouse/chat-to-cop/file.sh"
 ```
 
 ## Troubleshooting
 
-### Model pull fails (no internet on compute node)
-
-MLA partition compute nodes may lack internet. Pull the model from a login node first:
-
-```bash
-python scripts/narwhal_connect.py "OLLAMA_MODELS=\$WORKDIR/ollama-models \$WORKDIR/ollama/bin/ollama pull qwen3:30b-a3b"
-```
-
 ### Job pending too long
 
-Check queue status and try the standard partition:
+Check queue status:
 
 ```bash
-python scripts/narwhal_connect.py "squeue -p MLA"
-# Edit the script to use --partition=standard if MLA is full
+python scripts/narwhal_connect.py "squeue -u hsclouse"
 ```
 
 ### Kerberos ticket expired
