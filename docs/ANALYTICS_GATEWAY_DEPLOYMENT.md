@@ -89,9 +89,19 @@ EOF
 OLLAMA_MODELS=/tmp/ollama-models ollama create qwen2.5:14b-8k -f /tmp/Modelfile14b
 ```
 
-**Provenance note:** The `-8k` suffix is a deployment configuration, not a different model. The weights are identical to the base model; only the context window parameter changes. Provenance records will report the Ollama model name including the suffix (e.g., `qwen2.5:7b-8k`). See [SYSTEM_CARD.md](SYSTEM_CARD.md) for details.
+**Provenance note:** The `-8k` suffix is a deployment configuration, not a different model. The weights are identical to the base model; only the context window parameter changes. See [SYSTEM_CARD.md](SYSTEM_CARD.md) for details.
 
-### 6. Clone and Install chat-to-cop
+### 6. Warm Start the Model
+
+Pre-load the model into GPU memory before running the pipeline. This avoids a cold start penalty (~30-90s) on the first real extraction:
+
+```bash
+OLLAMA_MODELS=/tmp/ollama-models ollama run qwen2.5:7b-8k "hello" --verbose
+```
+
+Verify the output shows `device=CUDA0` (GPU) not `device=CPU`. Expected: ~40 tokens/s eval rate on T4. If you see <5 tokens/s, the GPU drivers aren't loaded — go back to Step 2.
+
+### 7. Clone and Install chat-to-cop
 
 ```bash
 cd /tmp  # Use local disk to avoid quota issues
