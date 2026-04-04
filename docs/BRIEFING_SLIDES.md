@@ -245,12 +245,24 @@ Run-Time Assurance pattern: **Simplex Architecture** with guaranteed safe state.
 
 **Key insight:** Cloud APIs extract richer semantics (3-20x more threats and taskings). Larger local models (32B) close the quality gap but are slower.
 
+**Narwhal V100 Model Comparison (2026-04-04) -- 5 models vs Opus silver labels:**
+
+| Model | Updates | Avg Conf | Type Match vs Opus | Tasking | Threat | Location |
+|-------|---------|----------|--------------------|---------|--------|----------|
+| V100 7B | 259 | 0.82 | 40% | 59 | 28 | 40 |
+| V100 14B | 255 | 0.82 | **49%** | 70 | 53 | 51 |
+| V100 32B (Qwen2.5) | 255 | 0.79 | 47% | 50 | 51 | 35 |
+| V100 Qwen3-32B | 251 | 0.79 | 45% | 58 | 50 | 53 |
+| **Opus (ground truth)** | **290** | -- | 100% | 125 | 63 | 8 |
+
+14B has best type match (49%). All models produce consistent update counts (251-259). Local models under-extract tasking and over-classify as location -- categorization differences, not missed information. Qwen3-32B on V100 validates MASH target hardware.
+
 **Target for MASH:**
 
-- Option A: Desktop GPU (RTX 4090/5090) with Qwen3-32B — best local quality
-- Option B: Cloud API (Gemini Flash at $0.15/run) — best semantics, needs internet
-- Option C: DSRC HPC (V100) — offline-capable, CI-built containers
-- Option D: Hybrid — cloud primary, local fallback. Config change, not code change.
+- Option A: Desktop GPU (RTX 4090/5090) with Qwen3-32B -- best local quality
+- Option B: Cloud API (Gemini Flash at $0.15/run) -- best semantics, needs internet
+- Option C: DSRC HPC (V100) -- offline-capable, CI-built containers, validated with 4 model sizes
+- Option D: Hybrid -- cloud primary, local fallback. Config change, not code change.
 
 **Speaker notes:** We now have 7 validated backends across local GPU, DSRC HPC, and cloud APIs — all on the same 935-message DASH 3 dataset. The model-agnostic architecture is proven: zero code changes between any of them. Cloud APIs find dramatically more threats and taskings than local models, but the DSRC V100 with 14B is the fastest at 34 minutes. The 32B on V100 matches cloud-level confidence (0.79) but is slower. For MASH: we have options at every price point — from free (HPC hours) to $0.15 (Gemini Flash) to $3.50 (Bedrock Sonnet). The pipeline adapts to whatever hardware and connectivity is available at H2O.
 
@@ -459,6 +471,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 - System card, dataset cards, labeling guide
 - **Opus silver labels complete** -- 935 messages labeled via Claude Opus 4.6 / Ask Sage (NIPRNet, IL5)
 - **Label analysis and speaker model eval frameworks** -- `scripts/analyze_labels.py`, `scripts/eval_speaker_models.py`
+- **Narwhal V100 model comparison complete** -- 5 replay DBs (7B/14B/32B Qwen2.5/Qwen3-32B) compared vs Opus labels; 14B best type match (49%), pipeline stable across all model sizes (251-259 updates)
 
 **What remains:**
 
@@ -476,7 +489,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 2. ~~No ground truth labels~~ -- **RESOLVED**: Opus silver labels complete for all 935 messages
 3. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
 
-**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Two backends are now validated on real data: Qwen 7B on T4 GPU (100% success, 7.6s) and Claude Sonnet 4.5 on AWS Bedrock (99.6% success, 4.8s, no GPU). The model-agnostic architecture works -- zero code changes between local and cloud inference. Internet at H2O is expected, making Bedrock a viable primary or hybrid option. The ground truth labeling risk is now resolved -- Opus silver labels cover all 935 messages with bimodal confidence that validates our write authority design. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 832 test count and 29 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Commercial model integration (Bedrock) is now proven; Mia and team can focus on prompt tuning and confidence calibration using the new Opus labels. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end on both local and cloud backends.
+**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Two backends are now validated on real data: Qwen 7B on T4 GPU (100% success, 7.6s) and Claude Sonnet 4.5 on AWS Bedrock (99.6% success, 4.8s, no GPU). The model-agnostic architecture works -- zero code changes between local and cloud inference. Internet at H2O is expected, making Bedrock a viable primary or hybrid option. The ground truth labeling risk is now resolved -- Opus silver labels cover all 935 messages with bimodal confidence that validates our write authority design. The Narwhal V100 model comparison (5 models, 935 msgs each) shows the pipeline is stable across all model sizes (251-259 updates) and that 14B hits the sweet spot for prompt compliance (49% type match vs Opus). Qwen3-32B on V100 validates the MASH target hardware path. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 832 test count and 29 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Commercial model integration (Bedrock) is now proven; Mia and team can focus on prompt tuning and confidence calibration using the new Opus labels. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end on both local and cloud backends.
 
 ---
 

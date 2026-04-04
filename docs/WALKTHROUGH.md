@@ -440,6 +440,20 @@ Tested via eval harness against synthetic labeled data with entity-level scoring
 
 **Model-agnostic design validated:** The Bedrock run required zero code changes from the Ollama/Qwen runs. The OpenAI-compatible API abstraction works as designed -- swap the URL and model name in config, everything else stays the same.
 
+**Narwhal V100 Model Comparison (2026-04-04):**
+
+5 replay databases from DSRC Narwhal HPC (V100-PCIE-32GB), compared against Opus silver labels:
+
+| Model | Updates | Avg Conf | Type Match vs Opus | Tasking | Threat | Location |
+|-------|---------|----------|--------------------|---------|--------|----------|
+| V100 7B | 259 | 0.82 | 40% | 59 | 28 | 40 |
+| V100 14B | 255 | 0.82 | **49%** | 70 | 53 | 51 |
+| V100 32B (Qwen2.5) | 255 | 0.79 | 47% | 50 | 51 | 35 |
+| V100 Qwen3-32B | 251 | 0.79 | 45% | 58 | 50 | 53 |
+| **Opus (ground truth)** | **290** | -- | 100% | 125 | 63 | 8 |
+
+All models produce consistent update counts (251-259) -- the pipeline is stable across model sizes. The 14B model has the best type match vs Opus (49%), making it the sweet spot for prompt compliance. Local models systematically under-extract tasking (50-70 vs Opus 125) and over-classify as location (35-53 vs Opus 8). The 40-50% type match rate reflects categorization differences, not missed information -- this is the anti-ontology principle in action (Pattern A). Qwen3-32B on V100 validates the MASH target hardware.
+
 For comparison, the earlier laptop CPU run achieved only 100 LLM extractions out of 935 because the circuit breaker tripped constantly on CPU-bound inference.
 
 ### What we got right

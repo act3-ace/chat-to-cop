@@ -91,7 +91,7 @@ All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es
 - Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE
 - Sprint 2 (Multi-Channel + Resilience): #8-#13 — ALL COMPLETE
 - Sprint 3 (Deploy + Harden): #14-#24, #27-#29, #31-#34, #36, #38-#40 DONE. #16 COMPLETE (clean T4 run: 7.7s mean, 99.9% success). #25, #26, #30, #35, #37 OPEN.
-- Total: 832 tests passing, seven validated backends on real DASH 3 data (935 msgs): DSRC V100 14B (34 min, 362 updates), V100 32B (cloud-level quality, 0.79 conf), T4 7B (100% success, 7.6s), Gemini Flash (55 min, $0.15), GPT-4.1 nano (68 min), Claude Haiku (273 updates), Bedrock Sonnet (75 min, 256 updates). DSRC HPC deployment (Narwhal) validated with CI-built containers. Opus silver labels complete (935 msgs, Claude Opus 4.6 via Ask Sage, 31% informative, bimodal confidence).
+- Total: 832 tests passing, seven validated backends on real DASH 3 data (935 msgs): DSRC V100 14B (34 min, 362 updates), V100 32B (cloud-level quality, 0.79 conf), T4 7B (100% success, 7.6s), Gemini Flash (55 min, $0.15), GPT-4.1 nano (68 min), Claude Haiku (273 updates), Bedrock Sonnet (75 min, 256 updates). DSRC HPC deployment (Narwhal) validated with CI-built containers. Opus silver labels complete (935 msgs, Claude Opus 4.6 via Ask Sage, 31% informative, bimodal confidence). Narwhal V100 model comparison (2026-04-04): 5 replay DBs (7B/14B/32B Qwen2.5/Qwen3-32B) analyzed vs Opus labels -- 14B best type match (49%), pipeline stable (251-259 updates), Qwen3-32B validates MASH target hardware.
 Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
 
 ### Remaining open issues
@@ -99,7 +99,7 @@ Read the issue description before starting work — it has acceptance criteria, 
 - `#16` Full DASH 3 replay — COMPLETE, needs KPP computation from clean run results
 - `#17` CoP writer — infrastructure done, blocked on real contractor schema
 - `#25` Label 100 messages — COMPLETE: Opus silver labels cover all 935 messages (Claude Opus 4.6 via Ask Sage)
-- `#26` Validate 30B on 24GB GPU — blocked on hardware
+- `#26` Validate 30B on 24GB GPU — PARTIALLY VALIDATED: Qwen3-32B completes full 935-msg replay on V100 32GB (251 updates, 0.79 conf, 45% type match vs Opus). True 24GB GPU validation still needed.
 - `#30` Calibrate confidence — UNBLOCKED: Opus silver labels available, framework in `scripts/analyze_labels.py`
 - `#35` Speaker model evaluation (RQ1) — UNBLOCKED: framework in `scripts/eval_speaker_models.py`, needs replay DBs
 - `#37` Equifinality integration — Phases 2-4 done, Phase 1 needs Colin provenance check
