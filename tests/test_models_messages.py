@@ -300,3 +300,54 @@ class TestEntityUpdateCapabilityImpactValidator:
         assert ent.capability_impact == CapabilityImpact.ACT
         assert ent.track_number == "TM636"
         assert ent.bearing == 240.0
+
+
+class TestEntityUpdateMetadataCoercion:
+    """Test that metadata dict values are coerced to strings."""
+
+    def test_string_values_unchanged(self):
+        ent = EntityUpdate.model_validate({"metadata": {"key": "value"}})
+        assert ent.metadata == {"key": "value"}
+
+    def test_int_value_coerced_to_string(self):
+        ent = EntityUpdate.model_validate({"metadata": {"count": 42}})
+        assert ent.metadata == {"count": "42"}
+
+    def test_float_value_coerced_to_string(self):
+        ent = EntityUpdate.model_validate({"metadata": {"score": 0.95}})
+        assert ent.metadata == {"score": "0.95"}
+
+    def test_none_value_dropped(self):
+        ent = EntityUpdate.model_validate({"metadata": {"key": "value", "empty": None}})
+        assert ent.metadata == {"key": "value"}
+        assert "empty" not in ent.metadata
+
+    def test_all_none_values_produces_empty_dict(self):
+        ent = EntityUpdate.model_validate({"metadata": {"a": None, "b": None}})
+        assert ent.metadata == {}
+
+    def test_mixed_types(self):
+        ent = EntityUpdate.model_validate({"metadata": {"name": "ORCA01", "count": 3, "flag": True, "gone": None}})
+        assert ent.metadata == {"name": "ORCA01", "count": "3", "flag": "True"}
+
+    def test_int_key_coerced_to_string(self):
+        ent = EntityUpdate.model_validate({"metadata": {1: "one"}})
+        assert ent.metadata == {"1": "one"}
+
+    def test_non_dict_becomes_empty(self):
+        ent = EntityUpdate.model_validate({"metadata": "not a dict"})
+        assert ent.metadata == {}
+
+    def test_empty_dict_unchanged(self):
+        ent = EntityUpdate.model_validate({"metadata": {}})
+        assert ent.metadata == {}
+
+    def test_default_empty_dict(self):
+        ent = EntityUpdate()
+        assert ent.metadata == {}
+
+    def test_bullseye_metadata_still_works(self):
+        """Bullseye validator writes string values to metadata; coercion should not interfere."""
+        ent = EntityUpdate.model_validate({"bearing": "240/405", "metadata": {"source": "SIGINT"}})
+        assert ent.metadata["bullseye_range"] == "405.0"
+        assert ent.metadata["source"] == "SIGINT"

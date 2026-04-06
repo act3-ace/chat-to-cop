@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -43,6 +44,9 @@ from pathlib import Path
 import aiosqlite
 
 from chat_to_cop.models.cop_update import CoPUpdate
+
+# Regex to parse raw_line format: [HH:MM:SS] #channel sender: content
+_RAW_LINE_RE = re.compile(r"\[\d{2}:\d{2}:\d{2}\]\s+#\S+\s+\S+:\s*(.*)")
 
 # ---------------------------------------------------------------------------
 # Shared metric helpers (reusable outside this script)
@@ -164,17 +168,31 @@ async def load_replay_updates(db_path: str) -> list[CoPUpdate]:
         await db.close()
 
 
-def index_updates_by_message(updates: list[CoPUpdate]) -> dict[str, CoPUpdate]:
-    """Index CoPUpdates by their source_message for matching against labels.
+def _make_composite_key(speaker: str, message: str) -> str:
+    """Build a composite key from speaker + message content for matching.
 
-    Uses the raw_line from the label (which is stored as source_message in the
-    replay DB) as the key. If multiple updates share the same source_message,
-    the last one wins (later extractions may be more refined).
+    The replay DB stores source_speaker and source_message separately,
+    while labels store raw_line as '[HH:MM:SS] #channel sender: content'.
+    This key bridges the two formats.
+    """
+    return f"{speaker.strip().upper()}||{message.strip()}"
+
+
+def index_updates_by_message(updates: list[CoPUpdate]) -> dict[str, CoPUpdate]:
+    """Index CoPUpdates by speaker+message composite key for matching against labels.
+
+    Uses speaker (uppercased) + message content as the key, since the label
+    raw_line format differs from the DB's source_message (labels include
+    timestamp, channel, and sender prefix).
+
+    If multiple updates share the same key, the last one wins.
     """
     index: dict[str, CoPUpdate] = {}
     for update in updates:
         if update.source_message:
-            index[update.source_message.strip()] = update
+            speaker = getattr(update, "source_speaker", None) or ""
+            key = _make_composite_key(speaker, update.source_message)
+            index[key] = update
     return index
 
 
@@ -261,8 +279,11 @@ def score_run(
         silver_method = label.get("extraction_method", "")
         speaker = label.get("sender", "unknown")
 
-        # Look up the corresponding extraction
-        update = updates_index.get(raw_line)
+        # Extract message content from raw_line and build composite key
+        raw_match = _RAW_LINE_RE.match(raw_line)
+        content = raw_match.group(1).strip() if raw_match else raw_line
+        lookup_key = _make_composite_key(speaker, content)
+        update = updates_index.get(lookup_key)
 
         # Track noise detection
         if silver_type == "none" and silver_method == "noise_filter":

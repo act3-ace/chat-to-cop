@@ -10,6 +10,7 @@ import pytest
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
 from scripts.eval_speaker_models import (
     RunMetrics,
+    _make_composite_key,
     entity_keys_from_cop_update,
     entity_keys_from_dicts,
     format_report,
@@ -201,10 +202,13 @@ def _make_cop_update(
 
 
 class TestScoreRun:
+    """Tests use raw_line format '[HH:MM:SS] #channel sender: content'
+    and composite keys (SPEAKER||content) to match the real matching logic."""
+
     def test_exact_type_match(self):
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal alice: threat spotted",
                 "extracted_type": "threat",
                 "extracted_entities": [],
                 "confidence": 0.8,
@@ -212,7 +216,7 @@ class TestScoreRun:
                 "sender": "alice",
             }
         ]
-        index = {"msg1": _make_cop_update("threat", 0.8)}
+        index = {_make_composite_key("alice", "threat spotted"): _make_cop_update("threat", 0.8)}
         m = score_run(labels, index, "test")
         assert m.type_exact == 1
         assert m.type_relaxed == 1
@@ -221,7 +225,7 @@ class TestScoreRun:
     def test_relaxed_match_sitrep_status(self):
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal bob: status update",
                 "extracted_type": "sitrep",
                 "extracted_entities": [],
                 "confidence": 0.7,
@@ -229,7 +233,7 @@ class TestScoreRun:
                 "sender": "bob",
             }
         ]
-        index = {"msg1": _make_cop_update("status_change", 0.7)}
+        index = {_make_composite_key("bob", "status update"): _make_cop_update("status_change", 0.7)}
         m = score_run(labels, index, "test")
         assert m.type_exact == 0
         assert m.type_relaxed == 1
@@ -238,7 +242,7 @@ class TestScoreRun:
     def test_no_match(self):
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal alice: wrong type",
                 "extracted_type": "threat",
                 "extracted_entities": [],
                 "confidence": 0.8,
@@ -246,7 +250,7 @@ class TestScoreRun:
                 "sender": "alice",
             }
         ]
-        index = {"msg1": _make_cop_update("location", 0.5)}
+        index = {_make_composite_key("alice", "wrong type"): _make_cop_update("location", 0.5)}
         m = score_run(labels, index, "test")
         assert m.type_exact == 0
         assert m.type_relaxed == 0
@@ -254,7 +258,7 @@ class TestScoreRun:
     def test_missing_extraction(self):
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal alice: no extraction",
                 "extracted_type": "threat",
                 "extracted_entities": [],
                 "confidence": 0.8,
@@ -270,7 +274,7 @@ class TestScoreRun:
     def test_noise_detection(self):
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal alice: just noise",
                 "extracted_type": "none",
                 "extracted_entities": [],
                 "confidence": 0.0,
@@ -288,7 +292,7 @@ class TestScoreRun:
         """If the model extracts something for a noise message, it's wrong."""
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal alice: just noise",
                 "extracted_type": "none",
                 "extracted_entities": [],
                 "confidence": 0.0,
@@ -296,7 +300,7 @@ class TestScoreRun:
                 "sender": "alice",
             }
         ]
-        index = {"msg1": _make_cop_update("threat", 0.8)}
+        index = {_make_composite_key("alice", "just noise"): _make_cop_update("threat", 0.8)}
         m = score_run(labels, index, "test")
         assert m.noise_total == 1
         assert m.noise_correct == 0
@@ -304,7 +308,7 @@ class TestScoreRun:
     def test_entity_overlap_scoring(self):
         labels = [
             {
-                "raw_line": "msg1",
+                "raw_line": "[13:00:00] #vegas_internal alice: ORCA01 spotted",
                 "extracted_type": "threat",
                 "extracted_entities": [{"callsign": "ORCA01"}, {"track_number": "TM636"}],
                 "confidence": 0.8,
@@ -313,7 +317,7 @@ class TestScoreRun:
             }
         ]
         index = {
-            "msg1": _make_cop_update(
+            _make_composite_key("alice", "ORCA01 spotted"): _make_cop_update(
                 "threat",
                 0.8,
                 entities=[{"callsign": "ORCA01"}],
@@ -327,7 +331,7 @@ class TestScoreRun:
     def test_per_speaker_tracking(self):
         labels = [
             {
-                "raw_line": f"msg{i}",
+                "raw_line": f"[13:00:0{i}] #vegas_internal alice: msg{i}",
                 "extracted_type": "threat",
                 "extracted_entities": [],
                 "confidence": 0.8,
@@ -339,9 +343,9 @@ class TestScoreRun:
         # First 3 correct, last 3 wrong
         index = {}
         for i in range(3):
-            index[f"msg{i}"] = _make_cop_update("threat", 0.8)
+            index[_make_composite_key("alice", f"msg{i}")] = _make_cop_update("threat", 0.8)
         for i in range(3, 6):
-            index[f"msg{i}"] = _make_cop_update("location", 0.5)
+            index[_make_composite_key("alice", f"msg{i}")] = _make_cop_update("location", 0.5)
 
         m = score_run(labels, index, "test")
         assert len(m.per_speaker_correct["alice"]) == 6
