@@ -577,6 +577,73 @@ The Narwhal V100 comparison reveals that model size matters less for extraction 
 
 The systematic location over-classification is the most actionable finding: local models tag grid references and bullseye coordinates as "location" even when the message is a tasking order. Prompt tuning to emphasize "what is the *purpose* of this message?" over "what entities are mentioned?" would likely improve type match significantly.
 
+## Confidence Calibration (2026-04-04)
+
+Calibration model fitted using `scripts/recalibrate.py` against Opus silver labels (935 messages).
+
+### Qwen2.5-7B-8K on AG T4
+
+| Metric | Value |
+|--------|-------|
+| Accuracy | **79.7%** |
+| ECE (Expected Calibration Error) | **0.6723** |
+| Method | Histogram binning (10 bins) |
+| Calibration file | `data/calibration/qwen2.5_7b-8k.json` |
+
+**Calibration profile (bimodal):**
+
+| Confidence Bin | Predictions | Correct | Actual Accuracy |
+|---------------|-------------|---------|-----------------|
+| [0.0, 0.1) | 630 | 543 | 86% |
+| [0.1, 0.8) | 0 | 0 | — |
+| [0.8, 0.9) | 17 | 7 | 41% |
+| [0.9, 1.0) | 227 | 147 | 65% |
+
+**Key finding:** The model is **bimodally overconfident**. It almost never outputs mid-range confidence — either low (0.0-0.1) or high (0.9-1.0). When it says 0.95, it's right only 65% of the time. The tiered write authority threshold of 0.7 for auto-write should be reconsidered given this calibration profile.
+
+**Implications:**
+- Low-confidence predictions (0.0-0.1) are actually 86% accurate — the model is *underconfident* on noise filtering
+- High-confidence predictions (0.9-1.0) are only 65% accurate — the model is *overconfident* on extractions
+- The empty middle range means the model has no nuanced uncertainty signal
+- Per-model calibration is needed for 14B, 32B, and cloud APIs
+
+## RQ1: Speaker Model Evaluation (2026-04-06)
+
+A/B comparison of extraction quality with vs without speaker models, evaluated against Opus silver labels. Speaker models learn operator profiles (role, area, jargon) during replay and inject them into the extraction prompt.
+
+### Qwen2.5-7B on AG T4
+
+| Metric | With Speakers | Without Speakers | Delta |
+|--------|--------------|-----------------|-------|
+| Labels evaluated | 935 | 935 | — |
+| Matched extractions | 337 | 358 | -21 |
+| Match rate | 36.0% | 38.3% | **-2.3%** |
+| Type exact match | 19.6% | 20.2% | **-0.6%** |
+| Type relaxed match | 19.8% | 20.4% | **-0.6%** |
+| Entity overlap (Jaccard) | 27.0% | 29.8% | **-2.8%** |
+| Noise detection | 100% | 100% | 0% |
+| Confidence correlation | 0.071 | 0.033 | +0.038 |
+
+**Per-type notable differences:**
+
+| Type | With Speakers | Without Speakers | Winner |
+|------|--------------|-----------------|--------|
+| Tasking | 43% | 47% | Without |
+| Threat | 33% | 37% | Without |
+| Cyber/EW | **53%** | 47% | With |
+| Entity ID | **17%** | 8% | With |
+| Fuel | 62% | **69%** | Without |
+
+**Learning curves:** Nearly identical between conditions across all speakers with 5+ messages. No evidence of accuracy improvement over time with speaker model learning.
+
+**Finding:** Speaker models show **no significant benefit on Qwen2.5-7B**. The "without speakers" condition slightly outperforms — more matched extractions and marginally better type accuracy.
+
+**Hypothesis:** This is a **model capacity bottleneck**. The 7B model may lack sufficient capacity to leverage additional speaker context in the system prompt. The speaker profile text (~50-100 tokens per speaker) may compete with extraction instructions in the limited attention window.
+
+**Next steps:** Test on larger models (14B, 32B, cloud APIs) to confirm capacity hypothesis (#52). If larger models benefit from speaker context, the RQ1 finding is: "speaker personalization requires sufficient model capacity (≥14B parameters)."
+
+Full report: `docs/SPEAKER_MODEL_RESULTS.md`
+
 ## Reproduction
 
 ```bash

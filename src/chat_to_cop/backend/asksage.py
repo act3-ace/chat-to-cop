@@ -71,9 +71,7 @@ class AskSageBackend:
         self.model = model
         self.temperature = temperature
         self._max_retries = max_retries
-        self._prompt_hash = hashlib.sha256(
-            build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()
-        ).hexdigest()
+        self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
         self._client = AskSageClient(
             email=email,
