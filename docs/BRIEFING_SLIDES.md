@@ -390,7 +390,11 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 
 **RQ1: Online user modeling** -- Speaker models learn operator profiles during the session. How fast? How accurate? Does learning Hydro_Tank help with Crusher_Tank?
 
+*Initial result (2026-04-06):* On Qwen2.5-7B, speaker models show no significant benefit (-0.6% type match, -2.8% entity overlap vs without). **Hypothesis: model capacity bottleneck** -- 7B lacks sufficient capacity to leverage speaker context. Testing on 14B/32B/cloud APIs to confirm (#52). If larger models benefit, finding is: "speaker personalization requires ≥14B parameters."
+
 **RQ2: Ontology-free adaptation** -- The LLM maps heterogeneous terminology to shared world state. What happens when a new team joins mid-exercise with unfamiliar jargon?
+
+**Confidence calibration (2026-04-04):** Qwen2.5-7B is bimodally overconfident -- says 0.95, right 65%. ECE=0.67. The model has no nuanced uncertainty; it's either confident or not. Write authority thresholds need recalibration.
 
 **Key Performance Parameters (anti-ontology framework):**
 
@@ -401,7 +405,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 | Adversarial Robustness (ASR) | Regex detection | + LLM detection |
 | Mean Time to Recover (MTTR) | ~35s (GPU) | <30s |
 
-**Speaker notes:** For Jared: this is the publication story. Chat-to-cop is not a side project -- it is a FACS research platform at the individual-operator scale. The same properties we want to study in heterogeneous autonomous combat systems (flexibility, adaptability, configurability, trustworthiness) are testable here with faster iteration cycles. The two RQs map to FACS-core problems: trust calibration (RQ1) and interoperability without shared standards (RQ2). The KPPs come from Pattern F of the anti-ontology framework -- we measure time-to-adapt, not compliance. For 711 HPW: these RQs are where our approaches could be compared. Your NER pipeline and our agent architecture represent different paths to the same goal -- equifinality at the program level.
+**Speaker notes:** For Jared: this is the publication story. Chat-to-cop is not a side project -- it is a FACS research platform at the individual-operator scale. The same properties we want to study in heterogeneous autonomous combat systems (flexibility, adaptability, configurability, trustworthiness) are testable here with faster iteration cycles. The two RQs map to FACS-core problems: trust calibration (RQ1) and interoperability without shared standards (RQ2). The KPPs come from Pattern F of the anti-ontology framework -- we measure time-to-adapt, not compliance. RQ1 initial results are in: 7B shows no speaker model benefit, but this may be a capacity issue. Multi-model testing (#52) will disambiguate. The calibration finding (ECE=0.67, bimodal overconfidence) is directly actionable for write authority threshold design. For 711 HPW: these RQs are where our approaches could be compared. Your NER pipeline and our agent architecture represent different paths to the same goal -- equifinality at the program level.
 
 ---
 
@@ -454,7 +458,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 | Sprint 1 | Vertical slice (single channel, single model) | COMPLETE | -- |
 | Sprint 2 | Multi-channel + resilience (degradation, fusion, supervisor) | COMPLETE | -- |
 | Sprint 3 | Deploy + harden (Docker, eval, CoP writer, RAI) | IN PROGRESS | -- |
-| **Total** | | | **832 tests passing** |
+| **Total** | | | **832+ tests passing** |
 
 **What's done:**
 - Full extraction pipeline: channel agents, fusion, supervisor, store
@@ -472,6 +476,8 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 - **Opus silver labels complete** -- 935 messages labeled via Claude Opus 4.6 / Ask Sage (NIPRNet, IL5)
 - **Label analysis and speaker model eval frameworks** -- `scripts/analyze_labels.py`, `scripts/eval_speaker_models.py`
 - **Narwhal V100 model comparison complete** -- 5 replay DBs (7B/14B/32B Qwen2.5/Qwen3-32B) compared vs Opus labels; 14B best type match (49%), pipeline stable across all model sizes (251-259 updates)
+- **Confidence calibration complete** -- 79.7% accuracy, ECE=0.67, bimodal overconfidence identified
+- **RQ1 speaker model A/B complete (7B)** -- no significant benefit on 7B; capacity bottleneck hypothesis, multi-backend testing planned (#52)
 
 **What remains:**
 
@@ -479,15 +485,17 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 - CoP database writer (#17, blocked on contractor schema)
 - RAI provenance / MLflow integration (#18)
 - CSAR and status_change prompt improvement
-- Confidence calibration using Opus silver labels (#30)
-- Speaker model A/B evaluation using Opus silver labels (#35)
+- Multi-backend speaker model A/B testing (#52) -- confirm capacity bottleneck hypothesis
+- vLLM on AG as Ollama alternative (#51)
 - MASH-specific configuration (bullseye reference, channel list)
 
 **Risks:**
 
 1. **CoP database schema** -- blocked on contractor delivery; current output goes to local SQLite
 2. ~~No ground truth labels~~ -- **RESOLVED**: Opus silver labels complete for all 935 messages
-3. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
+3. ~~Confidence calibration~~ -- **DONE**: 79.7% accuracy, ECE=0.67, bimodal overconfidence
+4. ~~Speaker model evaluation~~ -- **DONE (7B)**: no benefit on 7B, testing larger models (#52)
+5. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
 
 **Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Two backends are now validated on real data: Qwen 7B on T4 GPU (100% success, 7.6s) and Claude Sonnet 4.5 on AWS Bedrock (99.6% success, 4.8s, no GPU). The model-agnostic architecture works -- zero code changes between local and cloud inference. Internet at H2O is expected, making Bedrock a viable primary or hybrid option. The ground truth labeling risk is now resolved -- Opus silver labels cover all 935 messages with bimodal confidence that validates our write authority design. The Narwhal V100 model comparison (5 models, 935 msgs each) shows the pipeline is stable across all model sizes (251-259 updates) and that 14B hits the sweet spot for prompt compliance (49% type match vs Opus). Qwen3-32B on V100 validates the MASH target hardware path. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 832 test count and 29 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Commercial model integration (Bedrock) is now proven; Mia and team can focus on prompt tuning and confidence calibration using the new Opus labels. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end on both local and cloud backends.
 

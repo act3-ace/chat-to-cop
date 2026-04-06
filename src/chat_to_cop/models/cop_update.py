@@ -44,6 +44,17 @@ class UpdateType(str, Enum):
     NONE = "none"
 
 
+def _coerce_metadata_values(v: object) -> dict[str, str]:
+    """Coerce metadata dict values to strings.
+
+    LLMs sometimes return int or None values in metadata. Rather than
+    rejecting the entire entity, coerce to strings and drop None values.
+    """
+    if not isinstance(v, dict):
+        return {}
+    return {str(k): str(val) for k, val in v.items() if val is not None}
+
+
 def _coerce_capability_impact(v: object) -> object:
     """Coerce invalid capability_impact values to None instead of failing.
 
@@ -83,7 +94,9 @@ class EntityUpdate(BaseModel):
     weapon_qty_remaining: int | None = Field(None, description="Weapons remaining")
     fuel_state: str | None = Field(None, description="Fuel state (e.g., F+40, playtime 15 min)")
     subsystem_status: str | None = Field(None, description="Subsystem detail (e.g., radar inop, CIWS out)")
-    metadata: dict[str, str] = Field(default_factory=dict, description="Overflow fields that don't map to schema")
+    metadata: Annotated[dict[str, str], BeforeValidator(_coerce_metadata_values)] = Field(
+        default_factory=dict, description="Overflow fields that don't map to schema"
+    )
     capability_impact: Annotated[CapabilityImpact | None, BeforeValidator(_coerce_capability_impact)] = Field(
         None, description="SDAC mapping: sense, decide, act, or collaborate"
     )
