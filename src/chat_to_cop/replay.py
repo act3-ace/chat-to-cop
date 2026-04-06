@@ -384,8 +384,11 @@ def main() -> None:
 
     asyncio.run(
         run_replay(
-            args.path, config, args.speed,
-            bedrock_config=bedrock_config, anthropic_config=anthropic_config,
+            args.path,
+            config,
+            args.speed,
+            bedrock_config=bedrock_config,
+            anthropic_config=anthropic_config,
             asksage_config=asksage_config,
         )
     )
