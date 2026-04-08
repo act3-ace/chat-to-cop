@@ -457,7 +457,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 |--------|-------|--------|-------|
 | Sprint 1 | Vertical slice (single channel, single model) | COMPLETE | -- |
 | Sprint 2 | Multi-channel + resilience (degradation, fusion, supervisor) | COMPLETE | -- |
-| Sprint 3 | Deploy + harden (Docker, eval, CoP writer, RAI) | IN PROGRESS | -- |
+| Sprint 3 | Deploy + harden (Docker, eval, CoP writer, RAI) | MOSTLY COMPLETE (CoP writer blocked on contractor schema) | -- |
 | **Total** | | | **843 tests passing** |
 
 **What's done:**
