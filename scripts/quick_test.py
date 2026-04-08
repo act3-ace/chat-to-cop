@@ -54,7 +54,18 @@ def _build_backend(args):
             timeout=120.0,
             max_retries=3,
         )
-    api_key = os.environ.get("CHAT_TO_COP_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "not-needed"
+    # Pick the right API key based on the endpoint, with sensible fallbacks.
+    url = args.url.lower()
+    if "googleapis.com" in url or "generativelanguage" in url:
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    elif "groq.com" in url:
+        api_key = os.environ.get("GROQ_API_KEY")
+    elif "openai.com" in url:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    else:
+        api_key = None
+    # Explicit override always wins; "not-needed" for local Ollama.
+    api_key = os.environ.get("CHAT_TO_COP_LLM_API_KEY") or api_key or os.environ.get("OPENAI_API_KEY") or "not-needed"
     return OpenAICompatibleBackend(
         base_url=args.url,
         model=args.model,
