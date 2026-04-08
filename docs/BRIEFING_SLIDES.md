@@ -458,7 +458,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 | Sprint 1 | Vertical slice (single channel, single model) | COMPLETE | -- |
 | Sprint 2 | Multi-channel + resilience (degradation, fusion, supervisor) | COMPLETE | -- |
 | Sprint 3 | Deploy + harden (Docker, eval, CoP writer, RAI) | IN PROGRESS | -- |
-| **Total** | | | **832+ tests passing** |
+| **Total** | | | **843 tests passing** |
 
 **What's done:**
 - Full extraction pipeline: channel agents, fusion, supervisor, store
@@ -470,7 +470,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 - Fusion feedback loop (cross-channel speaker corroboration)
 - Eval harness + benchmark results across 5+ models (local + cloud)
 - Tiered write authority + kill switch
-- 29 MRs merged, 832 tests
+- 35 MRs merged, 843 tests
 - Docker containerization
 - System card, dataset cards, labeling guide
 - **Opus silver labels complete** -- 935 messages labeled via Claude Opus 4.6 / Ask Sage (NIPRNet, IL5)
@@ -497,7 +497,7 @@ Faster backends (V100 14B, 2.2s) are real-time but extract fewer threats/tasking
 4. ~~Speaker model evaluation~~ -- **DONE (7B)**: no benefit on 7B, testing larger models (#52)
 5. **Data separation** -- data from different DASH events must remain separate to avoid misrepresenting results
 
-**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is in progress with the major engineering work done. Two backends are now validated on real data: Qwen 7B on T4 GPU (100% success, 7.6s) and Claude Sonnet 4.5 on AWS Bedrock (99.6% success, 4.8s, no GPU). The model-agnostic architecture works -- zero code changes between local and cloud inference. Internet at H2O is expected, making Bedrock a viable primary or hybrid option. The ground truth labeling risk is now resolved -- Opus silver labels cover all 935 messages with bimodal confidence that validates our write authority design. The Narwhal V100 model comparison (5 models, 935 msgs each) shows the pipeline is stable across all model sizes (251-259 updates) and that 14B hits the sweet spot for prompt compliance (49% type match vs Opus). Qwen3-32B on V100 validates the MASH target hardware path. The remaining items are deployment configuration and blocked dependencies (CoP schema from contractors). The 832 test count and 29 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The fusion feedback loop enables cross-channel speaker corroboration, improving extraction quality. Commercial model integration (Bedrock) is now proven; Mia and team can focus on prompt tuning and confidence calibration using the new Opus labels. For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end on both local and cloud backends.
+**Speaker notes:** For leadership: Sprints 1 and 2 are complete. Sprint 3 is mostly done -- the major engineering work is finished and the research findings are landing. Seven backends are validated on real DASH 3 data: Qwen 7B on T4 GPU (100% success, 7.6s), Qwen 14B/32B and Qwen3-32B on Narwhal V100, Claude Sonnet 4.5 on AWS Bedrock (99.6% success, 4.8s, no GPU), and three cloud APIs (Gemini Flash, GPT-4.1 nano, Claude Haiku). The model-agnostic architecture works -- zero code changes between any of them. Internet at H2O is expected, making Bedrock or Gemini Flash viable primary or hybrid options. The ground truth labeling risk is now resolved -- Opus silver labels cover all 935 messages with bimodal confidence that validates our write authority design. Two key research findings landed in early April: (1) confidence calibration on 7B shows ECE=0.67 with bimodal overconfidence -- the model says 0.95 and is right only 65% of the time, so write authority thresholds need recalibration before deployment; (2) RQ1 speaker model A/B on 7B shows no significant benefit (-0.6% type match, -2.8% entity overlap), with the hypothesis being a model capacity bottleneck -- multi-backend testing on 14B/32B/cloud APIs is the next step (#52) to confirm. The Narwhal V100 model comparison (5 models, 935 msgs each) shows the pipeline is stable across all model sizes (251-259 updates) and that 14B hits the sweet spot for prompt compliance (49% type match vs Opus). Qwen3-32B on V100 validates the MASH target hardware path. The 843 test count and 35 merged MRs mean CI is enforced on every push -- nothing merges that breaks tests. The remaining work is the multi-backend RQ1 extension (#52), per-model calibration, vLLM as an Ollama alternative (#51), and blocked dependencies (CoP schema from contractors). For engineers: the open issues are on GitLab, parallelizable, and have acceptance criteria. For battle managers: we are targeting MASH in May 2026 with a working system. The DASH 3 replay proves the pipeline operates end-to-end on both local and cloud backends.
 
 ---
 
