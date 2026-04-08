@@ -1,13 +1,25 @@
-"""Quick smoke test: run 5 real DASH messages through the pipeline with Ollama.
+"""Quick smoke test: run 5 real DASH messages through the pipeline.
 
 Usage:
-    python scripts/quick_test.py
+    # Local Ollama (default)
     python scripts/quick_test.py --model qwen2.5:7b
-    python scripts/quick_test.py --url http://remote:11434/v1
+
+    # OpenAI-compatible cloud (Gemini Flash, Groq, OpenAI, vLLM, etc.)
+    python scripts/quick_test.py \
+        --url https://generativelanguage.googleapis.com/v1beta/openai/ \
+        --model gemini-2.5-flash
+
+    # Anthropic API direct (uses ANTHROPIC_API_KEY env var)
+    python scripts/quick_test.py --anthropic --model claude-haiku-4-5-20251001
+
+    # AWS Bedrock (uses AWS credentials)
+    python scripts/quick_test.py --bedrock \
+        --model us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0
 """
 
 import argparse
 import asyncio
+import os
 from datetime import datetime, timezone
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
@@ -23,15 +35,48 @@ TEST_MESSAGES = [
 ]
 
 
-async def run_test(url: str, model: str):
+def _build_backend(args):
+    """Build the appropriate backend based on CLI flags."""
+    if args.bedrock:
+        from chat_to_cop.backend.bedrock import BedrockBackend
+
+        return BedrockBackend(
+            model=args.model,
+            aws_region=args.bedrock_region,
+            timeout=120.0,
+            max_retries=3,
+        )
+    if args.anthropic:
+        from chat_to_cop.backend.anthropic_direct import AnthropicDirectBackend
+
+        return AnthropicDirectBackend(
+            model=args.model,
+            timeout=120.0,
+            max_retries=3,
+        )
+    api_key = os.environ.get("CHAT_TO_COP_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "not-needed"
+    return OpenAICompatibleBackend(
+        base_url=args.url,
+        model=args.model,
+        api_key=api_key,
+        timeout=120.0,
+        max_retries=3,
+    )
+
+
+async def run_test(args):
+    if args.bedrock:
+        label = f"Bedrock {args.model} ({args.bedrock_region})"
+    elif args.anthropic:
+        label = f"Anthropic {args.model}"
+    else:
+        label = f"{args.model} @ {args.url}"
+
     print(f"\n{'=' * 60}")
-    print(f"SMOKE TEST: {model} @ {url}")
+    print(f"SMOKE TEST: {label}")
     print(f"{'=' * 60}\n")
 
-    import os
-
-    api_key = os.environ.get("OPENAI_API_KEY", "not-needed")
-    backend = OpenAICompatibleBackend(base_url=url, model=model, api_key=api_key, timeout=120.0, max_retries=3)
+    backend = _build_backend(args)
     agent = ChannelAgent(channel="#c2_coord", backend=backend)
 
     for raw_line, channel in TEST_MESSAGES:
@@ -88,10 +133,13 @@ async def run_test(url: str, model: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://127.0.0.1:11434/v1")
-    parser.add_argument("--model", default="qwen2.5:3b")
+    parser.add_argument("--url", default="http://127.0.0.1:11434/v1", help="OpenAI-compatible endpoint URL")
+    parser.add_argument("--model", default="qwen2.5:3b", help="Model name")
+    parser.add_argument("--bedrock", action="store_true", help="Use AWS Bedrock instead of OpenAI-compatible")
+    parser.add_argument("--bedrock-region", default="us-gov-west-1", help="AWS region for Bedrock")
+    parser.add_argument("--anthropic", action="store_true", help="Use Anthropic API directly (ANTHROPIC_API_KEY)")
     args = parser.parse_args()
-    asyncio.run(run_test(args.url, args.model))
+    asyncio.run(run_test(args))
 
 
 if __name__ == "__main__":
