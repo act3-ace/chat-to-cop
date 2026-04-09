@@ -4,6 +4,8 @@
 
 **Key tie-in:** The very first message in the demo is the **HYDRO_SL SITREP** that appears verbatim on **Slide 5** of [BRIEFING_SLIDES.md](BRIEFING_SLIDES.md). Show the slide first, then run the demo and let the audience watch the same message get extracted live. That's the moment the system "lands."
 
+**For MASH itself** (not external presentations), see [MASH_GO_NO_GO.md](MASH_GO_NO_GO.md) — the decision tree, pre-event checklist, recovery procedures, and hard rules for the actual event.
+
 ---
 
 ## Pick your backend
