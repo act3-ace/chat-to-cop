@@ -148,15 +148,23 @@ async def run_replay(
 
         # Collect updates in batches for fusion
         pending_updates = []
+        import time as _time
+
+        _replay_start = _time.monotonic()
+        _msg_latencies: list[float] = []
 
         async for message in replay_messages(path, speed=speed):
             total_messages += 1
+            _msg_start = _time.monotonic()
 
             # Audit log every message
             await store.write_audit(message)
 
             # Route through supervisor (handles agent lifecycle + load shedding)
             updates = await supervisor.route_message(message)
+
+            _msg_elapsed = _time.monotonic() - _msg_start
+            _msg_latencies.append(_msg_elapsed)
 
             # Collect for fusion batching
             pending_updates.extend(updates)
@@ -187,13 +195,20 @@ async def run_replay(
                         )
                 pending_updates.clear()
 
-            # Progress every 25 messages
+            # Progress every 25 messages — with latency stats
             if total_messages % 25 == 0:
+                _elapsed_total = _time.monotonic() - _replay_start
+                _recent = _msg_latencies[-25:]
+                _avg_recent = sum(_recent) / len(_recent) if _recent else 0
+                _avg_overall = _elapsed_total / total_messages
                 logger.info(
                     f"Progress: {total_messages} msgs, "
                     f"{total_updates} updates, "
                     f"{len(supervisor.active_channels)} channels, "
-                    f"{len(supervisor.shed_channels)} shed"
+                    f"{len(supervisor.shed_channels)} shed | "
+                    f"last25_avg={_avg_recent:.1f}s, "
+                    f"overall_avg={_avg_overall:.1f}s, "
+                    f"elapsed={_elapsed_total:.0f}s"
                 )
 
         # Flush remaining updates through fusion
@@ -211,12 +226,25 @@ async def run_replay(
                     total_updates += 1
                     type_counts[update.update_type.value] += 1
 
-        # Summary
+        # Summary with latency diagnostics
+        _total_elapsed = _time.monotonic() - _replay_start
         logger.info("---")
         logger.info(f"Replay complete: {total_messages} messages processed")
         logger.info(f"Updates extracted: {total_updates}")
         logger.info(f"Channels: {', '.join(sorted(supervisor.active_channels))}")
         logger.info(f"Entities tracked: {await store.count_entities()}")
+        logger.info(f"Wall clock: {_total_elapsed:.0f}s ({_total_elapsed / 60:.1f} min)")
+        if _msg_latencies:
+            _sorted = sorted(_msg_latencies)
+            _p50 = _sorted[len(_sorted) // 2]
+            _p95 = _sorted[int(len(_sorted) * 0.95)]
+            _p99 = _sorted[int(len(_sorted) * 0.99)]
+            _mean = sum(_msg_latencies) / len(_msg_latencies)
+            logger.info(
+                f"Per-message latency: mean={_mean:.1f}s, "
+                f"p50={_p50:.1f}s, p95={_p95:.1f}s, p99={_p99:.1f}s, "
+                f"min={_sorted[0]:.1f}s, max={_sorted[-1]:.1f}s"
+            )
         if type_counts:
             logger.info("Update types:")
             for utype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
