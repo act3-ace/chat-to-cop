@@ -93,6 +93,20 @@ CREATE TABLE IF NOT EXISTS entities (
     last_updated TEXT NOT NULL,
     metadata_json TEXT NOT NULL DEFAULT '{}'
 );
+
+CREATE TABLE IF NOT EXISTS overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    update_id INTEGER NOT NULL,
+    operator_id TEXT NOT NULL DEFAULT 'operator',
+    reason TEXT NOT NULL DEFAULT '',
+    original_data_json TEXT NOT NULL,
+    overridden_at TEXT NOT NULL,
+    pipeline_state_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (update_id) REFERENCES updates(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_overrides_update_id ON overrides(update_id);
+CREATE INDEX IF NOT EXISTS idx_overrides_overridden_at ON overrides(overridden_at);
 """
 
 
@@ -397,6 +411,108 @@ class WorldStateStore:
                 }
             )
         return results
+
+    async def record_override(
+        self,
+        update_id: int,
+        operator_id: str = "operator",
+        reason: str = "",
+    ) -> int:
+        """Record an operator override ('this update is wrong') with full audit context.
+
+        The original update data is snapshotted into original_data_json so it is
+        never lost (Pattern B: out-of-ontology data is retained, never dropped).
+        Returns the override row ID.
+        """
+        # Fetch the original update data for the audit snapshot
+        cursor = await self.db.execute("SELECT data_json FROM updates WHERE id = ?", (update_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Update {update_id} not found")
+
+        original_data_json = row["data_json"]
+
+        cursor = await self.db.execute(
+            """INSERT INTO overrides
+               (update_id, operator_id, reason, original_data_json, overridden_at)
+               VALUES (?, ?, ?, ?, datetime('now'))""",
+            (update_id, operator_id, reason, original_data_json),
+        )
+        await self.db.commit()
+        metrics.inc("store_overrides_written_total")
+        return cursor.lastrowid  # type: ignore[return-value]
+
+    async def get_overrides(self, limit: int = 100) -> list[dict]:
+        """Return recent overrides with their associated update info."""
+        cursor = await self.db.execute(
+            """SELECT o.id, o.update_id, o.operator_id, o.reason,
+                      o.original_data_json, o.overridden_at, o.pipeline_state_json,
+                      u.source_channel, u.source_speaker, u.update_type,
+                      u.source_message, u.confidence
+               FROM overrides o
+               JOIN updates u ON o.update_id = u.id
+               ORDER BY o.overridden_at DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": row["id"],
+                "update_id": row["update_id"],
+                "operator_id": row["operator_id"],
+                "reason": row["reason"],
+                "original_data_json": row["original_data_json"],
+                "overridden_at": row["overridden_at"],
+                "pipeline_state_json": row["pipeline_state_json"],
+                "source_channel": row["source_channel"],
+                "source_speaker": row["source_speaker"],
+                "update_type": row["update_type"],
+                "source_message": row["source_message"],
+                "confidence": row["confidence"],
+            }
+            for row in rows
+        ]
+
+    async def get_overridden_update_ids(self) -> set[int]:
+        """Return the set of update IDs that have been overridden."""
+        cursor = await self.db.execute("SELECT DISTINCT update_id FROM overrides")
+        rows = await cursor.fetchall()
+        return {row["update_id"] for row in rows}
+
+    async def override_stats(self) -> dict:
+        """Return override counts grouped by type, channel, and speaker."""
+        stats: dict = {"total": 0, "by_type": {}, "by_channel": {}, "by_speaker": {}}
+
+        cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM overrides")
+        row = await cursor.fetchone()
+        stats["total"] = row["cnt"]  # type: ignore[index]
+
+        cursor = await self.db.execute(
+            """SELECT u.update_type, COUNT(*) as cnt
+               FROM overrides o JOIN updates u ON o.update_id = u.id
+               GROUP BY u.update_type ORDER BY cnt DESC"""
+        )
+        for row in await cursor.fetchall():
+            stats["by_type"][row["update_type"]] = row["cnt"]
+
+        cursor = await self.db.execute(
+            """SELECT u.source_channel, COUNT(*) as cnt
+               FROM overrides o JOIN updates u ON o.update_id = u.id
+               GROUP BY u.source_channel ORDER BY cnt DESC"""
+        )
+        for row in await cursor.fetchall():
+            stats["by_channel"][row["source_channel"]] = row["cnt"]
+
+        cursor = await self.db.execute(
+            """SELECT u.source_speaker, COUNT(*) as cnt
+               FROM overrides o JOIN updates u ON o.update_id = u.id
+               GROUP BY u.source_speaker ORDER BY cnt DESC"""
+        )
+        for row in await cursor.fetchall():
+            stats["by_speaker"][row["source_speaker"]] = row["cnt"]
+
+        return stats
 
     async def correction_stats(self) -> dict:
         """Return correction counts grouped by type, channel, and speaker."""
