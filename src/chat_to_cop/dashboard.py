@@ -134,6 +134,25 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     white-space: nowrap;
   }
   .correct-btn:hover { background: #30363d; color: #c9d1d9; }
+  .override-btn {
+    background: #3a1f1f; color: #f85149; border: 1px solid #f8514966;
+    padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 0.70em;
+    white-space: nowrap; margin-left: 4px; font-weight: 600;
+  }
+  .override-btn:hover { background: #5a2020; border-color: #f85149; }
+  .override-btn:disabled { opacity: 0.4; cursor: default; }
+  .overridden-row td { text-decoration: line-through; opacity: 0.6; }
+  .overridden-badge {
+    display: inline-block; background: #f8514933; color: #f85149;
+    font-size: 0.7em; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+    margin-left: 6px;
+  }
+  .override-reason-input {
+    background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
+    border-radius: 3px; padding: 2px 4px; font-size: 0.75em; width: 120px;
+    margin-left: 4px; display: none;
+  }
+  .override-reason-input.visible { display: inline-block; }
   .modal-overlay {
     display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center;
@@ -185,6 +204,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div><span class="stat-label">Updates:</span><span class="stat-value" id="stat-updates">-</span></div>
   <div><span class="stat-label">Entities:</span><span class="stat-value" id="stat-entities">-</span></div>
   <div><span class="stat-label">Corrections:</span><span class="stat-value" id="stat-corrections">-</span></div>
+  <div><span class="stat-label">Overrides:</span><span class="stat-value" id="stat-overrides">-</span></div>
   <div><span class="stat-label">Status:</span><span class="stat-value" id="stat-status">loading</span></div>
 </div>
 
@@ -201,7 +221,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <th>Method</th>
         <th>Entities</th>
         <th>Message</th>
-        <th></th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody id="updates-body">
@@ -332,6 +352,8 @@ function formatPosition(lat, lon) {
   return lat.toFixed(3) + ', ' + lon.toFixed(3);
 }
 
+var _overriddenIds = {};
+
 function renderUpdates(updates) {
   var tbody = document.getElementById('updates-body');
   if (!updates || updates.length === 0) {
@@ -341,11 +363,14 @@ function renderUpdates(updates) {
   var html = '';
   for (var i = 0; i < updates.length; i++) {
     var u = updates[i];
-    html += '<tr>';
+    var isOverridden = _overriddenIds[u.id];
+    html += '<tr' + (isOverridden ? ' class="overridden-row"' : '') + '>';
     html += '<td>' + formatTimestamp(u.timestamp) + '</td>';
     html += '<td>' + escapeHtml(u.source_channel) + '</td>';
     html += '<td>' + escapeHtml(u.source_speaker) + '</td>';
-    html += '<td>' + escapeHtml(u.update_type) + '</td>';
+    html += '<td>' + escapeHtml(u.update_type)
+          + (isOverridden ? '<span class="overridden-badge">OVERRIDDEN</span>' : '')
+          + '</td>';
     html += '<td class="' + confClass(u.confidence) + '">'
           + u.confidence.toFixed(2) + '</td>';
     html += '<td><span class="method-tag ' + methodClass(u.extraction_method)
@@ -355,11 +380,54 @@ function renderUpdates(updates) {
     html += '<td class="msg-snippet" title="'
           + escapeHtml(u.source_message) + '">'
           + escapeHtml(u.source_message) + '</td>';
-    html += '<td><button class="correct-btn" onclick="openModal('
-          + u.id + ')">correct</button></td>';
+    html += '<td>';
+    html += '<button class="correct-btn" onclick="openModal('
+          + u.id + ')">correct</button>';
+    if (!isOverridden) {
+      html += '<button class="override-btn" id="ovr-btn-' + u.id
+            + '" onclick="showOverrideInput(' + u.id + ')">WRONG</button>';
+      html += '<input class="override-reason-input" id="ovr-reason-' + u.id
+            + '" placeholder="why? (Enter to skip)"'
+            + ' onkeydown="if(event.key===\'Enter\'){submitOverride(' + u.id + ')}">';
+    }
+    html += '</td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
+}
+
+function showOverrideInput(updateId) {
+  var input = document.getElementById('ovr-reason-' + updateId);
+  if (input.classList.contains('visible')) {
+    submitOverride(updateId);
+  } else {
+    input.classList.add('visible');
+    input.focus();
+  }
+}
+
+function submitOverride(updateId) {
+  var input = document.getElementById('ovr-reason-' + updateId);
+  var btn = document.getElementById('ovr-btn-' + updateId);
+  var reason = input ? input.value.trim() : '';
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  fetch('/updates/' + updateId + '/override', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason: reason})
+  }).then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Failed'); });
+    return r.json();
+  }).then(function(data) {
+    _overriddenIds[updateId] = true;
+    refresh();
+  }).catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = 'WRONG';
+    console.error('Override failed:', err);
+  });
 }
 
 function renderEntities(entities) {
@@ -495,14 +563,21 @@ function refresh() {
     fetch('/updates?limit=100').then(function(r) { return r.json(); }),
     fetch('/entities').then(function(r) { return r.json(); }),
     fetch('/health').then(function(r) { return r.json(); }),
-    fetch('/corrections/stats').then(function(r) { return r.json(); })
+    fetch('/corrections/stats').then(function(r) { return r.json(); }),
+    fetch('/overrides').then(function(r) { return r.json(); })
   ]).then(function(results) {
+    // Build overridden ID set from the overrides list
+    var overrides = results[4];
+    for (var i = 0; i < overrides.length; i++) {
+      _overriddenIds[overrides[i].update_id] = true;
+    }
     renderUpdates(results[0]);
     renderEntities(results[1]);
     document.getElementById('stat-updates').textContent = results[2].updates_count;
     document.getElementById('stat-entities').textContent = results[2].entities_count;
     document.getElementById('stat-status').textContent = results[2].status;
     document.getElementById('stat-corrections').textContent = results[3].total;
+    document.getElementById('stat-overrides').textContent = overrides.length;
     ind.className = 'refresh-indicator';
   }).catch(function(err) {
     console.error('Refresh error:', err);
