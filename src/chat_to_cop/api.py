@@ -18,6 +18,7 @@ Endpoints:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
@@ -27,35 +28,75 @@ from pydantic import BaseModel, model_validator
 
 from chat_to_cop.dashboard import DASHBOARD_HTML
 from chat_to_cop.metrics import metrics
+from chat_to_cop.output.cop_writer import CoPWriter
 from chat_to_cop.output.store import WorldStateStore
+
+# Store instance — set by lifespan or injected by tests
+_store: WorldStateStore | None = None
+
+# CoPWriter instance — set by lifespan or injected by tests
+_cop_writer: CoPWriter | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _store
+    _store = WorldStateStore("data/world_state.db")
+    await _store.open()
+    yield
+    if _store:
+        await _store.close()
+
 
 app = FastAPI(
     title="chat-to-cop",
     description="AI staff officer: world-state extraction from military chat to CoP",
     version="0.1.0",
+    lifespan=lifespan,
 )
-
-# Store instance — initialized on startup
-_store: WorldStateStore | None = None
-
-
-@app.on_event("startup")
-async def startup():
-    global _store
-    _store = WorldStateStore("data/world_state.db")
-    await _store.open()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    if _store:
-        await _store.close()
 
 
 def _get_store() -> WorldStateStore:
     if _store is None:
         raise RuntimeError("Store not initialized")
     return _store
+
+
+def _get_cop_writer() -> CoPWriter:
+    if _cop_writer is None:
+        raise RuntimeError("CoPWriter not initialized")
+    return _cop_writer
+
+
+# --- Admin endpoints (pause/resume kill switch) ---
+
+
+@app.post("/admin/pause")
+async def admin_pause():
+    """Immediately pause all CoP writes. Incoming updates queue locally."""
+    writer = _get_cop_writer()
+    writer.pause()
+    return {"paused": True, "queue_depth": writer.pause_queue_size}
+
+
+@app.post("/admin/resume")
+async def admin_resume():
+    """Resume CoP writes and flush queued updates."""
+    writer = _get_cop_writer()
+    writer.resume()
+    results = await writer.flush_pause_queue()
+    return {
+        "paused": False,
+        "flushed": len(results),
+        "queue_depth": writer.pause_queue_size,
+    }
+
+
+@app.get("/admin/status")
+async def admin_status():
+    """Current pause state and queue depth."""
+    writer = _get_cop_writer()
+    return {"paused": writer.paused, "queue_depth": writer.pause_queue_size}
 
 
 @app.get("/", response_class=RedirectResponse, include_in_schema=False)

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import chat_to_cop.api as api_module
 from chat_to_cop.api import app
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
+from chat_to_cop.output.cop_writer import CoPWriter
 from chat_to_cop.output.store import WorldStateStore
 
 
@@ -53,6 +54,15 @@ def setup_store():
     yield store
     asyncio.run(store.close())
     api_module._store = None
+
+
+@pytest.fixture(autouse=True)
+def setup_cop_writer():
+    """Provide a CoPWriter for admin endpoint tests."""
+    writer = CoPWriter()
+    api_module._cop_writer = writer
+    yield writer
+    api_module._cop_writer = None
 
 
 @pytest.fixture
@@ -161,3 +171,59 @@ class TestStatsEndpoint:
         data = r.json()
         assert "metrics_enabled" in data
         assert "counters" in data
+
+
+class TestAdminPauseEndpoints:
+    def test_initial_status_is_not_paused(self, client):
+        r = client.get("/admin/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["paused"] is False
+        assert data["queue_depth"] == 0
+
+    def test_pause_sets_paused_state(self, client):
+        r = client.post("/admin/pause")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["paused"] is True
+
+    def test_resume_clears_paused_state(self, client):
+        client.post("/admin/pause")
+        r = client.post("/admin/resume")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["paused"] is False
+        assert "flushed" in data
+
+    def test_status_reflects_pause(self, client):
+        client.post("/admin/pause")
+        r = client.get("/admin/status")
+        data = r.json()
+        assert data["paused"] is True
+
+    def test_status_reflects_resume(self, client):
+        client.post("/admin/pause")
+        client.post("/admin/resume")
+        r = client.get("/admin/status")
+        data = r.json()
+        assert data["paused"] is False
+
+    def test_double_pause_is_idempotent(self, client):
+        client.post("/admin/pause")
+        r = client.post("/admin/pause")
+        assert r.status_code == 200
+        assert r.json()["paused"] is True
+
+    def test_resume_without_pause_is_safe(self, client):
+        r = client.post("/admin/resume")
+        assert r.status_code == 200
+        assert r.json()["paused"] is False
+
+    def test_dashboard_contains_pause_button(self, client):
+        r = client.get("/dashboard")
+        assert r.status_code == 200
+        assert 'id="pause-btn"' in r.text
+
+    def test_dashboard_contains_f12_shortcut(self, client):
+        r = client.get("/dashboard")
+        assert "F12" in r.text
