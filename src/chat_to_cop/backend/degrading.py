@@ -99,6 +99,7 @@ class DegradingBackend:
         timeouts: list[float] | None = None,
         fail_max: int = 3,
         cooldown: float = 30.0,
+        cascade_threshold: float = 0.0,
     ) -> None:
         if not backends:
             raise ValueError("At least one backend is required")
@@ -111,14 +112,27 @@ class DegradingBackend:
         self._slots = [_BackendSlot(b, t, fail_max=fail_max, cooldown=cooldown) for b, t in zip(backends, timeouts)]
         self._fail_max = fail_max
         self._cooldown = cooldown
+        # Confidence-aware cascading (FrugalGPT pattern):
+        # If > 0, a successful extraction with confidence below this threshold
+        # triggers escalation to the next backend instead of returning immediately.
+        # Default 0.0 preserves existing behavior (any success returns immediately).
+        self._cascade_threshold = cascade_threshold
 
     async def extract(
         self,
         messages: list[dict],
         schema: type[BaseModel],
     ) -> BaseModel:
-        """Try each backend in order; fall through to passthrough on total failure."""
+        """Try each backend in order; fall through to passthrough on total failure.
+
+        If cascade_threshold > 0, a successful extraction with confidence below
+        the threshold will trigger escalation to the next backend instead of
+        returning immediately. The best result seen across all backends is kept
+        as a safety net. (FrugalGPT / confidence-aware cascading pattern.)
+        """
         metrics.inc("degrading_calls_total")
+        best_cascade_result: BaseModel | None = None
+        best_cascade_confidence: float = -1.0
 
         for slot in self._slots:
             # Gate: check circuit breaker state (handles open → half-open transition)
@@ -136,7 +150,6 @@ class DegradingBackend:
 
                 # Register success with the breaker
                 slot.breaker.call(lambda: None)
-                metrics.inc("backend_selected_total", labels={"backend": slot.name})
 
                 # If this backend previously had its breaker open, record
                 # time-to-adapt (KPP-A)
@@ -146,6 +159,25 @@ class DegradingBackend:
                     logger.info("{} recovered after {:.1f}s (time-to-adapt)", slot.name, tta)
                     slot.last_opened = None
 
+                # Confidence-aware cascading: if result confidence is below
+                # threshold and there are more backends to try, escalate.
+                # Track the best result seen so far as a safety net.
+                result_confidence = getattr(result, "confidence", 1.0)
+                if result_confidence > best_cascade_confidence:
+                    best_cascade_result = result
+                    best_cascade_confidence = result_confidence
+
+                if self._cascade_threshold > 0 and result_confidence < self._cascade_threshold:
+                    metrics.inc("confidence_cascade_escalations", labels={"backend": slot.name})
+                    logger.info(
+                        "Confidence cascade: {} returned {:.2f} < {:.2f} threshold, escalating",
+                        slot.name,
+                        result_confidence,
+                        self._cascade_threshold,
+                    )
+                    continue
+
+                metrics.inc("backend_selected_total", labels={"backend": slot.name})
                 return result
 
             except Exception as exc:
@@ -165,7 +197,15 @@ class DegradingBackend:
                 logger.debug("Backend {} failed: {}", slot.name, exc)
                 continue
 
-        # All backends exhausted — passthrough (Pattern B: never drop data)
+        # All backends exhausted — return best cascade result if we have one,
+        # otherwise passthrough (Pattern B: never drop data)
+        if best_cascade_result is not None:
+            metrics.inc("backend_selected_total", labels={"backend": "cascade_best"})
+            logger.info(
+                "All backends tried — returning best cascade result (confidence={:.2f})",
+                best_cascade_confidence,
+            )
+            return best_cascade_result
         return self._passthrough(messages)
 
     @staticmethod
