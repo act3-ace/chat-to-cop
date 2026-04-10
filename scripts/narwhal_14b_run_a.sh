@@ -79,7 +79,7 @@ for f in "$OLLAMA_BIN" "$CHAT_DATA" "$CONDA_ENV/bin/python"; do
 done
 
 mkdir -p "$OUTPUT_DIR"
-mkdir -p "$ARCHIVE_DIR"
+mkdir -p "$ARCHIVE_DIR" 2>/dev/null || echo "WARNING: Cannot create archive dir $ARCHIVE_DIR — results will stay in $OUTPUT_DIR only"
 
 # Install latest source
 echo "Installing latest chat-to-cop source..."
