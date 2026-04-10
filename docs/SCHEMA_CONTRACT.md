@@ -204,6 +204,43 @@ The CoPUpdate is serialized as JSON via Pydantic's `.model_dump_json()`. Here's 
 
 ---
 
+## Mapping to TM Decision Functions
+
+The Transformational Model defines 54 Decision Functions across four domains (Battle Analysis, Battle Command, Battle Management, Battle Plan). Our CoPUpdate types map to specific BM Decision Functions as inputs. This mapping helps Sarah understand which DFs each update type feeds — and which DFs we're *not* currently serving.
+
+| Our update_type | Primary TM Decision Function | How it feeds the DF |
+|---|---|---|
+| `entity_id` | **BM.2.PAE** (Perceive Actionable Entity) | New entity identification: callsign, track number, platform type, affiliation |
+| `status_change` | **BM.2.ISU** (Improve Situational Understanding) | Entity state changes: operational status, subsystem status, degradation |
+| `threat` | **BM.2.PAE** + **BM.2.DSG** (Discern Significance) | Hostile entity with location, type, activity level |
+| `tasking` | **BM.2.GBC** (Generate BattleCOA) + **BM.2.IBC** (Implement BattleCOA) | Mission assignments, effector-target pairings, COA coordination |
+| `weapons` | **BM.2.MEF** (Match Effectors) + **BM.2.PSA** (Posture & Sustain Assets) | Weapons inventory, expenditure, remaining capacity |
+| `fuel` | **BM.2.PSA** (Posture & Sustain Assets) | Platform endurance, refueling status |
+| `location` | **BM.2.ISU** (Improve Situational Understanding) | Position updates for friendly/hostile entities |
+| `csar` | **BM.2.GBC** (Generate BattleCOA) | CSAR triggers a new COA requirement |
+| `fire_mission` | **BM.2.IBC** (Implement BattleCOA) | Fire mission execution / BDA |
+| `cyber_ew` | **BM.2.DSG** (Discern Significance) | EW/cyber events affecting battlespace |
+| `handover` | **BM.2.FCC** (Facilitate Coordination & Collaboration) | C2 authority transitions between pits |
+| `sitrep` | **BM.2.ISU** (Improve Situational Understanding) | Multi-entity situation reports (often the richest single messages) |
+| `environmental` | **BM.2.SDM** (Search Domains) | Weather, terrain, conditions affecting operations |
+
+### Decision Functions we do NOT currently feed
+
+| TM Decision Function | Gap | Could we? |
+|---|---|---|
+| **BM.2.AOP** (Apply Objective Priorities) | We don't extract priority/objective changes from chat | Possible with prompt tuning — BMs do discuss priority shifts in chat |
+| **BM.2.EBI** (Evaluate BattleCOA Impacts) | We extract COA assignments but not COA *assessments* | Harder — requires understanding intent, not just facts |
+| **BM.2.PGP** (Parse Guidance & Plans) | We don't parse FRAGORD/OPORD references from chat | Possible — these are structured documents referenced by name |
+| **BM.2.SBC** (Sequence BattleCOAs) | We don't extract COA sequencing decisions | Very hard — requires temporal reasoning across multiple messages |
+
+### Why this mapping matters
+
+Sarah is balancing two constraints: (1) what chat-to-cop produces and (2) what the vendor DFs consume. If our `update_type` taxonomy aligns with the TM DF inputs, the schema mapping is natural. Where it doesn't align (the gaps above), either chat-to-cop needs new extraction types or the schema needs a "raw enrichment" lane that vendors can query without DF-specific structure.
+
+Our `metadata` overflow dict (Pattern B) is designed for exactly this: information that doesn't fit the current DF taxonomy but is still operationally relevant. A vendor building BM.2.AOP could query metadata for priority-related keywords even if we don't have a dedicated `priority_change` update type.
+
+---
+
 ## Questions for Sarah
 
 1. **What entity ID format does the CoP use?** We extract callsigns and track numbers as free-text strings. If the CoP uses a specific integer ID scheme or a namespace (e.g., `TM-` prefix always present), we can normalize to match.
@@ -217,6 +254,10 @@ The CoPUpdate is serialized as JSON via Pydantic's `.model_dump_json()`. Here's 
 5. **What's the CoP's update frequency expectation?** We produce updates in 3-8 seconds per message. Is the CoP designed for that throughput, or should we batch?
 
 6. **Can you share even a draft of the entity table schema?** Even field names and types would let us wire `cop_update_to_records()` now and iterate as the schema stabilizes.
+
+7. **Does our update_type → TM DF mapping (above) match your understanding?** We want to make sure our extraction types align with the Decision Functions the vendors are consuming. If a vendor building BM.2.MEF needs data in a specific shape, we can adapt.
+
+8. **Are there TM Decision Functions we're missing that chat data could feed?** The "gaps" table above lists four DFs we don't currently serve. If any of those are priorities for MASH, tell us — some are addressable with prompt tuning.
 
 ---
 
