@@ -55,6 +55,24 @@ class SlowBackend:
         return SimpleResult(value="too-late")
 
 
+class ConfidenceBackend:
+    """Returns a CoPUpdate with a specific confidence value. For cascade testing."""
+
+    def __init__(self, confidence: float, name: str = "conf"):
+        self.model = name
+        self.call_count = 0
+        self._confidence = confidence
+
+    async def extract(self, messages: list[dict], schema: type[BaseModel]) -> BaseModel:
+        self.call_count += 1
+        return CoPUpdate(
+            update_type=UpdateType.FUEL,
+            confidence=self._confidence,
+            source_message="test",
+            extraction_method="llm",
+        )
+
+
 class FailNTimesBackend:
     """Fails N times, then succeeds."""
 
@@ -381,3 +399,100 @@ class TestEdgeCases:
         db = DegradingBackend(backends=[FailingBackend()], timeouts=[5.0])
         result = asyncio.run(db.extract(messages, SimpleResult))
         assert result.source_message == ""
+
+
+# ---------------------------------------------------------------------------
+# Confidence-aware cascading tests (#43)
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceCascading:
+    """Test FrugalGPT-style confidence-based escalation in DegradingBackend."""
+
+    messages = [{"role": "user", "content": "RR15 F+40"}]
+
+    def test_cascade_disabled_by_default(self):
+        """With default cascade_threshold=0.0, any success returns immediately."""
+        low = ConfidenceBackend(0.3, name="low")
+        high = ConfidenceBackend(0.9, name="high")
+        db = DegradingBackend(backends=[low, high], timeouts=[5.0, 5.0])
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        # Low backend returned 0.3 but cascade is disabled, so it's accepted
+        assert result.confidence == 0.3
+        assert low.call_count == 1
+        assert high.call_count == 0
+
+    def test_cascade_escalates_low_confidence(self):
+        """With cascade_threshold=0.5, a 0.3 result triggers escalation to next backend."""
+        low = ConfidenceBackend(0.3, name="low")
+        high = ConfidenceBackend(0.8, name="high")
+        db = DegradingBackend(
+            backends=[low, high], timeouts=[5.0, 5.0], cascade_threshold=0.5
+        )
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        # Low was tried first, escalated, high returned 0.8 >= threshold
+        assert result.confidence == 0.8
+        assert low.call_count == 1
+        assert high.call_count == 1
+
+    def test_cascade_returns_best_when_all_below_threshold(self):
+        """When all backends return confidence below threshold, return the best one."""
+        b1 = ConfidenceBackend(0.2, name="worst")
+        b2 = ConfidenceBackend(0.4, name="better")
+        b3 = ConfidenceBackend(0.3, name="middle")
+        db = DegradingBackend(
+            backends=[b1, b2, b3], timeouts=[5.0, 5.0, 5.0], cascade_threshold=0.5
+        )
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        # All below 0.5, returns best (0.4 from b2)
+        assert result.confidence == 0.4
+        assert b1.call_count == 1
+        assert b2.call_count == 1
+        assert b3.call_count == 1
+
+    def test_cascade_accepts_above_threshold(self):
+        """A result at or above the threshold is accepted immediately."""
+        b1 = ConfidenceBackend(0.5, name="exact")
+        b2 = ConfidenceBackend(0.9, name="unused")
+        db = DegradingBackend(
+            backends=[b1, b2], timeouts=[5.0, 5.0], cascade_threshold=0.5
+        )
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        assert result.confidence == 0.5
+        assert b1.call_count == 1
+        assert b2.call_count == 0
+
+    def test_cascade_skips_failed_backends(self):
+        """Failed backends are skipped; cascade continues to the next."""
+        failing = FailingBackend(name="down")
+        high = ConfidenceBackend(0.8, name="high")
+        db = DegradingBackend(
+            backends=[failing, high], timeouts=[5.0, 5.0], cascade_threshold=0.5
+        )
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        assert result.confidence == 0.8
+        assert failing.call_count == 1
+        assert high.call_count == 1
+
+    def test_cascade_increments_escalation_metric(self):
+        """The confidence_cascade_escalations metric fires on each escalation."""
+        metrics.reset()
+        low = ConfidenceBackend(0.2, name="low")
+        high = ConfidenceBackend(0.8, name="high")
+        db = DegradingBackend(
+            backends=[low, high], timeouts=[5.0, 5.0], cascade_threshold=0.5
+        )
+        asyncio.run(db.extract(self.messages, CoPUpdate))
+        assert metrics.get_counter("confidence_cascade_escalations", labels={"backend": "ConfidenceBackend(low)"}) >= 1
+
+    def test_cascade_preserves_pattern_b(self):
+        """Even with cascade, if all backends fail AND no cascade result, passthrough works."""
+        failing1 = FailingBackend(name="down1")
+        failing2 = FailingBackend(name="down2")
+        db = DegradingBackend(
+            backends=[failing1, failing2], timeouts=[5.0, 5.0], cascade_threshold=0.5
+        )
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        # Passthrough: confidence 0.0, Pattern B preserved
+        assert result.confidence == 0.0
+        assert "Pattern B" in (result.reasoning or "")
