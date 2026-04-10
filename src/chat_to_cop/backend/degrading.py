@@ -171,7 +171,9 @@ class DegradingBackend:
                     metrics.inc("confidence_cascade_escalations", labels={"backend": slot.name})
                     logger.info(
                         "Confidence cascade: {} returned {:.2f} < {:.2f} threshold, escalating",
-                        slot.name, result_confidence, self._cascade_threshold,
+                        slot.name,
+                        result_confidence,
+                        self._cascade_threshold,
                     )
                     continue
 
