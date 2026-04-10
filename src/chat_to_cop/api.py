@@ -4,16 +4,19 @@ Exposes extracted CoPUpdates, entity state, and system health via HTTP.
 Run with: uvicorn chat_to_cop.api:app --reload
 
 Endpoints:
-    GET /                           — HTML dashboard (redirect)
-    GET /dashboard                  — HTML dashboard for operator visibility
-    GET /updates                    — recent CoPUpdates with filtering
-    GET /entities                   — current entity state
-    GET /entities/{id}              — single entity with details
-    GET /health                     — system health
-    GET /stats                      — extraction statistics
-    POST /updates/{id}/correct      — submit a correction for an update
-    GET /corrections                — list recent corrections
-    GET /corrections/stats          — correction rate by type/channel/speaker
+    GET /                           -- HTML dashboard (redirect)
+    GET /dashboard                  -- HTML dashboard for operator visibility
+    GET /updates                    -- recent CoPUpdates with filtering
+    GET /entities                   -- current entity state
+    GET /entities/{id}              -- single entity with details
+    GET /health                     -- system health
+    GET /stats                      -- extraction statistics
+    POST /updates/{id}/correct      -- submit a correction for an update
+    GET /corrections                -- list recent corrections
+    GET /corrections/stats          -- correction rate by type/channel/speaker
+    POST /updates/{id}/override     -- quick operator override ("this is wrong")
+    GET /overrides                  -- list recent overrides
+    GET /overrides/stats            -- override rate by type/channel/speaker
 """
 
 from __future__ import annotations
@@ -213,3 +216,40 @@ async def get_correction_stats():
     """Correction rate by type, channel, and speaker."""
     store = _get_store()
     return await store.correction_stats()
+
+
+# --- Override endpoints (quick "this is wrong" button) ---
+
+
+class OverridePayload(BaseModel):
+    """Operator override: marks an update as wrong. Reason is optional (operator may be busy)."""
+
+    reason: str = ""
+
+
+@app.post("/updates/{update_id}/override")
+async def post_override(update_id: int, payload: OverridePayload | None = None):
+    """Record an operator override for an update. One click, optional reason."""
+    store = _get_store()
+    reason = payload.reason if payload else ""
+    try:
+        override_id = await store.record_override(update_id, reason=reason)
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+    return {"id": override_id, "update_id": update_id, "status": "overridden"}
+
+
+@app.get("/overrides")
+async def get_overrides(
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """List recent operator overrides."""
+    store = _get_store()
+    return await store.get_overrides(limit=limit)
+
+
+@app.get("/overrides/stats")
+async def get_override_stats():
+    """Override rate by type, channel, and speaker."""
+    store = _get_store()
+    return await store.override_stats()
