@@ -128,6 +128,9 @@ python -m chat_to_cop.live --server ws://10.5.185.72:8097
 | [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | Pydio access, DASH data inventory |
 | [docs/SCHEMAS.md](docs/SCHEMAS.md) | BattleEffectSchemaV2, GenMSG fields, CoP database model |
 | [docs/PRIOR_ART.md](docs/PRIOR_ART.md) | Vendor chat-parsing lessons from DASH events |
+| [docs/MASH_GO_NO_GO.md](docs/MASH_GO_NO_GO.md) | **MASH event deployment decision tree** — pre-event checklist, decision matrix, recovery procedures, hard rules |
+| [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) | External-presentation demo runbook (5-message smoke test) |
+| [docs/COMPARISON_DELTRON_2026-04-09.md](docs/COMPARISON_DELTRON_2026-04-09.md) | DELTRON (HLT) vs chat-to-cop comparison + Cadre of Critics review |
 
 ## Team
 
