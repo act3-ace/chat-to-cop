@@ -134,12 +134,24 @@ class CoPWriterConfig(BaseSettings):
         description="CoP REST API base URL. Empty string = dry-run mode (log only, no HTTP).",
     )
     cop_auto_threshold: float = Field(
-        default=0.7,
-        description="Minimum confidence for AUTO write authority (written immediately).",
+        default=0.95,
+        description=(
+            "Minimum confidence for AUTO write authority (written immediately). "
+            "Default raised from 0.7 to 0.95 after calibration finding: Qwen2.5-7B "
+            "says 0.95 but is correct only 65% of the time (ECE=0.67). When a "
+            "CalibrationModel is loaded, the *calibrated* confidence is used, so "
+            "this threshold operates on the calibrated value. Without calibration, "
+            "the higher default prevents overconfident AUTO writes."
+        ),
     )
     cop_flag_threshold: float = Field(
-        default=0.4,
-        description="Minimum confidence for FLAGGED write authority. Below this -> HUMAN review.",
+        default=0.5,
+        description=(
+            "Minimum confidence for FLAGGED write authority. Below this -> HUMAN review. "
+            "Raised from 0.4 to 0.5 based on calibration: the 7B model's mid-range "
+            "confidence bucket ([0.1-0.8)) is essentially empty, so a 0.4 threshold "
+            "was gating on noise. 0.5 is a cleaner split."
+        ),
     )
     cop_high_risk_types: list[str] = Field(
         default_factory=lambda: ["weapons", "csar", "fire_mission", "cyber_ew"],

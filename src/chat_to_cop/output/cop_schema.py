@@ -250,8 +250,8 @@ def classify_write_authority(
     confidence: float,
     update_type: str,
     *,
-    auto_threshold: float = 0.7,
-    flag_threshold: float = 0.4,
+    auto_threshold: float = 0.95,
+    flag_threshold: float = 0.5,
     high_risk_types: frozenset[str] | None = None,
 ) -> WriteAuthority:
     """Determine write authority tier for an update.
@@ -262,7 +262,13 @@ def classify_write_authority(
     - confidence flag_threshold to auto_threshold -> FLAGGED
     - confidence >= auto_threshold -> AUTO
 
-    Thresholds are configurable to support runtime tuning.
+    Thresholds were raised from 0.7/0.4 to 0.95/0.5 on 2026-04-10 after
+    calibration revealed Qwen2.5-7B is bimodally overconfident (ECE=0.67):
+    at raw confidence 0.95, only 65% of predictions were correct.  When a
+    CalibrationModel is active upstream, the confidence reaching this
+    function is already calibrated, and these thresholds operate on the
+    calibrated value.  Without calibration, the higher defaults prevent
+    overconfident AUTO writes.  See #58 and data/calibration/qwen2.5_7b-8k.json.
     """
     if high_risk_types is None:
         high_risk_types = HIGH_RISK_TYPES
@@ -382,8 +388,8 @@ def _entity_to_battle_effect(entity, update) -> BattleEffect:
 def cop_update_to_records(
     update,
     *,
-    auto_threshold: float = 0.7,
-    flag_threshold: float = 0.4,
+    auto_threshold: float = 0.95,
+    flag_threshold: float = 0.5,
     high_risk_types: frozenset[str] | None = None,
 ) -> list[CoPRecord]:
     """Convert a CoPUpdate into one or more CoPRecords for the REST API.
