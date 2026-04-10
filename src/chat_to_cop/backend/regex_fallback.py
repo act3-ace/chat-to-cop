@@ -87,6 +87,72 @@ _MGRS_RE = re.compile(
     r"\b(?P<mgrs>\d{1,2}[A-Z]{3}\s*\d{4,10})\b",
 )
 
+# --- DELTRON-sourced patterns (from HLT meeting 2026-04-09, slide 10) ---
+# These patterns were identified by Jeremy Gwinnup's DELTRON system as
+# operationally significant messages their fast path was missing.
+# See docs/COMPARISON_DELTRON_2026-04-09.md for context.
+
+# CSAR / emergency: boltout, bail out, CSAR, chopsard (STT mishearing of CSAR)
+_CSAR_RE = re.compile(
+    r"""
+    (?:
+        \b(?P<boltout>bolt\s*out|bail\s*(?:out|ed))\b
+      | \b(?P<csar>CSAR|chopsard)\b
+      | \b(?P<defending>defending)\b
+      | \b(?P<eject>eject(?:ed|ing)?)\b
+    )
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Crash / emergency: crash, smoke (in cockpit), emergency RTB
+_CRASH_RE = re.compile(
+    r"""
+    (?:
+        \b(?P<crash>crash(?:\s+event)?(?:ed)?)\b
+      | \bsmoke\s+(?:in\s+)?(?:the\s+)?(?P<smoke>cockpit|cabin)\b
+      | \b(?P<emergency_rtb>emergency\s+RTB|RTB\s+emergency|RTB\s+w/?\s*emergency)\b
+    )
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Catastrophic brevity codes: BROKEN ARROW, etc.
+_BREVITY_CRITICAL_RE = re.compile(
+    r"""
+    (?:
+        \b(?P<broken_arrow>BROKEN\s+ARROW)\b
+      | \b(?P<winchester>winchester)\b
+    )
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Entity-down patterns: "is down", "8 down", "shot down", "went down"
+_ENTITY_DOWN_RE = re.compile(
+    r"""
+    (?:
+        (?P<callsign>[A-Z][A-Za-z]*\s*\d{1,2})\s+
+        (?:is|went|going|going)\s+down
+      | \b(?P<count>\d+)\s+down\b
+      | \bshot\s+down\b
+    )
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Threat patterns: SAM active, TACREP with awake/active SAM
+_THREAT_RE = re.compile(
+    r"""
+    (?:
+        \b(?P<sam_type>SA-\d{1,2}|S-\d{3}|SAM)\s+(?P<sam_status>active|awake)\b
+      | \btacrep\b.*?\b(?P<tacrep_sam>SAM|sam)\s+(?:active|awake)\b
+      | \b(?P<gen_sam>\d+(?:st|nd|rd|th)[- ]gen\s+sam)\b
+    )
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
 
 class RegexBackend:
     """Pattern-matching backend for when LLMs are unavailable.
@@ -225,6 +291,84 @@ class RegexBackend:
 
         return entities
 
+    # --- DELTRON-sourced extractors (from HLT meeting 2026-04-09, slide 10) ---
+
+    def extract_csar(self, text: str) -> list[EntityUpdate]:
+        """Extract CSAR / emergency events: boltout, bail out, CSAR, defending."""
+        entities: list[EntityUpdate] = []
+        for m in _CSAR_RE.finditer(text):
+            if m.group("boltout") or m.group("eject"):
+                entities.append(EntityUpdate(operational_status="EJECTED", metadata={"event": "bailout/eject"}))
+            elif m.group("csar"):
+                entities.append(EntityUpdate(metadata={"event": "CSAR"}))
+            elif m.group("defending"):
+                entities.append(EntityUpdate(metadata={"event": "defending"}))
+        return entities
+
+    def extract_crash(self, text: str) -> list[EntityUpdate]:
+        """Extract crash / in-cockpit emergency events."""
+        entities: list[EntityUpdate] = []
+        for m in _CRASH_RE.finditer(text):
+            if m.group("crash"):
+                entities.append(EntityUpdate(operational_status="DESTROYED", metadata={"event": "crash"}))
+            elif m.group("smoke"):
+                entities.append(
+                    EntityUpdate(operational_status="DEGRADED", metadata={"event": f"smoke in {m.group('smoke')}"})
+                )
+            elif m.group("emergency_rtb"):
+                entities.append(EntityUpdate(operational_status="RTB", metadata={"event": "emergency RTB"}))
+        return entities
+
+    def extract_brevity_critical(self, text: str) -> list[EntityUpdate]:
+        """Extract catastrophic brevity codes: BROKEN ARROW, etc."""
+        entities: list[EntityUpdate] = []
+        for m in _BREVITY_CRITICAL_RE.finditer(text):
+            if m.group("broken_arrow"):
+                entities.append(EntityUpdate(metadata={"brevity_code": "BROKEN ARROW"}))
+            elif m.group("winchester"):
+                entities.append(
+                    EntityUpdate(operational_status="DEGRADED", metadata={"detail": "winchester (no weapons)"})
+                )
+        return entities
+
+    def extract_entity_down(self, text: str) -> list[EntityUpdate]:
+        """Extract entity-down patterns: 'is down', '8 down', 'shot down'."""
+        entities: list[EntityUpdate] = []
+        for m in _ENTITY_DOWN_RE.finditer(text):
+            callsign = m.group("callsign")
+            if callsign:
+                entities.append(EntityUpdate(callsign=callsign.strip(), operational_status="DESTROYED"))
+            elif m.group("count"):
+                entities.append(
+                    EntityUpdate(
+                        operational_status="DESTROYED",
+                        metadata={"count": m.group("count")},
+                    )
+                )
+            else:
+                entities.append(EntityUpdate(operational_status="DESTROYED"))
+        return entities
+
+    def extract_threats(self, text: str) -> list[EntityUpdate]:
+        """Extract threat patterns: SAM active, TACREP with SAM."""
+        entities: list[EntityUpdate] = []
+        for m in _THREAT_RE.finditer(text):
+            if m.group("sam_type"):
+                entities.append(
+                    EntityUpdate(
+                        platform_type=m.group("sam_type"),
+                        affiliation="HOSTILE",
+                        metadata={"status": m.group("sam_status")},
+                    )
+                )
+            elif m.group("tacrep_sam"):
+                entities.append(EntityUpdate(platform_type="SAM", affiliation="HOSTILE", metadata={"status": "active"}))
+            elif m.group("gen_sam"):
+                entities.append(
+                    EntityUpdate(platform_type=m.group("gen_sam"), affiliation="HOSTILE", metadata={"status": "active"})
+                )
+        return entities
+
     async def extract(
         self,
         messages: list[dict],
@@ -299,7 +443,47 @@ class RegexBackend:
             if update_type == UpdateType.NONE:
                 update_type = UpdateType.STATUS_CHANGE
 
-        # Coordinates
+        # --- DELTRON-sourced extractors (from HLT meeting 2026-04-09, slide 10) ---
+        # These run BEFORE coordinates because operationally significant patterns
+        # (CSAR, crash, threats) should take priority over location classification
+        # when a message contains both (e.g., "SA-21 active cigar 316/398").
+
+        # CSAR / emergency
+        csar_entities = self.extract_csar(content)
+        if csar_entities:
+            all_entities.extend(csar_entities)
+            if update_type == UpdateType.NONE:
+                update_type = UpdateType.CSAR
+
+        # Crash / smoke / emergency RTB
+        crash_entities = self.extract_crash(content)
+        if crash_entities:
+            all_entities.extend(crash_entities)
+            if update_type == UpdateType.NONE:
+                update_type = UpdateType.STATUS_CHANGE
+
+        # Catastrophic brevity codes
+        brevity_entities = self.extract_brevity_critical(content)
+        if brevity_entities:
+            all_entities.extend(brevity_entities)
+            if update_type == UpdateType.NONE:
+                update_type = UpdateType.STATUS_CHANGE
+
+        # Entity-down patterns
+        entity_down = self.extract_entity_down(content)
+        if entity_down:
+            all_entities.extend(entity_down)
+            if update_type == UpdateType.NONE:
+                update_type = UpdateType.STATUS_CHANGE
+
+        # Threat patterns (SAM active, TACREP)
+        threat_entities = self.extract_threats(content)
+        if threat_entities:
+            all_entities.extend(threat_entities)
+            if update_type == UpdateType.NONE:
+                update_type = UpdateType.THREAT
+
+        # Coordinates (run after CSAR/crash/threat so those take priority for type)
         coord_entities = self.extract_coordinates(content)
         if coord_entities:
             all_entities.extend(coord_entities)
@@ -309,7 +493,20 @@ class RegexBackend:
         # Determine confidence: more extractors matched = slightly higher confidence
         # but always < 0.5
         extractor_hits = sum(
-            1 for group in [tracks, fuel_entities, weapon_entities, status_entities, coord_entities] if group
+            1
+            for group in [
+                tracks,
+                fuel_entities,
+                weapon_entities,
+                status_entities,
+                coord_entities,
+                csar_entities,
+                crash_entities,
+                brevity_entities,
+                entity_down,
+                threat_entities,
+            ]
+            if group
         )
         confidence = min(0.1 + 0.08 * extractor_hits, 0.45)
 
