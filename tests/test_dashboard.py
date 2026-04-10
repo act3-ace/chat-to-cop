@@ -57,6 +57,40 @@ class TestDashboardHTML:
         assert 'src="http' not in DASHBOARD_HTML
         assert "cdn" not in DASHBOARD_HTML.lower()
 
+    def test_pause_button_present(self):
+        assert 'id="pause-btn"' in DASHBOARD_HTML
+        assert "WRITES ACTIVE" in DASHBOARD_HTML
+
+    def test_pause_button_css_classes(self):
+        assert ".pause-btn" in DASHBOARD_HTML
+        assert ".state-active" in DASHBOARD_HTML
+        assert ".state-paused" in DASHBOARD_HTML
+
+    def test_pause_toggle_function(self):
+        assert "function togglePause()" in DASHBOARD_HTML
+
+    def test_pause_polls_admin_status(self):
+        assert "fetch('/admin/status')" in DASHBOARD_HTML
+
+    def test_pause_calls_admin_endpoints(self):
+        assert "'/admin/resume'" in DASHBOARD_HTML
+        assert "'/admin/pause'" in DASHBOARD_HTML
+
+    def test_f12_keyboard_shortcut(self):
+        assert "e.key === 'F12'" in DASHBOARD_HTML
+
+    def test_queue_depth_element(self):
+        assert 'id="queue-depth"' in DASHBOARD_HTML
+
+    def test_pause_button_high_contrast_colors(self):
+        """The button must be visible from across the room -- verify high-contrast colors."""
+        assert "#238636" in DASHBOARD_HTML  # green bg for active
+        assert "#da3633" in DASHBOARD_HTML  # red bg for paused
+
+    def test_pause_button_large_text(self):
+        """Button text must be readable from a distance."""
+        assert "font-size: 1.3em" in DASHBOARD_HTML
+
     def test_updates_table_headers(self):
         assert "<th>Timestamp</th>" in DASHBOARD_HTML
         assert "<th>Channel</th>" in DASHBOARD_HTML

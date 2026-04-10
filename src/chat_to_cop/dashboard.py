@@ -4,6 +4,33 @@ Single-page dashboard showing recent CoPUpdates and tracked entities.
 Served by the FastAPI app at GET /dashboard (and GET /).
 No build step, no npm — inline CSS/JS in a Python string.
 Auto-refreshes every 5 seconds via JavaScript polling.
+
+Pause-writes button design rationale (issue #56):
+  Endsley SA principles (Designing for Situation Awareness, 2nd ed.):
+    - SA Principle 1: Present information directly in the form needed.
+      The button shows current state (WRITES ACTIVE / WRITES PAUSED) not
+      the action. Color encodes system state, not button function.
+    - SA Principle 6: Support rapid SA recovery. After looking away, the
+      operator can glance at the top-right corner and instantly know
+      whether writes are flowing or halted, from across the room.
+    - SA Principle 8: Minimize task-irrelevant clutter. The button is
+      large but only one element. Queue depth appears only when relevant
+      (paused state).
+  RTA / SDAC connection (docs/RTA_FACS_FRAMING.md):
+    The pause button is the manual activation of the CoPWriter kill switch
+    described in the Bounded Authority (SDAC) section. Pattern B (never
+    drop data) is preserved: paused updates queue locally.
+  Military C2 console conventions:
+    - Emergency controls are physically separated from routine controls.
+      The pause button is top-right, away from data tables.
+    - "Cease fire" / "hold all fires" use large, high-contrast, single-
+      action controls. No confirmation dialog.
+    - State is communicated by color: green = normal, red = stopped.
+  Trust calibration (Lyons et al. 2023; NATO C2COE):
+    - Immediate visual feedback on click builds trust in the control.
+    - Queue depth counter confirms data is not lost during pause.
+    - F12 keyboard shortcut ensures the operator can act without
+      moving the mouse -- matching the Battle Manager's stated need.
 """
 
 from __future__ import annotations
@@ -59,6 +86,39 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .status-degraded { color: #d29922; }
   .status-inop { color: #f85149; }
   .empty-msg { color: #8b949e; padding: 20px; text-align: center; }
+  /* Pause-writes kill switch */
+  .pause-control {
+    position: fixed; top: 12px; right: 140px; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .pause-btn {
+    font-size: 1.3em; font-weight: 800; letter-spacing: 0.05em;
+    padding: 10px 28px; border: 3px solid; border-radius: 8px;
+    cursor: pointer; text-transform: uppercase; transition: all 0.15s;
+    font-family: inherit; line-height: 1;
+  }
+  .pause-btn:focus { outline: 3px solid #58a6ff; outline-offset: 2px; }
+  .pause-btn.state-active {
+    background: #238636; border-color: #2ea043; color: #fff;
+  }
+  .pause-btn.state-active:hover { background: #2ea043; }
+  .pause-btn.state-paused {
+    background: #da3633; border-color: #f85149; color: #fff;
+    animation: pulse-border 1.5s ease-in-out infinite;
+  }
+  .pause-btn.state-paused:hover { background: #f85149; }
+  @keyframes pulse-border {
+    0%, 100% { border-color: #f85149; }
+    50% { border-color: #ffdd57; }
+  }
+  .queue-depth {
+    font-size: 0.95em; font-weight: 600; color: #f85149;
+    display: none;
+  }
+  .queue-depth.visible { display: inline; }
+  .pause-shortcut-hint {
+    font-size: 0.7em; color: #8b949e; margin-top: 2px; text-align: center;
+  }
   .refresh-indicator {
     position: fixed; top: 8px; right: 16px; font-size: 0.75em;
     color: #8b949e;
@@ -112,6 +172,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
 <h1>chat-to-cop Dashboard</h1>
 <p class="subtitle">AI staff officer &mdash; world-state extraction from military chat</p>
+
+<div class="pause-control">
+  <div>
+    <button id="pause-btn" class="pause-btn state-active" onclick="togglePause()">WRITES ACTIVE</button>
+    <div class="pause-shortcut-hint">F12 to toggle</div>
+  </div>
+  <span id="queue-depth" class="queue-depth"></span>
+</div>
 
 <div class="stats-bar">
   <div><span class="stat-label">Updates:</span><span class="stat-value" id="stat-updates">-</span></div>
@@ -368,6 +436,57 @@ function submitCorrection() {
   });
 }
 
+/* --- Pause/resume kill switch --- */
+
+var _isPaused = false;
+
+function updatePauseUI(paused, queueDepth) {
+  _isPaused = paused;
+  var btn = document.getElementById('pause-btn');
+  var qd = document.getElementById('queue-depth');
+  if (paused) {
+    btn.className = 'pause-btn state-paused';
+    btn.textContent = 'WRITES PAUSED';
+    qd.className = 'queue-depth visible';
+    qd.textContent = queueDepth + ' update' + (queueDepth === 1 ? '' : 's') + ' queued';
+  } else {
+    btn.className = 'pause-btn state-active';
+    btn.textContent = 'WRITES ACTIVE';
+    qd.className = 'queue-depth';
+    qd.textContent = '';
+  }
+}
+
+function togglePause() {
+  var endpoint = _isPaused ? '/admin/resume' : '/admin/pause';
+  fetch(endpoint, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      updatePauseUI(data.paused, data.queue_depth);
+    })
+    .catch(function(err) {
+      console.error('Pause toggle error:', err);
+    });
+}
+
+function pollPauseStatus() {
+  fetch('/admin/status')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      updatePauseUI(data.paused, data.queue_depth);
+    })
+    .catch(function() { /* silent -- will retry next cycle */ });
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'F12') {
+    e.preventDefault();
+    togglePause();
+  }
+});
+
+/* --- Data refresh --- */
+
 function refresh() {
   var ind = document.getElementById('refresh-ind');
   ind.className = 'refresh-indicator active';
@@ -390,6 +509,8 @@ function refresh() {
     document.getElementById('stat-status').textContent = 'error';
     ind.className = 'refresh-indicator';
   });
+
+  pollPauseStatus();
 }
 
 refresh();
