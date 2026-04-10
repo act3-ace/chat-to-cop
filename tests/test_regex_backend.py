@@ -469,3 +469,123 @@ class TestDASHRealMessages:
         )
         # Should pick up "destroyed" status at minimum
         assert result.extraction_method == "regex"
+
+
+# ---------------------------------------------------------------------------
+# DELTRON-sourced pattern tests (#63, from HLT meeting 2026-04-09, slide 10)
+# ---------------------------------------------------------------------------
+
+
+class TestDeltronCSARPatterns:
+    """Test CSAR / emergency patterns sourced from DELTRON."""
+
+    def test_boltout(self):
+        result = _extract_sync(RegexBackend(), "SHARK14 bolt out bolt out")
+        assert result.update_type == UpdateType.CSAR
+        assert any(e.operational_status == "EJECTED" for e in result.entities)
+
+    def test_bail_out(self):
+        result = _extract_sync(RegexBackend(), "pilot bailed out near bullseye 270/40")
+        assert any(e.operational_status == "EJECTED" for e in result.entities)
+
+    def test_csar_keyword(self):
+        result = _extract_sync(RegexBackend(), "initiating CSAR for downed pilot")
+        assert result.update_type == UpdateType.CSAR
+        assert any(e.metadata.get("event") == "CSAR" for e in result.entities)
+
+    def test_chopsard_stt_mishearing(self):
+        """STT commonly mishears 'CSAR' as 'chopsard'."""
+        result = _extract_sync(RegexBackend(), "chopsard in progress")
+        assert result.update_type == UpdateType.CSAR
+
+    def test_defending(self):
+        result = _extract_sync(RegexBackend(), "ORCA01 defending, defensive")
+        assert any(e.metadata.get("event") == "defending" for e in result.entities)
+
+    def test_boltout_negative(self):
+        """Normal 'bolt' usage should not trigger."""
+        result = _extract_sync(RegexBackend(), "lightning bolt near the field")
+        assert not any(e.operational_status == "EJECTED" for e in result.entities)
+
+
+class TestDeltronCrashPatterns:
+    """Test crash / emergency patterns sourced from DELTRON."""
+
+    def test_crash(self):
+        result = _extract_sync(RegexBackend(), "SHARK14 crashed near the runway")
+        assert any(e.operational_status == "DESTROYED" for e in result.entities)
+        assert any(e.metadata.get("event") == "crash" for e in result.entities)
+
+    def test_crash_event(self):
+        result = _extract_sync(RegexBackend(), "crash event reported at grid XK4423")
+        assert any(e.operational_status == "DESTROYED" for e in result.entities)
+
+    def test_smoke_in_cockpit(self):
+        result = _extract_sync(RegexBackend(), "smoke in cockpit, ORCA01 RTB")
+        assert any(e.operational_status == "DEGRADED" for e in result.entities)
+        assert any("smoke" in e.metadata.get("event", "") for e in result.entities)
+
+    def test_emergency_rtb(self):
+        result = _extract_sync(RegexBackend(), "TYPHOON11 emergency RTB")
+        assert any(e.operational_status == "RTB" for e in result.entities)
+        assert any(e.metadata.get("event") == "emergency RTB" for e in result.entities)
+
+
+class TestDeltronBrevityPatterns:
+    """Test catastrophic brevity code patterns sourced from DELTRON."""
+
+    def test_broken_arrow(self):
+        result = _extract_sync(RegexBackend(), "BROKEN ARROW BROKEN ARROW")
+        assert any(e.metadata.get("brevity_code") == "BROKEN ARROW" for e in result.entities)
+
+    def test_broken_arrow_case_insensitive(self):
+        result = _extract_sync(RegexBackend(), "broken arrow reported")
+        assert any(e.metadata.get("brevity_code") == "BROKEN ARROW" for e in result.entities)
+
+
+class TestDeltronEntityDownPatterns:
+    """Test entity-down patterns sourced from DELTRON."""
+
+    def test_callsign_is_down(self):
+        result = _extract_sync(RegexBackend(), "SHARK14 is down")
+        assert any(e.callsign == "SHARK14" and e.operational_status == "DESTROYED" for e in result.entities)
+
+    def test_count_down(self):
+        result = _extract_sync(RegexBackend(), "8 down west of the river")
+        assert any(e.operational_status == "DESTROYED" for e in result.entities)
+        assert any(e.metadata.get("count") == "8" for e in result.entities)
+
+    def test_shot_down(self):
+        result = _extract_sync(RegexBackend(), "ZEUS12 shot down by TTG")
+        assert any(e.operational_status == "DESTROYED" for e in result.entities)
+
+    def test_went_down(self):
+        result = _extract_sync(RegexBackend(), "YAMA11 went down near cigar 270/40")
+        assert any(e.callsign == "YAMA11" and e.operational_status == "DESTROYED" for e in result.entities)
+
+
+class TestDeltronThreatPatterns:
+    """Test threat patterns sourced from DELTRON."""
+
+    def test_sa21_active(self):
+        result = _extract_sync(RegexBackend(), "SA-21 active near cigar 316/398")
+        assert result.update_type == UpdateType.THREAT
+        assert any(e.platform_type == "SA-21" and e.affiliation == "HOSTILE" for e in result.entities)
+
+    def test_sam_active(self):
+        result = _extract_sync(RegexBackend(), "SAM active, bullseye 180/50")
+        assert any(e.affiliation == "HOSTILE" for e in result.entities)
+
+    def test_4th_gen_sam(self):
+        result = _extract_sync(RegexBackend(), "tacrep e10-4, 4th-gen sam active, cigar 316/398")
+        assert result.update_type == UpdateType.THREAT
+        assert any(e.affiliation == "HOSTILE" for e in result.entities)
+
+    def test_tacrep_sam_awake(self):
+        result = _extract_sync(RegexBackend(), "tacrep: SAM awake at bullseye 090/120")
+        assert any(e.affiliation == "HOSTILE" for e in result.entities)
+
+    def test_sa21_negative(self):
+        """Regular number shouldn't trigger SA-## pattern."""
+        result = _extract_sync(RegexBackend(), "we have 21 active sorties")
+        assert not any(e.affiliation == "HOSTILE" for e in result.entities)
