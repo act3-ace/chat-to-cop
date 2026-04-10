@@ -6,8 +6,8 @@ and SmartPack Manager REST APIs.
 Design:
 - Optimistic writes (push immediately, don't wait for validation)
 - Idempotent (handle duplicate messages from chat + STT gracefully)
-- Schema pending from contractor team -- current implementation writes
-  to local store only; CoP forwarding activated when API is available
+- Schema pending from Sarah Bowman (711 HPW) -- current implementation
+  writes to local store only; CoP forwarding activated when API is available
 - Tiered write authority (RAI requirement):
     AUTO:    confidence >= auto_threshold, low-risk type -> write immediately
     FLAGGED: confidence flag_threshold to auto_threshold -> write with review flag
@@ -60,8 +60,9 @@ class CoPWriter:
     - resume(): allows new writes; call flush_pause_queue() to drain backlog
 
     Configurable thresholds:
-    - auto_threshold: minimum confidence for AUTO tier (default 0.7)
-    - flag_threshold: minimum confidence for FLAGGED tier (default 0.4)
+    - auto_threshold: minimum confidence for AUTO tier (default 0.95, raised from
+      0.7 after ECE=0.67 calibration finding on Qwen2.5-7B — see #58)
+    - flag_threshold: minimum confidence for FLAGGED tier (default 0.5, raised from 0.4)
     - high_risk_types: update types that always require HUMAN review
     """
 
@@ -71,8 +72,8 @@ class CoPWriter:
         http_client=None,
         rest_client: CoPRESTClient | None = None,
         max_queue_size: int = 1000,
-        auto_threshold: float = 0.7,
-        flag_threshold: float = 0.4,
+        auto_threshold: float = 0.95,
+        flag_threshold: float = 0.5,
         high_risk_types: list[str] | None = None,
     ) -> None:
         self._base_url = cop_base_url
