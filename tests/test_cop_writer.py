@@ -31,7 +31,7 @@ _TS = datetime(2025, 9, 23, 14, 10, 15, tzinfo=timezone.utc)
 
 def _make_update(
     update_type: UpdateType = UpdateType.FUEL,
-    confidence: float = 0.85,
+    confidence: float = 0.96,
     channel: str = "#c2_coord",
     speaker: str = "Hydro_Tank",
     message: str = "RR15 F+40",
@@ -117,25 +117,42 @@ class TestWriteAuthorityClassification:
     """Test the tiered write authority rules."""
 
     def test_high_confidence_low_risk_is_auto(self):
-        assert classify_write_authority(0.85, "fuel") == WriteAuthority.AUTO
+        # With new default auto_threshold=0.95, need >= 0.95 for AUTO
+        assert classify_write_authority(0.96, "fuel") == WriteAuthority.AUTO
 
     def test_high_confidence_status_is_auto(self):
-        assert classify_write_authority(0.9, "status_change") == WriteAuthority.AUTO
+        assert classify_write_authority(0.95, "status_change") == WriteAuthority.AUTO
+
+    def test_085_is_now_flagged_not_auto(self):
+        # 0.85 used to be AUTO at the old 0.7 threshold; now it's FLAGGED
+        assert classify_write_authority(0.85, "fuel") == WriteAuthority.FLAGGED
 
     def test_medium_confidence_is_flagged(self):
+        # 0.55 is between flag_threshold (0.5) and auto_threshold (0.95)
         assert classify_write_authority(0.55, "fuel") == WriteAuthority.FLAGGED
 
-    def test_boundary_07_is_auto(self):
-        assert classify_write_authority(0.7, "entity_id") == WriteAuthority.AUTO
+    def test_boundary_095_is_auto(self):
+        # New default auto_threshold is 0.95 (raised from 0.7 after ECE=0.67)
+        assert classify_write_authority(0.95, "entity_id") == WriteAuthority.AUTO
 
-    def test_boundary_04_is_flagged(self):
-        assert classify_write_authority(0.4, "entity_id") == WriteAuthority.FLAGGED
+    def test_boundary_05_is_flagged(self):
+        # New default flag_threshold is 0.5 (raised from 0.4)
+        assert classify_write_authority(0.5, "entity_id") == WriteAuthority.FLAGGED
+
+    def test_old_auto_threshold_now_flagged(self):
+        # 0.7 used to be AUTO; with new threshold 0.95 it's FLAGGED
+        assert classify_write_authority(0.7, "entity_id") == WriteAuthority.FLAGGED
 
     def test_low_confidence_is_human(self):
         assert classify_write_authority(0.3, "fuel") == WriteAuthority.HUMAN
 
-    def test_below_04_is_always_human(self):
+    def test_below_05_is_always_human(self):
+        # Raised from 0.4 to 0.5
         assert classify_write_authority(0.1, "location") == WriteAuthority.HUMAN
+
+    def test_049_is_human(self):
+        # Just below the new flag_threshold of 0.5
+        assert classify_write_authority(0.49, "location") == WriteAuthority.HUMAN
 
     def test_weapons_is_always_human(self):
         assert classify_write_authority(0.95, "weapons") == WriteAuthority.HUMAN
@@ -319,7 +336,7 @@ class TestCoPWriterLocalMode:
     def test_auto_write_increments_stats(self):
         async def run():
             writer = CoPWriter()
-            await writer.push_update(_make_update(confidence=0.85))
+            await writer.push_update(_make_update(confidence=0.96))
             assert writer.stats["auto_writes"] == 1
 
         asyncio.run(run())
@@ -764,8 +781,8 @@ class TestCoPWriterConfig:
     def test_defaults(self):
         config = CoPWriterConfig()
         assert config.cop_api_url == ""
-        assert config.cop_auto_threshold == 0.7
-        assert config.cop_flag_threshold == 0.4
+        assert config.cop_auto_threshold == 0.95
+        assert config.cop_flag_threshold == 0.5
         assert "weapons" in config.cop_high_risk_types
         assert "csar" in config.cop_high_risk_types
         assert "fire_mission" in config.cop_high_risk_types
@@ -774,8 +791,8 @@ class TestCoPWriterConfig:
     def test_from_config_creates_writer(self):
         config = CoPWriterConfig()
         writer = CoPWriter.from_config(config)
-        assert writer._auto_threshold == 0.7
-        assert writer._flag_threshold == 0.4
+        assert writer._auto_threshold == 0.95
+        assert writer._flag_threshold == 0.5
         assert writer._rest_client is not None
 
     def test_from_config_custom_thresholds(self):
@@ -818,8 +835,8 @@ class TestCoPWriterConfigurableThresholds:
         async def run():
             # Remove weapons from high-risk -- should now follow confidence rules
             writer = CoPWriter(high_risk_types=["nuclear"])
-            await writer.push_update(_make_update(update_type=UpdateType.WEAPONS, confidence=0.9))
-            # With confidence 0.9 and weapons NOT in high-risk, should be AUTO
+            await writer.push_update(_make_update(update_type=UpdateType.WEAPONS, confidence=0.96))
+            # With confidence 0.96 and weapons NOT in high-risk, should be AUTO
             assert writer.stats["auto_writes"] == 2  # track + effect
             assert writer.stats["human_queued"] == 0
 
