@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -524,6 +525,24 @@ class TestSupervisorAgentConfigPlumbing:
     These tests assert that the env-var path actually flips behavior in the
     supervisor-spawned agent, not just in an isolated AgentConfig object.
     """
+
+    @pytest.fixture(autouse=True)
+    def _scrub_chat_to_cop_env(self, monkeypatch):
+        """Clear CHAT_TO_COP_* env vars before each test.
+
+        These tests assert behavior of the env-var plumbing path. If the
+        ambient shell already has e.g. CHAT_TO_COP_USE_SPEAKER_MODELS=false
+        set (as the Run B Narwhal script does), pydantic-settings reads it
+        eagerly and the "default" tests fail. Scrub the namespace so each
+        test starts from a clean slate and only sees env vars it explicitly
+        sets via monkeypatch.setenv.
+        """
+        for var in (
+            "CHAT_TO_COP_USE_SPEAKER_MODELS",
+            "CHAT_TO_COP_WINDOW_SIZE",
+            "CHAT_TO_COP_WINDOW_MINUTES",
+        ):
+            monkeypatch.delenv(var, raising=False)
 
     def test_default_config_enables_speaker_models(self):
         sup = Supervisor(backend_factory=FakeBackend)
