@@ -79,9 +79,14 @@ mkdir -p "$OUTPUT_DIR"
 mkdir -p "$ARCHIVE_DIR" 2>/dev/null || echo "WARNING: Cannot create archive dir $ARCHIVE_DIR — results will stay in $OUTPUT_DIR only"
 
 # Install latest source
-echo "Installing latest chat-to-cop source..."
+# NOTE: Do NOT `pip install -e .` here. The conda env is shared across
+# concurrent jobs, so simultaneous editable installs race and three-of-four
+# jobs die. Pre-install once before submitting (`cd $WORKDIR/chat-to-cop &&
+# git pull && pip install -e . -q`). Each job just imports from the env.
 cd "$WORK/chat-to-cop"
-pip install -e . -q 2>&1 | tail -3
+echo "Source state:"
+git log --oneline -1 2>/dev/null || echo "  (not a git checkout)"
+python -c "import chat_to_cop, inspect; print('  chat_to_cop OK at', chat_to_cop.__file__)"
 echo ""
 
 # Sanity check: post-!88 the supervisor must actually thread use_speaker_models
