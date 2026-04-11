@@ -509,3 +509,115 @@ class TestHealthEndpoints:
         data = resp.json()
         assert data["status"] == "degraded"
         assert "#vegas_internal" in data["shed_channels"]
+
+
+class TestSupervisorAgentConfigPlumbing:
+    """Regression tests for issue #52: AgentConfig fields must reach ChannelAgent.
+
+    Background: Before the fix, Supervisor.start_agent() constructed
+    ChannelAgent(channel=..., backend=...) with no other arguments, so
+    `use_speaker_models`, `window_size`, and `window_minutes` defaulted in
+    ChannelAgent regardless of the AgentConfig (which reads CHAT_TO_COP_*
+    env vars). The 7B (April 6) and 14B (April 10) "A/B" experiments were
+    invalid because both arms ran with speakers ON.
+
+    These tests assert that the env-var path actually flips behavior in the
+    supervisor-spawned agent, not just in an isolated AgentConfig object.
+    """
+
+    def test_default_config_enables_speaker_models(self):
+        sup = Supervisor(backend_factory=FakeBackend)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.use_speaker_models is True
+
+    def test_explicit_agent_config_disables_speaker_models(self):
+        from chat_to_cop.config import AgentConfig
+
+        cfg = AgentConfig(use_speaker_models=False)
+        sup = Supervisor(backend_factory=FakeBackend, agent_config=cfg)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.use_speaker_models is False
+
+    def test_env_var_disables_speaker_models_in_production_path(self, monkeypatch):
+        """The CHAT_TO_COP_USE_SPEAKER_MODELS env var must reach ChannelAgent
+        when Supervisor is constructed without an explicit AgentConfig."""
+        monkeypatch.setenv("CHAT_TO_COP_USE_SPEAKER_MODELS", "false")
+        sup = Supervisor(backend_factory=FakeBackend)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.use_speaker_models is False
+
+    def test_env_var_enables_speaker_models_in_production_path(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_USE_SPEAKER_MODELS", "true")
+        sup = Supervisor(backend_factory=FakeBackend)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.use_speaker_models is True
+
+    def test_window_size_plumbed_through(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_WINDOW_SIZE", "17")
+        sup = Supervisor(backend_factory=FakeBackend)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.window_size == 17
+
+    def test_window_minutes_plumbed_through(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_WINDOW_MINUTES", "7.5")
+        sup = Supervisor(backend_factory=FakeBackend)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.window_minutes == 7.5
+
+    def test_replay_threads_agent_config_into_supervisor(self, monkeypatch):
+        """Trace the production path: PipelineConfig -> Supervisor -> ChannelAgent.
+
+        This is the test that would have caught the original bug. Before the
+        fix, this assertion failed because replay.py constructed Supervisor
+        without passing config.agent.
+        """
+        from chat_to_cop.config import PipelineConfig
+
+        monkeypatch.setenv("CHAT_TO_COP_USE_SPEAKER_MODELS", "false")
+        config = PipelineConfig()
+        assert config.agent.use_speaker_models is False  # config object reads env
+
+        sup = Supervisor(backend_factory=FakeBackend, agent_config=config.agent)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.use_speaker_models is False  # and so does the spawned agent
+
+    def test_calibration_model_plumbed_to_channel_agent(self):
+        """The calibration model passed to Supervisor must reach ChannelAgent.
+
+        Regression for the second invalidating bug found in the audit:
+        replay.py never loaded config.calibration_model, so all production
+        runs used raw uncalibrated confidence even when a calibration JSON
+        was configured.
+        """
+        from chat_to_cop.calibration import CalibrationModel
+
+        cal = CalibrationModel()
+        cal.fit(confidences=[0.9, 0.9, 0.8], correct=[True, False, True])
+
+        sup = Supervisor(backend_factory=FakeBackend, calibration_model=cal)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.calibration_model is cal
+
+    def test_calibration_model_default_is_none(self):
+        sup = Supervisor(backend_factory=FakeBackend)
+        agent = sup.start_agent("#c2_coord")
+        assert agent.calibration_model is None
+
+    def test_supervisor_thresholds_honor_constructor_args(self):
+        """SupervisorConfig fields must reach Supervisor when threaded by replay.py.
+
+        Regression for the third audit finding: replay.py constructed Supervisor
+        without passing latency_threshold, error_rate_threshold,
+        health_check_interval, or max_restart_attempts.
+        """
+        sup = Supervisor(
+            backend_factory=FakeBackend,
+            latency_threshold=12.5,
+            error_rate_threshold=0.42,
+            health_check_interval=99.0,
+            max_restart_attempts=7,
+        )
+        assert sup._latency_threshold == 12.5
+        assert sup._error_rate_threshold == 0.42
+        assert sup._health_check_interval == 99.0
+        assert sup._max_restart_attempts == 7

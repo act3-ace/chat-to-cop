@@ -22,6 +22,8 @@ from loguru import logger
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
 from chat_to_cop.backend.base import LLMBackend
+from chat_to_cop.calibration import CalibrationModel
+from chat_to_cop.config import AgentConfig
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
 from chat_to_cop.models.feedback import FusionFeedback
@@ -53,12 +55,20 @@ class Supervisor:
         self,
         backend_factory: Callable[[], LLMBackend],
         *,
+        agent_config: AgentConfig | None = None,
+        calibration_model: CalibrationModel | None = None,
         latency_threshold: float = 5.0,
         error_rate_threshold: float = 0.1,
         health_check_interval: float = 5.0,
         max_restart_attempts: int = 3,
     ) -> None:
         self._backend_factory = backend_factory
+        # AgentConfig() reads CHAT_TO_COP_* env vars on instantiation, so the
+        # default here picks up env-var overrides (use_speaker_models, window_size,
+        # window_minutes) for the production replay path. Without this, the env
+        # vars were silently ignored — see issue #52 / RQ1 invalidation.
+        self._agent_config = agent_config if agent_config is not None else AgentConfig()
+        self._calibration_model = calibration_model
         self._agents: dict[str, ChannelAgent] = {}
         self._health: dict[str, AgentHealth] = {}
         self._shed_channels: set[str] = set()
@@ -92,7 +102,14 @@ class Supervisor:
             self.stop_agent(channel)
 
         backend = self._backend_factory()
-        agent = ChannelAgent(channel=channel, backend=backend)
+        agent = ChannelAgent(
+            channel=channel,
+            backend=backend,
+            window_size=self._agent_config.window_size,
+            window_minutes=self._agent_config.window_minutes,
+            use_speaker_models=self._agent_config.use_speaker_models,
+            calibration_model=self._calibration_model,
+        )
         self._agents[channel] = agent
 
         if priority is None:

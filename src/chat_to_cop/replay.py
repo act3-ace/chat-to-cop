@@ -24,6 +24,7 @@ from chat_to_cop.agent.supervisor import Supervisor
 from chat_to_cop.backend.degrading import DegradingBackend
 from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
 from chat_to_cop.backend.regex_fallback import RegexBackend
+from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.config import PipelineConfig
 from chat_to_cop.equifinality import PathEntropyTracker
 from chat_to_cop.ingestion.replay import replay_messages
@@ -117,7 +118,23 @@ async def run_replay(
             asksage_config=asksage_config,
         )
 
-    supervisor = Supervisor(backend_factory=backend_factory)
+    # Load calibration model if configured. Without this, ChannelAgent reports
+    # raw (uncalibrated) confidence and the AUTO/FLAGGED tier thresholds gate on
+    # noise. Was previously dead config — see issue #52 audit.
+    calibration_model: CalibrationModel | None = None
+    if config.calibration_model:
+        calibration_model = CalibrationModel.from_file(config.calibration_model)
+        logger.info(f"Loaded calibration model from {config.calibration_model}")
+
+    supervisor = Supervisor(
+        backend_factory=backend_factory,
+        agent_config=config.agent,
+        calibration_model=calibration_model,
+        latency_threshold=config.supervisor.latency_threshold,
+        error_rate_threshold=config.supervisor.error_rate_threshold,
+        health_check_interval=config.supervisor.health_check_interval,
+        max_restart_attempts=config.supervisor.max_restart_attempts,
+    )
     fusion = FusionAgent()
     cop_writer = CoPWriter.from_config(config.cop_writer)
     tracker = PipelineTracker()
