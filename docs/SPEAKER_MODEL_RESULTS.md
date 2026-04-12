@@ -6,9 +6,16 @@
 
 ## TL;DR
 
-Online speaker model learning produces **no significant aggregate benefit** on Qwen2.5-7B when measured against silver labels on DASH-3 chat. The headline metric (type exact match) moves by less than 1 percentage point. Per-type effects are mixed: speakers help on identification-heavy types (entity_id, sitrep, location) and hurt on tasking. Learning curves on the dominant speaker show no improvement over time.
+The current speaker model design (online prompt-injection of speaker role/area/jargon into the system prompt) **does not improve extraction quality** on either Qwen2.5-7B or Qwen2.5-14B against the Opus silver labels.
 
-The 14B re-run is in flight (job 5973723) and will be added below when complete. Until that lands, the capacity-bottleneck hypothesis from #35 (*"7B may lack the ability to leverage speaker context; larger models would benefit"*) remains unconfirmed.
+| Model | Type exact match delta (with − without speakers) | Entity overlap delta |
+| --- | --- | --- |
+| 7B | +0.2% | -3.9% |
+| 14B | -1.2% | -2.2% |
+
+Going from 7B to 14B, speakers go from "essentially neutral" to "actively harmful" on the headline metric — the **opposite** of what the capacity-bottleneck hypothesis from #35 predicted. Larger capacity isn't the bottleneck; the prompt-injection design is. The 14B run also paid a ~70% wall-clock penalty (2h28m with speakers vs 1h26m without) for those negative results.
+
+**Recommendation: default speaker models OFF for MASH.** Preserve the code for research follow-up, but ship without the feature. RQ1 needs a different architectural approach — retrieval-augmented profiles, fine-tuned speaker classifiers as routing signals, or behavioral routing via reliability scores (#46) — not bigger models with the same prompt-injection design.
 
 ## A note on prior results
 
@@ -49,7 +56,7 @@ The eval matches extractions to labels by `(timestamp, channel, sender)` composi
 | Noise detection accuracy | 100.0% | 100.0% | 0 |
 | Confidence correlation | 0.023 | 0.042 | -0.019 |
 
-### Per-type breakdown
+### Per-type breakdown (7B)
 
 | Type | Without Speakers | With Speakers | Delta |
 | --- | --- | --- | --- |
@@ -89,22 +96,76 @@ The headline finding from the original April 6 run ("no significant benefit on 7
 
 ## 14B results (post-!88, 2026-04-12)
 
-**TBD** — Run B (5973223) completed at 00:51 (1h26m, 844 LLM calls, 6.05s/msg mean). Run A (5973723) is in flight as of 02:00 with ~5 hours of walltime remaining.
+**Runs:** 5973723 (Run A, with speakers, 2h28m), 5973223 (Run B, without speakers, 1h26m)
 
-This section will be updated when both halves are evaluated.
+| Metric | With Speakers | Without Speakers | Delta |
+| --- | --- | --- | --- |
+| Matched extractions | 305 | 310 | -5 |
+| Match rate | 32.6% | 33.2% | -0.6% |
+| **Type exact match** | **21.3%** | **22.5%** | **-1.2%** |
+| Type relaxed match | 21.5% | 22.7% | -1.2% |
+| Entity overlap (avg Jaccard) | 34.0% | 36.2% | -2.2% |
+| Noise detection accuracy | 100.0% | 100.0% | 0 |
+| Confidence correlation | 0.120 | 0.118 | +0.002 |
 
-## Capacity bottleneck hypothesis
+### Per-type breakdown (14B)
 
-The original hypothesis from #35 was *"7B may lack the ability to leverage speaker context effectively; larger models would benefit"*. The 14B comparison will determine which of two outcomes obtains:
+| Type | Without Speakers | With Speakers | Delta |
+| --- | --- | --- | --- |
+| sitrep | 44% | 56% | **+12pp** |
+| status_change | 44% | 53% | **+9pp** |
+| weapons | 33% | 33% | 0 |
+| fire_mission | 100% | 100% | 0 |
+| csar | 100% | 100% | 0 |
+| handover | 0% | 0% | 0 |
+| tasking | 47% | 43% | -4pp |
+| threat | 62% | 57% | -5pp |
+| entity_id | 42% | 33% | -9pp |
+| location | 88% | 75% | -13pp |
+| fuel | 69% | 54% | -15pp |
+| cyber_ew | 53% | 35% | **-18pp** |
 
-1. **14B per-type deltas look like 7B's** (small mixed-direction): speaker model *design* is the bottleneck, not capacity. RQ1 conclusion: prompt-injection of speaker context is insufficient; need architectural changes (fine-tuning, retrieval-augmented profiles, etc.).
-2. **14B shows clear improvements with speakers**: capacity bottleneck confirmed. RQ1 conclusion: speakers personalization works but requires sufficient model capacity (≥14B).
+### Wall-clock cost
+
+- Run A (with speakers): **2h28m** (148 minutes)
+- Run B (without speakers): **1h26m** (86 minutes)
+
+Speakers added ~62 minutes (~70% overhead) on the same V100 hardware. The speaker context expands the system prompt, which slows every LLM call. In return for that overhead we got *worse* extraction quality on most types.
+
+### 14B interpretation
+
+Speakers actively hurt 14B. The aggregate type-classification delta is -1.2%, entity overlap -2.2%, and per-type effects are negative on 6 of 12 types (entity_id, location, fuel, cyber_ew, threat, tasking) — including a striking -18 pp on cyber_ew and -15 pp on fuel. They help on only 2 types (sitrep +12, status_change +9). The patterns aren't even consistent with the 7B per-type signals: 14B reverses the 7B helpful effects on entity_id, location, and cyber_ew.
+
+This rules out the "small models can't leverage speaker context" hypothesis. The signal is "the prompt-injection design isn't producing consistent benefit at any size we've tested."
+
+## Capacity bottleneck hypothesis: REJECTED
+
+The original hypothesis from #35 was *"7B may lack the ability to leverage speaker context effectively; larger models would benefit"*. The 14B comparison shows the opposite:
+
+| Model | Type exact match delta | Entity overlap delta | Compute overhead |
+| --- | --- | --- | --- |
+| 7B | +0.2% | -3.9% | (not measured separately) |
+| 14B | -1.2% | -2.2% | +72% wall clock |
+
+If the hypothesis were correct, 14B should have shown a positive delta on at least the headline metric. Instead it's negative, the per-type pattern is inconsistent across model sizes, and the compute overhead is substantial. The hypothesis is rejected.
+
+The signal is that the **speaker model design** — not capacity — is the bottleneck. The current implementation injects speaker profile text into the system prompt for every LLM call. Larger models seem to be more, not less, distracted by that context.
+
+## Implications and next steps
+
+1. **Default speaker models OFF for MASH.** Preserve the code for research follow-up. The compute budget at MASH is finite and this feature spends it for negative ROI.
+2. **RQ1 needs a redesign**, not a bigger model. Candidate alternatives:
+   - **Retrieval-augmented speaker profiles**: only inject the most relevant prior messages from the same speaker, not the full profile
+   - **Fine-tuned speaker classifiers**: a small per-speaker classifier as a routing signal, not as prompt context
+   - **Behavioral routing**: use speaker reliability scores to adjust confidence thresholds (#46) instead of changing extraction itself
+3. **Per-type effects on `sitrep` and `status_change`** are interesting and worth exploring — they're consistently positive across both 7B and 14B. If we redesign the speaker model, these are the types most likely to benefit.
+4. **#46 (speaker model as routing signal)** is now the most interesting follow-up direction. Pursue that instead of "speaker model as prompt context".
 
 ## Files
 
 - 7B Run A DB: `data/narwhal_results_post_88/replay_7b_with_speakers_5973724.db`
 - 7B Run B DB: `data/narwhal_results_post_88/replay_7b_without_speakers_5973808.db`
 - 7B eval report: `data/narwhal_results_post_88/eval_7b_post_88.md`
+- 14B Run A DB: `data/narwhal_results_post_88/replay_14b_with_speakers_5973723.db`
 - 14B Run B DB: `data/narwhal_results_post_88/replay_14b_without_speakers_5973223.db`
-- 14B Run A DB: pending (job 5973723)
-- 14B eval report: pending
+- 14B eval report: `data/narwhal_results_post_88/eval_14b_post_88.md`
