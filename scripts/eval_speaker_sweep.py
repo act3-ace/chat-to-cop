@@ -86,22 +86,35 @@ def eval_db(db_path: Path, labels: dict) -> dict:
     try:
         rows = conn.execute(
             "SELECT timestamp, source_channel, source_speaker, update_type, "
-            "confidence, extraction_method, entities FROM cop_updates"
+            "confidence, extraction_method, data_json FROM updates"
         ).fetchall()
     except sqlite3.OperationalError:
-        # Try the audit table if cop_updates doesn't exist
-        rows = conn.execute(
-            "SELECT timestamp, source_channel, source_speaker, update_type, "
-            "confidence, extraction_method, entities FROM updates"
-        ).fetchall()
+        conn.close()
+        return {
+            "n_labels": len(labels),
+            "n_matched": 0,
+            "match_rate": 0.0,
+            "type_exact": 0.0,
+            "type_relaxed": 0.0,
+            "entity_overlap": 0.0,
+            "noise_accuracy": 0.0,
+            "per_type": {},
+        }
     finally:
         conn.close()
 
-    # Build extraction lookup
+    # Build extraction lookup; parse entities from data_json
     extractions = {}
     for row in rows:
         key = (row["timestamp"], row["source_channel"], row["source_speaker"])
-        extractions[key] = dict(row)
+        rec = dict(row)
+        # Extract entities from data_json if present
+        try:
+            data = json.loads(rec.get("data_json", "{}") or "{}")
+            rec["entities"] = data.get("entities", [])
+        except (json.JSONDecodeError, TypeError):
+            rec["entities"] = []
+        extractions[key] = rec
 
     # Match against labels
     matched = 0
