@@ -90,33 +90,38 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 All work is tracked in GitLab issues on DLE: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues
 - Sprint 1 (Vertical Slice): #1-#7 — ALL COMPLETE
 - Sprint 2 (Multi-Channel + Resilience): #8-#13 — ALL COMPLETE
-- Sprint 3 (Deploy + Harden): #14-#24, #27-#29, #31-#34, #36, #38-#40 DONE. #16 COMPLETE (clean T4 run: 7.7s mean, 99.9% success). #25, #26, #30, #35, #37 OPEN.
-- Total: 832+ tests passing, 7 validated backends, 34+ MRs merged. Opus silver labels (935 msgs). Confidence calibration done (7B: 79.7% acc, ECE=0.67). RQ1 speaker eval done on 7B (no benefit, capacity hypothesis). Narwhal V100: 5 models tested, 14B best type match (49%). IL2 throughout -- experiment freely.
+- Sprint 3 (Deploy + Harden): #14-#24, #27-#29, #31-#34, #36, #38-#40, #50, #54-#63 DONE.
+- 967+ tests passing, 7 validated backends, 41+ MRs merged. Opus silver labels (935 msgs). Calibration model exists for 7B (ECE=0.67) but RQ1 speaker model A/B is being **re-run** after !88 fixed a config-bypass bug that invalidated the April 6 7B and April 10 14B results. Narwhal V100 14B characterization: 9.0s/msg mean, 7.4s p50. IL2 throughout — experiment freely.
 Read the issue description before starting work — it has acceptance criteria, dependencies, and design context.
 
-### Remaining open issues (14 total, as of 2026-04-06)
+### Remaining open issues (12 total, as of 2026-04-12)
 
 **Blocked (external):**
-- `#17` CoP writer — blocked on contractor schema
+
+- `#17` CoP writer — blocked on contractor schema (Sarah Bowman)
 - `#37` Equifinality Phase 1 — blocked on Colin provenance check
 - `#48` MACE catalog Part C — blocked on Colin
 
-**Active / ready:**
+**Active / running:**
+
 - `#26` 30B on 24GB GPU — Qwen3-32B validated on V100 32GB, true 24GB still needed
-- `#30` Calibrate confidence — DONE for 7B (79.7% acc, ECE=0.67), needs other models
-- `#50` Metadata dict validation — quick fix (BeforeValidator for int/None in metadata)
-- `#51` vLLM on AG — Ollama alternative (NEW 2026-04-06)
-- `#52` Multi-backend speaker A/B — RQ1 extension (NEW 2026-04-06)
+- `#30` Calibrate confidence — done for 7B, needs other models
+- `#35` RQ1 speaker model eval — **re-run in progress** post-!88 (jobs 5973723 / 5973808)
+- `#51` vLLM on AG — Ollama alternative (Jennifer Carlet's vLLM expertise)
+- `#52` Multi-backend speaker A/B — **re-run in progress** post-!88 (jobs 5973723 / 5973223)
 
 **Research (deferred):**
-- `#43` Confidence-aware cascading — code on branch, needs testing
+
 - `#44` Self-MoA for high-stakes types
-- `#45` Triage classifier
-- `#46` Speaker model routing (depends on #43)
+- `#45` DELTRON tier consumer (rewritten 2026-04-09, was "Triage classifier")
+- `#46` Speaker model routing (depends on #43, which is closed)
 - `#47` Temporal decay + path entropy
 
-**Recently completed:**
-- `#35` Speaker model eval (RQ1) — DONE for 7B: no significant benefit, capacity bottleneck hypothesis. Extension = #52.
+### Critical lesson: config-bypass bug (2026-04-11)
+
+Three pydantic-settings fields (`AgentConfig.use_speaker_models`, `PipelineConfig.calibration_model`, `SupervisorConfig.*` thresholds) were silently dead in the production replay path because nothing read them between `PipelineConfig()` and the consumer. The April 6 7B and April 10 14B "A/B" experiments both ran with speakers ON in both arms — the deltas were noise, not signal. Fixed in !88, with regression tests in `TestSupervisorAgentConfigPlumbing` that verify env vars actually flip behavior in the production path (not just on the config object in isolation).
+
+**When adding any config Field, also add its consumer in the same MR.** Don't merge a `Field(...)` with no `config.x.y` reader. When testing config, monkeypatch the env var and assert the resulting object's behavior — testing the config object alone only tests pydantic. See `feedback_config_plumbing_audit.md` in memory for the audit pattern.
 
 ### Tests
 - Unit tests: `tests/test_*.py`, run with `pytest tests/ -k "not integration"`
@@ -145,6 +150,54 @@ ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "n
 # Docker deployment
 docker compose up
 ```
+
+## Narwhal HPC Workflow
+
+Narwhal is the AFSNW27526RYZ DSRC V100 cluster. We run A/B experiments and long-running model evaluations there. As of 2026-04-11 the workflow is git-based — no more rsync/SFTP for source updates.
+
+### One-time setup (already done)
+
+- `$WORKDIR/chat-to-cop` is a real git checkout with `origin = git@gitlab.dle.afrl.af.mil:c2es1/mash/chat-to-cop.git`
+- Auth: `~/.ssh/id_rsa` (the 2022 RSA key — DLE GitLab does NOT accept ed25519). Public key is registered on the user's DLE GitLab account.
+- Conda env at `$WORKDIR/envs/chat-to-cop` is editable-installed against the source dir. The package import path is `/p/work1/hsclouse/chat-to-cop/src/chat_to_cop/`.
+- Ollama 0.20.2 at `$WORKDIR/bin/ollama` with models in `$WORKDIR/ollama-models/` (qwen2.5 7b/14b/32b + qwen3 cached)
+
+### Update + submit pattern (canonical)
+
+```bash
+# From local Windows shell, via Kerberos GSSAPI SSH wrapper
+python ~/bin/narwhal-ssh.py "cd \$WORKDIR/chat-to-cop && git pull && pip install -e . -q"
+python ~/bin/narwhal-ssh.py "cd \$WORKDIR/chat-to-cop && sbatch scripts/narwhal_14b_run_a.sh"
+python ~/bin/narwhal-ssh.py "cd \$WORKDIR/chat-to-cop && sbatch scripts/narwhal_14b_run_b.sh"
+python ~/bin/narwhal-ssh.py "squeue -u hsclouse"
+```
+
+**`~/bin/narwhal-ssh.py`** is a paramiko/GSSAPI wrapper around the SSH command. Native OpenSSH on Windows can't read MIT Kerberos for Windows credential caches; the wrapper bridges that gap. Works after a fresh `kinit hsclouse@HPCMP.HPC.MIL` (via iLauncher).
+
+**`~/bin/narwhal-put.py`** is the SFTP companion. Only useful for one-off pre-merge file pushes; prefer `git pull` for normal updates.
+
+### Job scripts
+
+`scripts/narwhal_{7b,14b}_run_{a,b}.sh` — paired A/B job scripts for the speaker-model RQ1 experiment. Each:
+
+- 1 V100, 32 GB RAM, 8 CPUs, 4-8h walltime depending on model size
+- Builds an `8k` Modelfile variant of the base model (Ollama needs num_ctx baked in)
+- Runs `python -m chat_to_cop.replay` against the DASH-3 chat zip
+- Auto-archives the SQLite DB and log to `$ARCHIVE_HOME/chat-to-cop/` on exit (survives the 30-day `$WORKDIR` purge)
+- Run B exports `CHAT_TO_COP_USE_SPEAKER_MODELS=false`
+
+**Do NOT add `pip install -e .` to a job script.** All four jobs share the same conda env. Concurrent editable installs race and three-of-four will die at startup. The single pre-install command above handles it for the whole batch.
+
+### Sanity check before long runs
+
+Each `_run_b.sh` script invokes `pytest tests/test_supervisor.py::TestSupervisorAgentConfigPlumbing` before starting the replay. This verifies that the env-var plumbing fix from !88 is still in place; if it's not, the job fails fast instead of wasting GPU hours producing invalid A/B data. The test class uses `monkeypatch.delenv` for env isolation so it passes both with and without `CHAT_TO_COP_USE_SPEAKER_MODELS=false` set in the parent shell.
+
+### After a run
+
+- DBs land at `/p/work1/hsclouse/output/replay_{model}_{with,without}_speakers_<jobid>.db`
+- Logs at `/p/work1/hsclouse/output/replay_{model}_{runA,runB}_<jobid>.log`
+- Both also copied to `$ARCHIVE_HOME/chat-to-cop/` on exit
+- Pull DBs locally (SFTP via `narwhal-put.py` reverse) and run `scripts/eval_speaker_models.py --labels data/labels/dash3_silver_labels_opus.jsonl --with-speakers <runA.db> --without-speakers <runB.db>`
 
 ## Code Style
 
