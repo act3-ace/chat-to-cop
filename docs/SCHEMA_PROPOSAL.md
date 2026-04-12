@@ -1,11 +1,11 @@
-# Schema Contract: What chat-to-cop Writes to the CoP
+# Schema Proposal: What chat-to-cop Writes to the CoP
 
 **For: Sarah Bowman (711 HPW/RHWTE), Elizabeth Frost, Jeremy Gwinnup**
 **From: Scott Clouse (ACT3), Mia Kollia (ACT3)**
 **Date: 2026-04-10**
 **Classification: UNCLASSIFIED / IL2**
 
-This document describes exactly what the chat-to-cop system produces so that the CoP database schema can accommodate it. This is our half of the integration contract. We can adapt field names and formats to match your schema — the Pydantic model is the source of truth on our side, and changing it is a one-line edit per field.
+This document describes exactly what the chat-to-cop system produces so that the CoP database schema can accommodate it. This is our half of the integration proposal. We can adapt field names and formats to match your schema — the Pydantic model is the source of truth on our side, and changing it is a one-line edit per field.
 
 ---
 
