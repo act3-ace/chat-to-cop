@@ -57,7 +57,7 @@ def submit_cell(
     walltime = WALLTIMES.get(model, "08:00:00")
     timeout = TIMEOUTS.get(model, 180)
 
-    env_vars = " ".join(
+    env_vars = ",".join(
         [
             f"SWEEP_MODEL_BASE=qwen2.5:{model}",
             f"SWEEP_SPEAKERS={'true' if speakers else 'false'}",
