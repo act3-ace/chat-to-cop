@@ -76,7 +76,15 @@ for f in "$OLLAMA_BIN" "$CHAT_DATA" "$CONDA_ENV/bin/python"; do
 done
 
 mkdir -p "$OUTPUT_DIR"
-mkdir -p "$ARCHIVE_DIR" 2>/dev/null || echo "WARNING: Cannot create archive dir $ARCHIVE_DIR — results will stay in $OUTPUT_DIR only"
+# $ARCHIVE_HOME is set system-wide on Narwhal but its symlink target
+# (/archive/g/hsclouse) was never provisioned, so the default
+# /archive/home/hsclouse/chat-to-cop isn't writable. Detect and fall back
+# to $HOME/chat-to-cop so the cleanup cp at exit actually works.
+if ! mkdir -p "$ARCHIVE_DIR" 2>/dev/null; then
+    echo "WARNING: Cannot create $ARCHIVE_DIR — falling back to \$HOME/chat-to-cop"
+    ARCHIVE_DIR="$HOME/chat-to-cop"
+    mkdir -p "$ARCHIVE_DIR"
+fi
 
 # Install latest source
 # NOTE: Do NOT `pip install -e .` here. The conda env is shared across
