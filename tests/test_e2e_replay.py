@@ -84,11 +84,13 @@ class TestE2EReplayWithMockBackend:
 
             async with WorldStateStore(db_path) as store:
                 update_count = await store.count_updates()
-                assert update_count > 0, "Should have extracted some updates"
+                # 10 messages: 4 noise (STARTEX, dot, 2x NSTR) + 6 non-none.
+                # Fusion drops entities-less STATUS_CHANGE; only FUEL (with callsign) survives.
+                assert update_count == 1, f"Expected 1 update (fuel), got {update_count}"
 
                 updates = await store.get_recent_updates(limit=100)
                 fuel_updates = [u for u in updates if u.update_type == UpdateType.FUEL]
-                assert len(fuel_updates) > 0, "Should have found fuel updates in sample"
+                assert len(fuel_updates) == 1, f"Expected 1 fuel update, got {len(fuel_updates)}"
 
         asyncio.run(run())
 
@@ -109,7 +111,9 @@ class TestE2EReplayWithMockBackend:
 
             async with WorldStateStore(db_path) as store:
                 update_count = await store.count_updates()
-                assert update_count > 0
+                # 8 messages across 2 channels; FakeBackend produces fuel + status_change.
+                # Fusion keeps updates with real entities.
+                assert update_count == 4, f"Expected 4 updates from combined fixture, got {update_count}"
 
         asyncio.run(run())
 

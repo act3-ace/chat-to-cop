@@ -99,7 +99,7 @@ class TestWriteCorrection:
             async with WorldStateStore(":memory:") as store:
                 update_id = await store.write_update(_make_update())
                 cid = await store.write_correction(update_id, {"notes": "just a note"})
-                assert cid is not None
+                assert cid == 1, f"First correction should get ID 1, got {cid}"
                 corrections = await store.get_corrections()
                 assert len(corrections) == 1
                 assert corrections[0]["corrected_type"] is None
