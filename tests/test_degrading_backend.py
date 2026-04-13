@@ -285,13 +285,13 @@ class TestMetrics:
     def test_records_degrading_calls(self):
         db = DegradingBackend(backends=[FakeBackend()], timeouts=[5.0])
         asyncio.run(db.extract(SAMPLE_MESSAGES, SimpleResult))
-        assert metrics.get_counter("degrading_calls_total") >= 1
+        assert metrics.get_counter("degrading_calls_total") == 1
 
     def test_records_backend_selection(self):
         primary = FakeBackend("primary")
         db = DegradingBackend(backends=[primary], timeouts=[5.0])
         asyncio.run(db.extract(SAMPLE_MESSAGES, SimpleResult))
-        assert metrics.get_counter("backend_selected_total", labels={"backend": "FakeBackend(primary)"}) >= 1
+        assert metrics.get_counter("backend_selected_total", labels={"backend": "FakeBackend(primary)"}) == 1
 
     def test_records_failure_counts(self):
         failing = FailingBackend("llm")
@@ -299,12 +299,12 @@ class TestMetrics:
         db = DegradingBackend(backends=[failing, fallback], timeouts=[5.0, 5.0])
         asyncio.run(db.extract(SAMPLE_MESSAGES, SimpleResult))
         labels = {"backend": "FailingBackend(llm)", "reason": "RuntimeError"}
-        assert metrics.get_counter("backend_failures_total", labels=labels) >= 1
+        assert metrics.get_counter("backend_failures_total", labels=labels) == 1
 
     def test_records_passthrough(self):
         db = DegradingBackend(backends=[FailingBackend()], timeouts=[5.0])
         asyncio.run(db.extract(SAMPLE_MESSAGES, SimpleResult))
-        assert metrics.get_counter("passthrough_total") >= 1
+        assert metrics.get_counter("passthrough_total") == 1
 
     def test_records_circuit_breaker_skips(self):
         failing = FailingBackend("llm")
@@ -323,7 +323,7 @@ class TestMetrics:
         # Next call should record a skip
         metrics.reset()
         asyncio.run(db.extract(SAMPLE_MESSAGES, SimpleResult))
-        assert metrics.get_counter("backend_circuit_open_skips", labels={"backend": "FailingBackend(llm)"}) >= 1
+        assert metrics.get_counter("backend_circuit_open_skips", labels={"backend": "FailingBackend(llm)"}) == 1
 
     def test_records_degradation_event(self):
         failing = FailingBackend("llm")
