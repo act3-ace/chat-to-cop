@@ -77,7 +77,7 @@ class TestHealthEndpoint:
         data = r.json()
         assert data["status"] == "ok"
         assert data["updates_count"] == 2
-        assert data["entities_count"] >= 1
+        assert data["entities_count"] == 2  # fixture seeds RR15 + TM677
 
 
 class TestUpdatesEndpoint:
@@ -105,7 +105,7 @@ class TestEntitiesEndpoint:
         r = client.get("/entities")
         assert r.status_code == 200
         entities = r.json()
-        assert len(entities) >= 1
+        assert len(entities) == 2  # fixture seeds RR15 + TM677
 
     def test_get_entity_by_callsign(self, client):
         r = client.get("/entities/RR15")

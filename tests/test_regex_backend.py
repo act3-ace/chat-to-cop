@@ -419,14 +419,16 @@ class TestDASHRealMessages:
         assert result.update_type == UpdateType.NONE
 
     def test_sitrep_with_tracks(self):
-        """SITREP with shot-down aircraft."""
+        """SITREP with shot-down aircraft should detect status_change and entities."""
         result = _extract_sync(
             RegexBackend(),
             "SITREP / AIR: ZEUS 12,13,14 shot down by TTG; YAMA11 flight shot down by TTG",
         )
-        # Should at least detect "destroyed" or "shot down" isn't a direct regex match
-        # but the overall message is not noise
         assert result.extraction_method == "regex"
+        assert result.update_type == UpdateType.STATUS_CHANGE
+        # Should have detected "shot down" → DESTROYED status
+        destroyed = [e for e in result.entities if e.operational_status == "DESTROYED"]
+        assert len(destroyed) >= 1, "Should detect at least one DESTROYED entity from 'shot down'"
 
     def test_nstr(self):
         """NSTR = nothing significant to report."""
@@ -462,13 +464,15 @@ class TestDASHRealMessages:
         assert any(e.metadata.get("activity") == "aerial refueling" for e in result.entities)
 
     def test_copy_shot_down(self):
-        """VEGAS_SL reporting shot-down aircraft."""
+        """VEGAS_SL reporting shot-down aircraft should extract DESTROYED status."""
         result = _extract_sync(
             RegexBackend(),
             "copy harpy12 harpy14 thor13 shark14 all shot down",
         )
-        # Should pick up "destroyed" status at minimum
         assert result.extraction_method == "regex"
+        assert result.update_type == UpdateType.STATUS_CHANGE
+        destroyed = [e for e in result.entities if e.operational_status == "DESTROYED"]
+        assert len(destroyed) >= 1, "Should detect DESTROYED status from 'shot down'"
 
 
 # ---------------------------------------------------------------------------

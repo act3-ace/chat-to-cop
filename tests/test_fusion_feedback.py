@@ -98,21 +98,40 @@ class FakeBackend:
 
 
 class TestFusionFeedbackCreation:
-    def test_basic_creation(self):
-        fb = FusionFeedback(
-            update_id="tn:44504#0",
-            source_channel="#c2_coord",
-            source_speaker="Alice",
-            feedback_type="corroborated",
-            corroborating_channels=["#fires"],
-            confidence_delta=0.10,
-        )
-        assert fb.update_id == "tn:44504#0"
-        assert fb.source_channel == "#c2_coord"
-        assert fb.source_speaker == "Alice"
-        assert fb.feedback_type == "corroborated"
-        assert fb.corroborating_channels == ["#fires"]
-        assert fb.confidence_delta == 0.10
+    def test_fusion_agent_generates_feedback_on_corroboration(self):
+        """FusionAgent should produce FusionFeedback when two channels
+        report the same entity — testing production code, not dataclass init."""
+        from chat_to_cop.agent.fusion_agent import FusionAgent
+        from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
+
+        updates = [
+            CoPUpdate(
+                update_type=UpdateType.STATUS_CHANGE,
+                confidence=0.8,
+                extraction_method="llm",
+                entities=[EntityUpdate(track_number="44504", operational_status="DESTROYED")],
+                source_channel="#c2_coord",
+                source_speaker="Alice",
+                source_message="44504 destroyed",
+                timestamp=datetime(2025, 9, 23, 14, 0, 0, tzinfo=timezone.utc),
+            ),
+            CoPUpdate(
+                update_type=UpdateType.STATUS_CHANGE,
+                confidence=0.7,
+                extraction_method="llm",
+                entities=[EntityUpdate(track_number="44504", operational_status="DESTROYED")],
+                source_channel="#fires",
+                source_speaker="Bob",
+                source_message="confirmed 44504 down",
+                timestamp=datetime(2025, 9, 23, 14, 0, 5, tzinfo=timezone.utc),
+            ),
+        ]
+        agent = FusionAgent()
+        agent.process_updates(updates)
+        feedback = agent.generate_feedback(updates)
+        # Two channels reporting the same entity should generate corroboration feedback
+        assert len(feedback) >= 1
+        assert any(fb.feedback_type == "corroborated" for fb in feedback)
 
     def test_defaults(self):
         fb = FusionFeedback(
@@ -124,7 +143,8 @@ class TestFusionFeedbackCreation:
         assert fb.corroborating_channels == []
         assert fb.confidence_delta == 0.0
 
-    def test_all_feedback_types(self):
+    def test_all_feedback_types_accepted(self):
+        """All three feedback types should be constructible (API contract)."""
         for ft in ("corroborated", "contradicted", "deduplicated"):
             fb = FusionFeedback(
                 update_id="test",

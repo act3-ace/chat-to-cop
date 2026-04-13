@@ -125,7 +125,7 @@ def eval_db(db_path: Path, labels: dict) -> dict:
 
     for key, label in labels.items():
         if key not in extractions:
-            if label.get("update_type") == "none":
+            if label.get("extracted_type") == "none":
                 noise_total += 1
                 noise_correct += 1  # correctly not extracted
             continue
@@ -133,7 +133,7 @@ def eval_db(db_path: Path, labels: dict) -> dict:
         extraction = extractions[key]
         matched += 1
 
-        label_type = label.get("update_type", "none")
+        label_type = label.get("extracted_type", "none")
         ext_type = extraction.get("update_type", "none")
 
         per_type_total[label_type] += 1
@@ -150,7 +150,7 @@ def eval_db(db_path: Path, labels: dict) -> dict:
                 if isinstance(extraction.get("entities"), str)
                 else extraction.get("entities", [])
             )
-            label_entities = label.get("entities", [])
+            label_entities = label.get("extracted_entities", [])
             ext_callsigns = {e.get("callsign", "") for e in (ext_entities or []) if e.get("callsign")}
             label_callsigns = {e.get("callsign", "") for e in (label_entities or []) if e.get("callsign")}
             if ext_callsigns or label_callsigns:
@@ -166,7 +166,7 @@ def eval_db(db_path: Path, labels: dict) -> dict:
 
     # Handle labels with no extraction as noise misses
     for key, label in labels.items():
-        if key not in extractions and label.get("update_type") != "none":
+        if key not in extractions and label.get("extracted_type") != "none":
             per_type_total[label.get("update_type", "unknown")] += 1
 
     n_labels = len(labels)
@@ -251,13 +251,23 @@ def run_anova(results: list[RunResult]) -> str:
             import statsmodels.api as sm
             from statsmodels.formula.api import ols
 
-            formula = f"{metric} ~ C(model) * C(speakers) * C(temperature)"
-            model_fit = ols(formula, data=df).fit()
-            anova_table = sm.stats.anova_lm(model_fit, typ=2)
-            output.append("```")
-            output.append(anova_table.to_string())
-            output.append("```")
-        except ImportError:
+            # Build formula from factors that have 2+ levels
+            factors = []
+            for col in ["model", "speakers", "temperature"]:
+                if df[col].nunique() >= 2:
+                    factors.append(f"C({col})")
+            if factors:
+                formula = f"{metric} ~ " + " * ".join(factors)
+                model_fit = ols(formula, data=df).fit()
+                anova_table = sm.stats.anova_lm(model_fit, typ=2)
+                output.append(f"Formula: `{formula}`")
+                output.append("")
+                output.append("```")
+                output.append(anova_table.to_string())
+                output.append("```")
+            else:
+                output.append("  (insufficient factor levels for ANOVA)")
+        except (ImportError, Exception):
             # Fallback: simple two-way comparison
             on = df[df["speakers"] == "ON"][metric].values
             off = df[df["speakers"] == "OFF"][metric].values

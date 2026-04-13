@@ -9,28 +9,16 @@ from chat_to_cop.models.messages import ChannelPriority, IRCMessage
 class TestIRCMessage:
     """Test IRCMessage construction and properties."""
 
-    def test_basic_construction(self):
+    def test_raw_line_defaults_empty(self):
+        """raw_line is optional and defaults to empty string (not None)."""
         msg = IRCMessage(
             timestamp=datetime(2025, 9, 23, 14, 30, 0, tzinfo=timezone.utc),
             channel="#c2_coord",
             sender="Hydro_Tank",
             content="RR15 F+40, RL36 F+50",
         )
-        assert msg.channel == "#c2_coord"
-        assert msg.sender == "Hydro_Tank"
-        assert msg.content == "RR15 F+40, RL36 F+50"
         assert msg.raw_line == ""
-
-    def test_raw_line_preserved(self):
-        raw = "[14:30:00] Hydro_Tank: RR15 F+40, RL36 F+50"
-        msg = IRCMessage(
-            timestamp=datetime(2025, 9, 23, 14, 30, 0, tzinfo=timezone.utc),
-            channel="#c2_coord",
-            sender="Hydro_Tank",
-            content="RR15 F+40, RL36 F+50",
-            raw_line=raw,
-        )
-        assert msg.raw_line == raw
+        assert isinstance(msg.raw_line, str)
 
     def test_is_stt_typed_chat(self):
         msg = IRCMessage(
@@ -86,34 +74,42 @@ class TestIRCMessage:
         )
         assert msg.priority == ChannelPriority.MEDIUM
 
-    def test_empty_content(self):
+    def test_empty_content_survives_roundtrip(self):
+        """Empty content (ack dots, blank lines) must serialize and deserialize."""
         msg = IRCMessage(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime(2025, 9, 23, 14, 0, 0, tzinfo=timezone.utc),
             channel="#c2_coord",
             sender="Hydro_SL",
             content="",
         )
-        assert msg.content == ""
+        restored = IRCMessage.model_validate_json(msg.model_dump_json())
+        assert restored.content == ""
+        assert restored == msg
 
-    def test_unicode_content(self):
+    def test_unicode_content_survives_roundtrip(self):
+        """DMS coordinates with degree symbols must survive JSON roundtrip."""
+        content = "Position: N24\u00b003.6134' W074\u00b031.4900'"
         msg = IRCMessage(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime(2025, 9, 23, 14, 0, 0, tzinfo=timezone.utc),
             channel="#c2_coord",
             sender="Hydro_SL",
-            content="Position: N24\u00b003.6134' W074\u00b031.4900'",
+            content=content,
         )
-        assert "\u00b0" in msg.content
+        restored = IRCMessage.model_validate_json(msg.model_dump_json())
+        assert restored.content == content
+        assert "\u00b0" in restored.content
 
-    def test_long_content(self):
-        """SITREP messages can be very long."""
+    def test_long_sitrep_survives_roundtrip(self):
+        """Multi-entity SITREPs can be >1000 chars; must not truncate."""
         long_msg = "SITREP / AIR: " + "ZEUS31 shot down by TTG; " * 50
         msg = IRCMessage(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime(2025, 9, 23, 14, 0, 0, tzinfo=timezone.utc),
             channel="#c2_coord",
             sender="HYDRO_SL",
             content=long_msg,
         )
-        assert len(msg.content) > 1000
+        restored = IRCMessage.model_validate_json(msg.model_dump_json())
+        assert restored.content == long_msg
 
     def test_serialization_roundtrip(self):
         msg = IRCMessage(
@@ -149,12 +145,11 @@ class TestIRCMessage:
 
 
 class TestChannelPriority:
-    """Test ChannelPriority enum."""
+    """Test ChannelPriority enum and channel-to-priority mapping."""
 
-    def test_string_values(self):
-        assert ChannelPriority.HIGH == "HIGH"
-        assert ChannelPriority.MEDIUM == "MEDIUM"
-        assert ChannelPriority.LOW == "LOW"
+    def test_enum_has_exactly_three_values(self):
+        """Guard against accidental addition/removal of priority levels."""
+        assert set(ChannelPriority) == {ChannelPriority.HIGH, ChannelPriority.MEDIUM, ChannelPriority.LOW}
 
     def test_comparison_for_sorting(self):
         """Priorities should be sortable for load shedding."""

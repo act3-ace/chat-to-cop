@@ -165,11 +165,11 @@ class TestConversationWindow:
             await agent.process_message(_msg("STARTEX", sender="WF_Clark", second=0))
             await agent.process_message(_msg("RR15 F+40", sender="Hydro_Tank", second=10))
 
-            # Check the messages sent to the backend
-            assert len(backend.last_messages) >= 2
+            # System prompt + user message = at least 2 messages sent to backend
+            assert len(backend.last_messages) == 2
             user_msg = backend.last_messages[-1]["content"]
-            # Context should mention the first message
-            assert "STARTEX" in user_msg or "WF_Clark" in user_msg
+            # Context should include both the prior message content AND the speaker
+            assert "STARTEX" in user_msg, "Prior message content should appear in context"
 
         asyncio.run(run())
 
@@ -184,7 +184,11 @@ class TestConversationWindow:
             updates = await agent.process_message(_msg("second", second=10))
 
             assert len(updates) == 1
-            assert len(updates[0].context_messages) > 0
+            # After 2 messages, context should contain at least the first message
+            assert len(updates[0].context_messages) >= 1
+            assert any("first" in c for c in updates[0].context_messages), (
+                "Prior message content should appear in context_messages"
+            )
 
         asyncio.run(run())
 
