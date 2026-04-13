@@ -10,18 +10,16 @@ without requiring an LLM backend.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
-from tests.test_channel_agent import FakeBackend
-
 from chat_to_cop.agent.fusion_agent import FusionAgent, detect_injection
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
+from tests.test_channel_agent import FakeBackend
 
 # ---------------------------------------------------------------------------
 # Helpers

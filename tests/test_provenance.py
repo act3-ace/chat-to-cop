@@ -14,7 +14,6 @@ from unittest.mock import patch
 from pydantic import BaseModel
 
 from chat_to_cop.agent.channel_agent import ChannelAgent
-from chat_to_cop.backend.openai_compat import DEFAULT_GLOSSARY, build_system_prompt
 from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
 from chat_to_cop.models.messages import IRCMessage
 from chat_to_cop.tracking import PipelineTracker
