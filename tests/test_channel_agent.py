@@ -186,8 +186,9 @@ class TestConversationWindow:
             assert len(updates) == 1
             # After 2 messages, context should contain at least the first message
             assert len(updates[0].context_messages) >= 1
-            assert any("first" in c for c in updates[0].context_messages), \
+            assert any("first" in c for c in updates[0].context_messages), (
                 "Prior message content should appear in context_messages"
+            )
 
         asyncio.run(run())
 
