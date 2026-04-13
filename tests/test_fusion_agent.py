@@ -321,6 +321,11 @@ class TestProvenance:
         ]
         result = agent.process_updates(updates)
         assert len(result) == 1
-        # Provenance should include info from both sources
-        context = result[0].context_messages
-        assert any("Bob" in c for c in context) or any("#fires" in c for c in context)
+        # Primary source retained in the update's own fields
+        merged = result[0]
+        assert merged.source_speaker == "Alice" or merged.source_channel == "#c2_coord", \
+            "Primary source should be preserved in update metadata"
+        # Corroborating source added to context_messages
+        context = " ".join(merged.context_messages)
+        assert "Bob" in context or "#fires" in context, \
+            "Corroborating source should appear in context_messages"
