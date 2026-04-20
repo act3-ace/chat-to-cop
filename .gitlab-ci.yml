@@ -101,8 +101,10 @@ build-apptainer:
     - build-release
 
 # Build HPC image with CUDA + Ollama + baked models (Qwen2.5-14B + 7B).
-# This is the full offline-capable container for DSRC Narwhal (V100 32GB).
-# Model download happens during build — no GPU needed.
+# MANUAL: DLE shared runners OOM on the 20GB+ image (13GB of model blobs
+# exceeds Kaniko's in-memory snapshot limit). Build locally instead:
+#   docker build -f deploy/dsrc/Dockerfile.hpc -t chat-to-cop:hpc .
+#   singularity build chat-to-cop-hpc.sif docker-daemon://chat-to-cop:hpc
 build-hpc:
   stage: build
   image:
@@ -121,6 +123,8 @@ build-hpc:
       --skip-tls-verify
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+      when: manual
+      allow_failure: true
   timeout: 2h
 
 # Pull HPC image from DLE registry (skopeo handles TLS skip) and convert
@@ -145,6 +149,8 @@ build-hpc-sif:
     expire_in: 90 days
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+      when: manual
+      allow_failure: true
   needs:
     - build-hpc
   timeout: 1h
@@ -184,4 +190,3 @@ release:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   needs:
     - build-apptainer
-    - build-hpc-sif

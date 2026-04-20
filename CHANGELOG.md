@@ -19,6 +19,13 @@ The major version will advance to 1.0.0 when the API is considered stable.
 - HPC SIF conversion: use Fedora + skopeo to pull from DLE registry with
   --tls-verify=false, then singularity build from docker-archive
 
+### Changed
+
+- HPC build jobs (build-hpc, build-hpc-sif) are now manual with
+  allow_failure: DLE shared runners OOM on the 20GB+ image (13GB of model
+  blobs exceeds Kaniko's snapshot memory). Build HPC images locally instead.
+- Release job no longer blocks on HPC builds
+
 ## [0.1.3] - 2026-04-20
 
 ### Fixed
