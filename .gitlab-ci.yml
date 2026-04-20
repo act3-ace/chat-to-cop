@@ -72,12 +72,16 @@ build-release:
       --destination "${CONTAINER_IMAGE}:latest"
       --cache=true
       --skip-tls-verify
+      --tar-path chat-to-cop.tar
+  artifacts:
+    paths:
+      - chat-to-cop.tar
+    expire_in: 1 day
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
 
-# Build Apptainer/Singularity image from Docker image for HPC deployment.
-# Converts the Docker image we already built — no separate definition file needed.
-# Output: chat-to-cop_<tag>.sif uploaded as a job artifact.
+# Build Apptainer/Singularity image from the Docker tarball (avoids DLE
+# registry TLS issues — Singularity can't skip cert verification).
 build-apptainer:
   stage: build
   image:
@@ -85,10 +89,8 @@ build-apptainer:
     entrypoint: [""]
   variables:
     SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
-    SINGULARITY_DOCKER_USERNAME: "$CI_REGISTRY_USER"
-    SINGULARITY_DOCKER_PASSWORD: "$CI_REGISTRY_PASSWORD"
   script:
-    - singularity build chat-to-cop_${CI_COMMIT_TAG:-latest}.sif docker://$CONTAINER_IMAGE:${CI_COMMIT_TAG:-latest}
+    - singularity build chat-to-cop_${CI_COMMIT_TAG:-latest}.sif docker-archive:chat-to-cop.tar
   artifacts:
     paths:
       - "*.sif"
@@ -117,12 +119,16 @@ build-hpc:
       --destination "${CONTAINER_IMAGE}:hpc-latest"
       --cache=true
       --skip-tls-verify
+      --tar-path chat-to-cop-hpc.tar
+  artifacts:
+    paths:
+      - chat-to-cop-hpc.tar
+    expire_in: 1 day
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   timeout: 2h
 
-# Convert HPC Docker image to Apptainer .sif for DSRC deployment.
-# Download the .sif from the release artifacts and scp to Narwhal.
+# Convert HPC Docker tarball to Apptainer .sif for DSRC deployment.
 build-hpc-sif:
   stage: build
   image:
@@ -130,10 +136,8 @@ build-hpc-sif:
     entrypoint: [""]
   variables:
     SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
-    SINGULARITY_DOCKER_USERNAME: "$CI_REGISTRY_USER"
-    SINGULARITY_DOCKER_PASSWORD: "$CI_REGISTRY_PASSWORD"
   script:
-    - singularity build chat-to-cop-hpc_${CI_COMMIT_TAG:-latest}.sif docker://$CONTAINER_IMAGE:hpc-${CI_COMMIT_TAG:-latest}
+    - singularity build chat-to-cop-hpc_${CI_COMMIT_TAG:-latest}.sif docker-archive:chat-to-cop-hpc.tar
   artifacts:
     paths:
       - "chat-to-cop-hpc_*.sif"
