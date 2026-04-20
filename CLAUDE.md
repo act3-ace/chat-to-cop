@@ -38,6 +38,25 @@ git push -u origin <branch-name>
 Commit style: `feat|fix|refactor: description`, `Closes #<N>`, include test counts.
 Always include `Co-Authored-By: Claude <noreply@anthropic.com>`.
 
+## Versioning and Releases
+
+We use **semver at 0.y.z** during initial development. Per the semver spec,
+major version zero is for rapid iteration where the API is not yet stable.
+Breaking changes bump MINOR, fixes bump PATCH. The version will advance to
+1.0.0 when the system is considered stable and ready for formal release.
+
+Version is tracked in two places (keep them in sync):
+
+- `pyproject.toml` (`version = "0.x.y"`)
+- `src/chat_to_cop/__init__.py` (`__version__ = "0.x.y"`)
+
+To cut a release:
+
+1. Update both version strings
+2. Move `[Unreleased]` entries in `CHANGELOG.md` to a new `[0.x.y]` section
+3. Commit, push, tag: `git tag v0.x.y && git push origin v0.x.y`
+4. CI builds Docker + Apptainer images and creates a GitLab release automatically
+
 ## Issue Tracking
 
 All work tracked on DLE GitLab: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues (project ID: 18350).

@@ -292,7 +292,7 @@ class TestAgentSpeakerIntegration:
     def test_speaker_model_created_on_first_message(self):
         async def run():
             backend = FakeBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
             await agent.process_message(_msg("RR15 F+40", sender="Hydro_Tank"))
 
             model = agent.speakers.get("Hydro_Tank")
@@ -305,7 +305,7 @@ class TestAgentSpeakerIntegration:
     def test_speaker_model_updates_on_each_message(self):
         async def run():
             backend = FakeBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
 
             for i in range(5):
                 await agent.process_message(_msg(f"msg {i}", sender="Hydro_Tank", second=i))
@@ -320,7 +320,7 @@ class TestAgentSpeakerIntegration:
     def test_multiple_speakers_tracked(self):
         async def run():
             backend = FakeBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
 
             await agent.process_message(_msg("msg 1", sender="Hydro_Tank", second=0))
             await agent.process_message(_msg("msg 2", sender="WF_Clark", second=1))
@@ -336,7 +336,7 @@ class TestAgentSpeakerIntegration:
     def test_speaker_context_in_prompt(self):
         async def run():
             backend = FakeBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
 
             # Process enough messages to populate speaker model
             for i in range(3):
@@ -369,7 +369,7 @@ class TestAgentSpeakerIntegration:
     def test_speaker_inference_triggers_at_threshold(self):
         async def run():
             backend = FakeBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
 
             # Process exactly _SPEAKER_FIRST_INFERENCE_AT messages
             for i in range(_SPEAKER_FIRST_INFERENCE_AT):
@@ -408,7 +408,7 @@ class TestAgentSpeakerIntegration:
 
         async def run():
             backend = FailingSpeakerBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
 
             # Process enough to trigger inference
             for i in range(_SPEAKER_FIRST_INFERENCE_AT):
@@ -430,7 +430,7 @@ class TestAgentSpeakerIntegration:
         """Verify backward compatibility: existing agent tests still work."""
 
         async def run():
-            agent = ChannelAgent("#c2_coord", FakeBackend())
+            agent = ChannelAgent("#c2_coord", FakeBackend(), use_speaker_models=True)
             updates = await agent.process_message(_msg("RR15 F+40, RL36 F+50"))
             assert len(updates) == 1
             assert updates[0].update_type == UpdateType.FUEL
@@ -441,7 +441,7 @@ class TestAgentSpeakerIntegration:
 
     def test_none_update_filtered_with_speakers(self):
         async def run():
-            agent = ChannelAgent("#c2_coord", FakeNoneBackend())
+            agent = ChannelAgent("#c2_coord", FakeNoneBackend(), use_speaker_models=True)
             updates = await agent.process_message(_msg("c"))
             assert updates == []
 
