@@ -351,7 +351,7 @@ class TestPipelineFeedbackRouting:
 
         async def run():
             backend = FakeBackend()
-            agent = ChannelAgent("#c2_coord", backend)
+            agent = ChannelAgent("#c2_coord", backend, use_speaker_models=True)
 
             # Send a message so the speaker model gets created
             await agent.process_message(_msg("RR15 F+40", sender="Alice", channel="#c2_coord"))
@@ -416,10 +416,13 @@ class TestPipelineFeedbackRouting:
         """Supervisor.route_feedback should forward to the right channel agent."""
 
         async def run():
+            from chat_to_cop.config import AgentConfig
+
             def backend_factory():
                 return FakeBackend()
 
-            supervisor = Supervisor(backend_factory=backend_factory)
+            cfg = AgentConfig(use_speaker_models=True)
+            supervisor = Supervisor(backend_factory=backend_factory, agent_config=cfg)
             supervisor.start_agent("#c2_coord")
             supervisor.start_agent("#fires")
 
@@ -491,10 +494,13 @@ class TestFullFeedbackLoop:
         """Full pipeline: fusion detects corroboration, feedback updates speaker models."""
 
         async def run():
+            from chat_to_cop.config import AgentConfig
+
             def backend_factory():
                 return FakeBackend()
 
-            supervisor = Supervisor(backend_factory=backend_factory)
+            cfg = AgentConfig(use_speaker_models=True)
+            supervisor = Supervisor(backend_factory=backend_factory, agent_config=cfg)
             fusion = FusionAgent()
 
             # Ensure agents exist with speakers
@@ -530,10 +536,13 @@ class TestFullFeedbackLoop:
         """Contradiction feedback should decrease the contradicted speaker's reliability."""
 
         async def run():
+            from chat_to_cop.config import AgentConfig
+
             def backend_factory():
                 return FakeBackend()
 
-            supervisor = Supervisor(backend_factory=backend_factory)
+            cfg = AgentConfig(use_speaker_models=True)
+            supervisor = Supervisor(backend_factory=backend_factory, agent_config=cfg)
             fusion = FusionAgent()
 
             await supervisor.route_message(_msg("44504 operational", sender="Alice", channel="#c2_coord"))

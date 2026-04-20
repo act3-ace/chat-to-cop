@@ -96,8 +96,8 @@ class AgentConfig(BaseSettings):
         description="Max age of messages in conversation window (minutes)",
     )
     use_speaker_models: bool = Field(
-        default=True,
-        description="Enable online speaker model learning (A/B toggle)",
+        default=False,
+        description="Enable online speaker model learning (default OFF per RQ1 N=100 results)",
     )
 
 
