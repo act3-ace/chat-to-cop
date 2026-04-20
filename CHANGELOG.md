@@ -10,6 +10,15 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-20
+
+### Fixed
+
+- CI container builds: switched from Docker-in-Docker to Kaniko (DLE shared
+  runners don't support DinD privileged mode)
+- Added --skip-tls-verify for DLE registry DoD CA certificate
+- Added Singularity registry auth for Apptainer build jobs
+
 ## [0.1.0] - 2026-04-20
 
 First versioned release, targeting the May 2026 MASH event at H2O Las Vegas.
