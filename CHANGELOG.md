@@ -5,15 +5,75 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+While at 0.y.z (initial development), MINOR bumps may include breaking changes.
+The major version will advance to 1.0.0 when the API is considered stable.
+
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-20
+
+First versioned release, targeting the May 2026 MASH event at H2O Las Vegas.
+
 ### Added
-- IRCMessage model and channel priority types (#1)
-- DASH chat log replay parser — DASH 1, DASH 3 per-channel, DASH 3 combined formats (#2)
-- Toggleable instrumentation foundation — counters, histograms, timers (#3)
-- OpenAI-compatible LLM backend with instructor for structured output (#4)
-- CoPUpdate, SpeakerModel, WorldStateSnapshot Pydantic models
-- GitLab CI pipeline — lint (ruff) + test (pytest) on every push
-- Container build on merge to main, tagged releases to registry
+
+- Agent-based architecture with FACS principles (equifinality, antifragility)
+- Channel agents with conversation windows, per-speaker models, world state snapshots
+- OpenAI-compatible LLM backend with instructor for structured output
+- Degrading backend with circuit breakers (LLM -> smaller LLM -> regex -> passthrough)
+- Regex fallback backend with domain-specific extractors (track numbers, fuel, weapons)
+- Fusion agent with semantic deconfliction, trust scoring, adversarial detection
+- Supervisor agent lifecycle, health management, and priority-based load shedding
+- Speaker models with CTA/SDAC framework and online inference
+- Live IRC WebSocket client with auto-reconnect
+- DASH chat log replay for all three formats (DASH 1, DASH 3 per-channel, DASH 3 combined)
+- SQLite world state store with entity upsert
+- FastAPI REST API for world state queries and SSE streaming
+- HTML operator dashboard with pause-writes button and confidence visualization
+- CoPWriter with tiered write authority and recalibrated thresholds
+- Operator override path with audit log
+- Confidence-aware cascading in DegradingBackend
+- STT handling, correction messages, and radio check filtering
+- Noise pre-filter (URLs, STARTEX/ENDEX, acks, radio checks)
+- Synthetic chat data generator with ground truth labels
+- Model evaluation harness with precision/recall/F1 per update type
+- Calibration model for Qwen2.5-7B-8K confidence scores
+- Opus silver labels (856 labeled messages via Claude Opus)
 - Docker Compose setup (Ollama + pipeline)
-- Design philosophy documentation (equifinality, antifragility, FACS)
+- GitLab CI pipeline: lint, test, Docker build, Apptainer SIF, HPC container, release
+- Per-message latency instrumentation in replay
+- Adversarial robustness tests (spoofing through ChannelAgent pipeline)
+- N=100 speaker model sweep infrastructure (Slurm job arrays, eval harness, ANOVA)
+- DELTRON regex patterns ported into regex_fallback.py
+- RAI provenance: model_name, prompt_hash on CoPUpdate, PipelineTracker, AIBOM generation
+- Documentation: architecture, design philosophy, schemas, data sources, deployment guides
+
+### Fixed
+
+- Config-bypass bug: AgentConfig, calibration_model, and SupervisorConfig now plumbed
+  from replay.py through Supervisor to ChannelAgent (!88). Prior A/B experiments were
+  silently running with default config in both arms.
+- Shared conda env pip install race condition on Narwhal HPC (!90)
+- Test environment isolation with monkeypatch.delenv autouse fixture (!91)
+- Narwhal ARCHIVE_HOME fallback when symlink target is unprovisioned (!94)
+- sbatch --export comma separator (was space-separated, breaking env vars) (!98)
+- eval_speaker_sweep.py: correct table name, column names, partial ANOVA handling
+
+### Changed
+
+- Speaker models default to OFF (`use_speaker_models=False`) based on N=100 sweep
+  results showing statistically significant degradation across all 4 model sizes
+  (3B: -1.54pp, 7B: -4.12pp, 14B: -1.50pp, 32B: -2.74pp, all p<0.0001)
+- Schema proposal renamed from "contract" to "proposal" for AFMC terminology
+- Test suite: replaced 186 tautological + 252 weak assertions with meaningful tests
+
+### Research
+
+- RQ1 (online user modeling): 1,600-run factorial sweep on Narwhal HPC.
+  Prompt-injection speaker models hurt extraction quality at every model size.
+  Temperature (deterministic vs stochastic) has no effect (p=0.99).
+  Capacity bottleneck hypothesis rejected. See docs/SPEAKER_MODEL_RESULTS.md.
+- 7 validated backends: Ollama (3B/7B/14B/32B), Gemini Flash, GPT-4.1-nano, Ask Sage
+- Qwen2.5-14B is the cost/performance sweet spot (46.8% type exact, near-32B quality)
+
+[Unreleased]: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/compare/v0.1.0...main
+[0.1.0]: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/tags/v0.1.0

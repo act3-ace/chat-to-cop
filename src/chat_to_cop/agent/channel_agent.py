@@ -145,7 +145,7 @@ class ChannelAgent:
         window_size: int = 50,
         window_minutes: float = 15.0,
         glossary: str = DEFAULT_GLOSSARY,
-        use_speaker_models: bool = True,
+        use_speaker_models: bool = False,
         calibration_model: CalibrationModel | None = None,
     ) -> None:
         self.channel = channel

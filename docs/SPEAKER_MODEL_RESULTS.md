@@ -1,171 +1,214 @@
 # Speaker Model Evaluation Results (RQ1)
 
 **Issue:** [#35](https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues/35) (RQ1 base) and [#52](https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues/52) (multi-backend extension)
-**Labels:** `data/labels/dash3_silver_labels_opus.jsonl` (935 messages, Claude Opus 4.6 silver labels)
-**Eval script:** `scripts/eval_speaker_models.py`
+**Labels:** `data/labels/dash3_silver_labels_opus.jsonl` (856 labeled messages, Claude Opus silver labels)
+**Eval script:** `scripts/eval_speaker_sweep.py`
+**Sweep infrastructure:** MR !97 (scripts), MR !98 (export fix)
 
 ## TL;DR
 
-The current speaker model design (online prompt-injection of speaker role/area/jargon into the system prompt) **does not improve extraction quality** on either Qwen2.5-7B or Qwen2.5-14B against the Opus silver labels.
+Online speaker modeling via prompt injection **hurts extraction quality across all four model sizes tested**, with statistical certainty (N=100 per cell, all p<0.0001).
 
-| Model | Type exact match delta (with − without speakers) | Entity overlap delta |
-| --- | --- | --- |
-| 7B | +0.2% | -3.9% |
-| 14B | -1.2% | -2.2% |
+| Model | Type exact delta (pp) | p-value | Entity overlap delta (pp) | Compute overhead |
+| --- | --- | --- | --- | --- |
+| Qwen2.5-3B | -1.54 | <0.0001 | +0.21 (ns) | +70% (est.) |
+| Qwen2.5-7B | -4.12 | <0.0001 | -3.26 | +72% |
+| Qwen2.5-14B | -1.50 | <0.0001 | -1.22 | +72% |
+| Qwen2.5-32B | -2.74 | <0.0001 | +0.55 | +85% (est.) |
 
-Going from 7B to 14B, speakers go from "essentially neutral" to "actively harmful" on the headline metric — the **opposite** of what the capacity-bottleneck hypothesis from #35 predicted. Larger capacity isn't the bottleneck; the prompt-injection design is. The 14B run also paid a ~70% wall-clock penalty (2h28m with speakers vs 1h26m without) for those negative results.
+Temperature (deterministic vs stochastic) has **no significant effect** on any metric (p=0.99).
 
-**Recommendation: default speaker models OFF for MASH.** Preserve the code for research follow-up, but ship without the feature. RQ1 needs a different architectural approach — retrieval-augmented profiles, fine-tuned speaker classifiers as routing signals, or behavioral routing via reliability scores (#46) — not bigger models with the same prompt-injection design.
+**Decision: default speaker models OFF for MASH.** The feature hurts accuracy, costs compute, and doesn't improve with model scale. RQ1 needs a different architectural approach.
 
-## A note on prior results
+## Prior results (invalidated)
 
-Earlier RQ1 results from 2026-04-06 (7B) and 2026-04-10 (14B) **are invalid as A/B comparisons**. The April 11 audit found that `Supervisor.start_agent()` constructed `ChannelAgent` without passing `use_speaker_models`, so the `CHAT_TO_COP_USE_SPEAKER_MODELS=false` env var was silently ignored on the production replay path. Both arms of both prior experiments actually ran with speakers ON. The deltas reported in those runs were noise.
+Earlier N=1 A/B results from 2026-04-06 (7B) and 2026-04-10 (14B) are invalid. The 2026-04-11 audit found that `Supervisor.start_agent()` constructed `ChannelAgent` without passing `use_speaker_models`, so the env var was silently ignored. Both arms ran with speakers ON. The fix (!88) plus regression tests in `TestSupervisorAgentConfigPlumbing` ensures this class of bug can't recur.
 
-The fix (!88) plus regression tests in `tests/test_supervisor.py::TestSupervisorAgentConfigPlumbing` ensures this class of bug can't recur. The numbers below are from the post-fix re-run on 2026-04-11/12.
+Post-fix N=1 re-runs (2026-04-12) showed the same direction but were statistically inconclusive. The N=100 sweep below is the definitive result.
 
 ## Methodology
 
-For each model size (7B, 14B):
+### Design
 
-1. **Run A** with `CHAT_TO_COP_USE_SPEAKER_MODELS` unset (default `true`)
-2. **Run B** with `CHAT_TO_COP_USE_SPEAKER_MODELS=false`
-3. Both runs use identical Slurm settings (1 V100, qwen2.5:Nb-8k Modelfile, 8K context, 180s timeout, AFSNW27526RYZ)
-4. Replay the same DASH-3 chat zip
-5. Compare extractions against the Opus silver labels using `scripts/eval_speaker_models.py`
+Full factorial: 4 models x 2 speaker conditions x 2 temperature settings x 100 replications = 1,600 runs.
 
-The eval matches extractions to labels by `(timestamp, channel, sender)` composite key, then computes:
+| Factor | Levels |
+| --- | --- |
+| Model | Qwen2.5-3B, 7B, 14B, 32B |
+| Speakers | ON (default), OFF (`use_speaker_models=false`) |
+| Temperature | Deterministic (temp=0), Stochastic (default) |
 
-- **Match rate**: fraction of labeled messages that produced an extraction
-- **Type exact match**: fraction of matched extractions whose `update_type` matches the label
-- **Type relaxed match**: same but with synonym buckets (e.g., `entity_id` ≈ `status_change`)
-- **Entity overlap**: average Jaccard similarity between extracted and labeled entity sets
-- **Noise detection**: fraction of `none` labels correctly classified as noise
-- **Confidence correlation**: Pearson r between extraction confidence and correctness
+### Execution
 
-## 7B results (post-!88, 2026-04-12)
+- Platform: Narwhal HPC (Navy DSRC), V100 GPUs, Ollama serving
+- 16 Slurm array jobs (`--array=1-100%20`), account AFSNW27526RYZ
+- Each task: unique Ollama port, 8K context, 180s timeout
+- Replay: DASH-3 `chat.zip` (same data for every run)
+- Job IDs: 5978304-5978319 (submitted 2026-04-12)
+- Completed: 2026-04-17 (3B cells were the long pole at ~112 min/run)
+- Total compute: ~0.45M CPU core-hours (128 cores/node x wall-clock)
 
-**Runs:** 5973724 (Run A, with speakers, 1h46m), 5973808 (Run B, without speakers, 1h05m)
+### Evaluation
 
-| Metric | With Speakers | Without Speakers | Delta |
-| --- | --- | --- | --- |
-| Matched extractions | 348 | 323 | +25 (+7.7%) |
-| Match rate | 37.2% | 34.5% | +2.7% |
-| **Type exact match** | **20.7%** | **20.5%** | **+0.2%** |
-| Type relaxed match | 21.0% | 20.6% | +0.3% |
-| Entity overlap (avg Jaccard) | 29.5% | 33.5% | -3.9% |
-| Noise detection accuracy | 100.0% | 100.0% | 0 |
-| Confidence correlation | 0.023 | 0.042 | -0.019 |
+Each of the 1,600 DBs was evaluated against the Opus silver labels:
 
-### Per-type breakdown (7B)
+- Match by `(timestamp, channel, sender)` composite key
+- **Type exact match**: extraction `update_type` matches label `extracted_type`
+- **Entity overlap**: Jaccard similarity on callsign sets
+- **Noise detection**: correctly classifying `none`-type messages
 
-| Type | Without Speakers | With Speakers | Delta |
-| --- | --- | --- | --- |
-| entity_id | 17% | 33% | **+16pp** |
-| sitrep | 33% | 56% | **+23pp** |
-| location | 62% | 75% | +13pp |
-| cyber_ew | 53% | 59% | +6pp |
-| threat | 38% | 41% | +3pp |
-| status_change | 50% | 50% | 0 |
-| fuel | 62% | 62% | 0 |
-| weapons | 33% | 33% | 0 |
-| fire_mission | 100% | 100% | 0 |
-| csar | 100% | 100% | 0 |
-| handover | 0% | 0% | 0 |
-| tasking | 48% | 44% | -4pp |
+Statistical tests: t-tests per model (speakers ON vs OFF, pooling across temperature), 3-way factorial ANOVA (model x speakers x temperature).
 
-### Learning curves (dominant speakers)
+## Results
 
-For the most-frequent speaker `afrl_lavgn` (601 messages), rolling accuracy by message count:
+### Per-cell summary
 
-| Speaker (msgs) | With (msg5) | With (msg601) | Without (msg5) | Without (msg601) |
+| Cell | N | Type exact (%) | SD | 95% CI | Entity overlap (%) | Match rate (%) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3b_off_det | 100 | 17.7 | 0.89 | [17.5, 17.9] | 8.6 | 52.1 |
+| 3b_off_stoch | 100 | 17.7 | 0.87 | [17.5, 17.9] | 8.4 | 52.2 |
+| 3b_on_det | 100 | 16.2 | 0.90 | [16.0, 16.3] | 8.6 | 52.9 |
+| 3b_on_stoch | 100 | 16.2 | 1.07 | [15.9, 16.4] | 8.8 | 52.8 |
+| 7b_off_det | 100 | 40.5 | 1.20 | [40.3, 40.7] | 26.4 | 33.5 |
+| 7b_off_stoch | 100 | 40.3 | 1.25 | [40.0, 40.5] | 26.0 | 33.6 |
+| 7b_on_det | 100 | 36.3 | 1.34 | [36.0, 36.5] | 23.0 | 35.9 |
+| 7b_on_stoch | 100 | 36.2 | 1.31 | [36.0, 36.5] | 22.8 | 35.8 |
+| 14b_off_det | 100 | 46.8 | 1.33 | [46.5, 47.1] | 27.1 | 33.4 |
+| 14b_off_stoch | 100 | 46.7 | 1.46 | [46.4, 46.9] | 27.0 | 33.6 |
+| 14b_on_det | 100 | 45.2 | 1.39 | [45.0, 45.5] | 25.7 | 32.4 |
+| 14b_on_stoch | 100 | 45.2 | 1.29 | [45.0, 45.5] | 25.9 | 32.4 |
+| 32b_off_det | 100 | 47.8 | 1.39 | [47.5, 48.1] | 27.6 | 32.8 |
+| 32b_off_stoch | 100 | 48.2 | 1.23 | [47.9, 48.4] | 27.8 | 32.7 |
+| 32b_on_det | 100 | 45.2 | 1.40 | [45.0, 45.5] | 28.1 | 34.0 |
+| 32b_on_stoch | 100 | 45.3 | 1.16 | [45.0, 45.5] | 28.4 | 34.0 |
+
+### Speaker effect by model
+
+Delta = (speakers ON) - (speakers OFF), pooled across temperature:
+
+| Model | Baseline (OFF) | With speakers (ON) | Type exact delta (pp) | p-value |
 | --- | --- | --- | --- | --- |
-| afrl_lavgn (601) | 40% | **13%** | 40% | **13%** |
-| VEGAS_SL (92) | 80% | 30% | 80% | 33% |
-| VEGAS_PIT_A (50) | 20% | 16% | 20% | 16% |
-| Vegas_ABM1 (31) | 60% | 26% | 60% | 29% |
+| 3B | 17.7% | 16.2% | -1.54 | <0.0001 |
+| 7B | 40.4% | 36.3% | -4.12 | <0.0001 |
+| 14B | 46.7% | 45.2% | -1.50 | <0.0001 |
+| 32B | 48.0% | 45.3% | -2.74 | <0.0001 |
 
-The dominant speaker's accuracy is **identical at message 601** in both arms. Other speakers show 1-5 pp differences in either direction. There is no clear "learning curve" effect — the speaker model isn't getting measurably better at predicting after more messages from the same speaker.
+The effect is non-monotonic in model size. 7B shows the largest degradation; 14B the smallest. This is inconsistent with a capacity-bottleneck explanation and consistent with model-specific attention architecture differences.
 
-### 7B interpretation
+### Temperature effect
 
-The aggregate type-classification effect is essentially zero (+0.2%). The match rate improvement (+2.7%) suggests speaker context makes the LLM slightly more willing to commit to an extraction at all, which trades off against entity-overlap precision (-3.9%) — speaker context introduces some noise in entity field extraction.
+Temperature=0 (deterministic) vs default (stochastic) has no significant effect:
 
-The interesting per-type pattern (speakers help on entity_id, sitrep, location, cyber_ew, threat; hurt on tasking) is too small from a single run to claim as a robust effect, but is the kind of signal worth following up on if we end up redesigning the speaker model.
+| Metric | t-statistic | p-value |
+| --- | --- | --- |
+| Type exact | -0.009 | 0.99 |
+| Entity overlap | -0.050 | 0.96 |
+| Match rate | -0.031 | 0.98 |
 
-The headline finding from the original April 6 run ("no significant benefit on 7B") **holds**. Whether the cause is *model capacity* (7B can't leverage speaker context) or *speaker model design* (the prompt-injection approach is insufficient) requires the 14B comparison to disambiguate.
+Run-to-run variance is also unaffected: variance ratios (stochastic/deterministic) range from 0.8x to 1.2x across all cells. The "stochastic variance blowup" observed in earlier interim analyses at N<50 was a small-sample artifact.
 
-## 14B results (post-!88, 2026-04-12)
+### ANOVA
 
-**Runs:** 5973723 (Run A, with speakers, 2h28m), 5973223 (Run B, without speakers, 1h26m)
+3-way ANOVA (model x speakers x temperature) on type_exact:
 
-| Metric | With Speakers | Without Speakers | Delta |
+| Effect | Significance |
+| --- | --- |
+| Model (main) | p < 10^-67 |
+| Speakers (main) | p < 0.0001 |
+| Temperature (main) | p = 0.99 (ns) |
+| Model:Speakers | p < 10^-40 |
+| Model:Temperature | ns |
+| Speakers:Temperature | ns |
+| 3-way | p = 0.29 (ns) |
+
+The significant model:speakers interaction confirms that the magnitude of the speaker penalty varies by model (7B worst, 14B least), but the direction is consistently negative.
+
+### Per-type breakdown
+
+Types where speakers consistently help (positive delta across 3+ models):
+
+- **status_change**: +3 to +6pp on 7B/14B/3B (but -1.4pp on 32B)
+- **location**: +1 to +5pp on 7B/14B/32B (but only on larger models)
+
+Types where speakers consistently hurt:
+
+- **cyber_ew**: -7 to -11pp across all models
+- **tasking**: -2 to -4pp across all models
+- **threat**: -2 to -5pp on 7B/14B/3B
+- **status_change on 3B**: -10.8pp (the largest single-type effect)
+
+Types unaffected (near-ceiling or zero variance):
+
+- **fire_mission**: 95-100% across all conditions
+- **csar**: 89-100% across all conditions
+- **none/handover**: near 0% everywhere
+
+### Model scaling
+
+Baseline accuracy (speakers OFF) by model size:
+
+| Model | Type exact | Entity overlap | Match rate |
 | --- | --- | --- | --- |
-| Matched extractions | 305 | 310 | -5 |
-| Match rate | 32.6% | 33.2% | -0.6% |
-| **Type exact match** | **21.3%** | **22.5%** | **-1.2%** |
-| Type relaxed match | 21.5% | 22.7% | -1.2% |
-| Entity overlap (avg Jaccard) | 34.0% | 36.2% | -2.2% |
-| Noise detection accuracy | 100.0% | 100.0% | 0 |
-| Confidence correlation | 0.120 | 0.118 | +0.002 |
+| 3B | 17.7% | 8.5% | 52.1% |
+| 7B | 40.4% | 26.2% | 33.6% |
+| 14B | 46.7% | 27.0% | 33.5% |
+| 32B | 48.0% | 27.7% | 32.8% |
 
-### Per-type breakdown (14B)
+Diminishing returns past 14B. The 3B model has high match rate (52%) but most matches are misclassified -- it extracts aggressively but inaccurately. 7B-to-14B is the largest quality jump (+6.3pp type exact). 14B-to-32B adds only +1.3pp.
 
-| Type | Without Speakers | With Speakers | Delta |
-| --- | --- | --- | --- |
-| sitrep | 44% | 56% | **+12pp** |
-| status_change | 44% | 53% | **+9pp** |
-| weapons | 33% | 33% | 0 |
-| fire_mission | 100% | 100% | 0 |
-| csar | 100% | 100% | 0 |
-| handover | 0% | 0% | 0 |
-| tasking | 47% | 43% | -4pp |
-| threat | 62% | 57% | -5pp |
-| entity_id | 42% | 33% | -9pp |
-| location | 88% | 75% | -13pp |
-| fuel | 69% | 54% | -15pp |
-| cyber_ew | 53% | 35% | **-18pp** |
+## Interpretation
 
-### Wall-clock cost
+Six mechanisms explain why prompt-injected speaker profiles hurt extraction:
 
-- Run A (with speakers): **2h28m** (148 minutes)
-- Run B (without speakers): **1h26m** (86 minutes)
+1. **Distractor sensitivity** -- Speaker context adds ~200 tokens of role/area/jargon text to the system prompt. For mid-range models (7B, 32B), this additional context competes for attention with the actual message content. Consistent with Shi et al. (ICML 2023) on irrelevant context degrading reasoning.
 
-Speakers added ~62 minutes (~70% overhead) on the same V100 hardware. The speaker context expands the system prompt, which slows every LLM call. In return for that overhead we got *worse* extraction quality on most types.
+2. **Attention dilution** -- The extraction task requires attending to specific tokens in the message (callsigns, coordinates, status words). Speaker profile text draws attention to semantically related but task-irrelevant tokens. Liu et al. (TACL 2024) showed positional bias in how models weight context.
 
-### 14B interpretation
+3. **Anchoring bias** -- If the speaker profile says "typically reports fuel states for Hydro BMA", the model becomes biased toward fuel/Hydro interpretations even for messages that are actually cyber_ew or tasking. This explains the consistent -7 to -11pp on cyber_ew.
 
-Speakers actively hurt 14B. The aggregate type-classification delta is -1.2%, entity overlap -2.2%, and per-type effects are negative on 6 of 12 types (entity_id, location, fuel, cyber_ew, threat, tasking) — including a striking -18 pp on cyber_ew and -15 pp on fuel. They help on only 2 types (sitrep +12, status_change +9). The patterns aren't even consistent with the 7B per-type signals: 14B reverses the 7B helpful effects on entity_id, location, and cyber_ew.
+4. **Error compounding** -- Speaker profiles are built online from the LLM's own outputs. Early misclassifications propagate into the profile, which then biases future extractions. The learning curve analysis from N=1 showed no improvement over 600 messages.
 
-This rules out the "small models can't leverage speaker context" hypothesis. The signal is "the prompt-injection design isn't producing consistent benefit at any size we've tested."
+5. **Format tax** -- Longer system prompts increase per-token latency on Ollama/Qwen2.5. The 70% compute overhead means fewer tokens of actual extraction reasoning within the timeout budget.
+
+6. **Non-monotonic model-size effect** -- The 7B model has the most to lose from attention dilution (less total attention capacity), while 14B has enough capacity to partially compensate. 32B's larger context window may paradoxically make it more susceptible to long-range distractor effects.
 
 ## Capacity bottleneck hypothesis: REJECTED
 
-The original hypothesis from #35 was *"7B may lack the ability to leverage speaker context effectively; larger models would benefit"*. The 14B comparison shows the opposite:
+The original hypothesis from #35 was "7B may lack the ability to leverage speaker context effectively; larger models would benefit." The N=100 x 4-model sweep conclusively rejects this:
 
-| Model | Type exact match delta | Entity overlap delta | Compute overhead |
-| --- | --- | --- | --- |
-| 7B | +0.2% | -3.9% | (not measured separately) |
-| 14B | -1.2% | -2.2% | +72% wall clock |
+- All four models show negative type_exact deltas
+- The effect is non-monotonic (7B worst, not 3B)
+- 32B and 14B show larger capacity but still degrade
+- The model:speakers interaction is significant but never crosses zero
 
-If the hypothesis were correct, 14B should have shown a positive delta on at least the headline metric. Instead it's negative, the per-type pattern is inconsistent across model sizes, and the compute overhead is substantial. The hypothesis is rejected.
+The bottleneck is the **prompt-injection design**, not model capacity.
 
-The signal is that the **speaker model design** — not capacity — is the bottleneck. The current implementation injects speaker profile text into the system prompt for every LLM call. Larger models seem to be more, not less, distracted by that context.
+## Decision: speakers OFF for MASH
 
-## Implications and next steps
+1. Set `use_speaker_models: bool = Field(default=False)` in `config.py`
+2. Preserve the speaker model code for research follow-up
+3. The compute budget at MASH is finite; this feature spends it for negative ROI
 
-1. **Default speaker models OFF for MASH.** Preserve the code for research follow-up. The compute budget at MASH is finite and this feature spends it for negative ROI.
-2. **RQ1 needs a redesign**, not a bigger model. Candidate alternatives:
-   - **Retrieval-augmented speaker profiles**: only inject the most relevant prior messages from the same speaker, not the full profile
-   - **Fine-tuned speaker classifiers**: a small per-speaker classifier as a routing signal, not as prompt context
-   - **Behavioral routing**: use speaker reliability scores to adjust confidence thresholds (#46) instead of changing extraction itself
-3. **Per-type effects on `sitrep` and `status_change`** are interesting and worth exploring — they're consistently positive across both 7B and 14B. If we redesign the speaker model, these are the types most likely to benefit.
-4. **#46 (speaker model as routing signal)** is now the most interesting follow-up direction. Pursue that instead of "speaker model as prompt context".
+## Future directions
+
+The N=100 data suggests several redesign paths worth pursuing:
+
+1. **Selective retrieval** -- Instead of injecting the full speaker profile, retrieve only the most relevant prior messages from the same speaker. This would reduce distractor load while preserving speaker context where it helps (status_change, location).
+
+2. **Two-stage extraction** -- Run extraction first (speakers OFF), then use speaker context as a post-hoc confidence adjustment. The speaker model becomes a calibration signal, not a prompt modifier.
+
+3. **Per-type routing** -- The per-type data shows speakers help on status_change and location but hurt on cyber_ew and tasking. A routing layer could enable speaker context only for types where it helps.
+
+4. **LoRA fine-tuning** -- Per-role LoRA adapters (PROPER framework) would inject speaker knowledge into model weights rather than prompt tokens, avoiding the distractor and format-tax mechanisms.
+
+5. **Behavioral routing** -- Use speaker reliability scores to adjust confidence thresholds (#46) rather than changing extraction. This is the lightest-weight intervention and the most likely to ship at MASH.
 
 ## Files
 
-- 7B Run A DB: `data/narwhal_results_post_88/replay_7b_with_speakers_5973724.db`
-- 7B Run B DB: `data/narwhal_results_post_88/replay_7b_without_speakers_5973808.db`
-- 7B eval report: `data/narwhal_results_post_88/eval_7b_post_88.md`
-- 14B Run A DB: `data/narwhal_results_post_88/replay_14b_with_speakers_5973723.db`
-- 14B Run B DB: `data/narwhal_results_post_88/replay_14b_without_speakers_5973223.db`
-- 14B eval report: `data/narwhal_results_post_88/eval_14b_post_88.md`
+- Sweep DBs: `narwhal:$WORKDIR/output/sweep/sweep_*.db` (1,600 files)
+- Final report: `narwhal:$WORKDIR/output/sweep/final_report.md`
+- Final CSV: `narwhal:$WORKDIR/output/sweep/final_report.csv`
+- Eval script: `scripts/eval_speaker_sweep.py`
+- Sweep job script: `scripts/narwhal_speaker_sweep.sh`
+- Sweep submitter: `scripts/submit_speaker_sweep.py`
+- N=1 post-fix results: `data/narwhal_results_post_88/`

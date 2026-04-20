@@ -544,10 +544,10 @@ class TestSupervisorAgentConfigPlumbing:
         ):
             monkeypatch.delenv(var, raising=False)
 
-    def test_default_config_enables_speaker_models(self):
+    def test_default_config_disables_speaker_models(self):
         sup = Supervisor(backend_factory=FakeBackend)
         agent = sup.start_agent("#c2_coord")
-        assert agent.use_speaker_models is True
+        assert agent.use_speaker_models is False
 
     def test_explicit_agent_config_disables_speaker_models(self):
         from chat_to_cop.config import AgentConfig
