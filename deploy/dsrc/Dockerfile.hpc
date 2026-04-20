@@ -22,7 +22,7 @@
 # ---------------------------------------------------------------------------
 FROM ubuntu:22.04 AS model-downloader
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates zstd \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama via official install script (handles URL/format changes)
