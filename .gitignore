@@ -44,3 +44,6 @@ Thumbs.db
 # Docker
 .docker/
 *.txt
+
+# Scratch / transient local artifacts
+test_critique.md
