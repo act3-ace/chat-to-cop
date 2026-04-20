@@ -50,6 +50,7 @@ build:
       --destination "${CONTAINER_IMAGE}:latest"
       --destination "${CONTAINER_IMAGE}:${CI_COMMIT_SHORT_SHA}"
       --cache=true
+      --skip-tls-verify
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
@@ -70,6 +71,7 @@ build-release:
       --destination "${CONTAINER_IMAGE}:${CI_COMMIT_TAG}"
       --destination "${CONTAINER_IMAGE}:latest"
       --cache=true
+      --skip-tls-verify
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
 
@@ -112,6 +114,7 @@ build-hpc:
       --destination "${CONTAINER_IMAGE}:hpc-${CI_COMMIT_TAG:-latest}"
       --destination "${CONTAINER_IMAGE}:hpc-latest"
       --cache=true
+      --skip-tls-verify
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   timeout: 2h
