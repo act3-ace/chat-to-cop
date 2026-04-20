@@ -80,7 +80,9 @@ build-release:
 # Output: chat-to-cop_<tag>.sif uploaded as a job artifact.
 build-apptainer:
   stage: build
-  image: quay.io/singularity/singularity:v4.1.0
+  image:
+    name: quay.io/singularity/singularity:v4.1.0
+    entrypoint: [""]
   variables:
     SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
     SINGULARITY_DOCKER_USERNAME: "$CI_REGISTRY_USER"
@@ -123,7 +125,9 @@ build-hpc:
 # Download the .sif from the release artifacts and scp to Narwhal.
 build-hpc-sif:
   stage: build
-  image: quay.io/singularity/singularity:v4.1.0
+  image:
+    name: quay.io/singularity/singularity:v4.1.0
+    entrypoint: [""]
   variables:
     SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
     SINGULARITY_DOCKER_USERNAME: "$CI_REGISTRY_USER"

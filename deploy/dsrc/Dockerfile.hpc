@@ -25,9 +25,10 @@ FROM ubuntu:22.04 AS model-downloader
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Ollama
-RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama \
-    && chmod +x /usr/local/bin/ollama
+# Install Ollama binary (tgz extracts to bin/ollama)
+RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64.tgz -o /tmp/ollama.tgz \
+    && tar -xzf /tmp/ollama.tgz -C /usr/local --strip-components=0 \
+    && rm /tmp/ollama.tgz
 
 # Download models — Ollama stores them under OLLAMA_MODELS
 ENV OLLAMA_MODELS=/opt/ollama-models
