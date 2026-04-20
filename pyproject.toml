@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chat-to-cop"
-version = "0.1.3"
+version = "0.1.4"
 description = "AI staff officers for real-time world-state extraction from military chat to Common Operating Picture"
 requires-python = ">=3.10"
 dependencies = [
