@@ -151,8 +151,12 @@ def eval_db(db_path: Path, labels: dict) -> dict:
                 else extraction.get("entities", [])
             )
             label_entities = label.get("extracted_entities", [])
-            ext_callsigns = {e.get("callsign", "") for e in (ext_entities or []) if e.get("callsign")}
-            label_callsigns = {e.get("callsign", "") for e in (label_entities or []) if e.get("callsign")}
+            ext_callsigns = {
+                e.get("callsign", "") for e in (ext_entities or []) if isinstance(e, dict) and e.get("callsign")
+            }
+            label_callsigns = {
+                e.get("callsign", "") for e in (label_entities or []) if isinstance(e, dict) and e.get("callsign")
+            }
             if ext_callsigns or label_callsigns:
                 jaccard = len(ext_callsigns & label_callsigns) / len(ext_callsigns | label_callsigns)
                 entity_overlaps.append(jaccard)
