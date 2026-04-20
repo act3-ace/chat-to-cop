@@ -10,6 +10,15 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-04-20
+
+### Fixed
+
+- Apptainer builds from local docker-archive tar instead of pulling from DLE
+  registry (Singularity cannot skip TLS verification for DoD CA certs)
+- HPC Dockerfile: use Ollama install script instead of direct download
+  (download format changed from .tgz to .tar.zst)
+
 ## [0.1.2] - 2026-04-20
 
 ### Fixed
