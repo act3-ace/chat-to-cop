@@ -160,6 +160,8 @@ build-hpc-sif:
 release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
+  variables:
+    SSL_CERT_FILE: "$CI_SERVER_TLS_CA_FILE"
   script:
     - echo "Creating release for $CI_COMMIT_TAG"
   release:
@@ -184,8 +186,6 @@ release:
       links:
         - name: "Apptainer SIF image (slim, no LLM)"
           url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/chat-to-cop_${CI_COMMIT_TAG}.sif?job=build-apptainer"
-        - name: "Apptainer SIF image (HPC, with Ollama + Qwen2.5-14B)"
-          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/chat-to-cop-hpc_${CI_COMMIT_TAG}.sif?job=build-hpc-sif"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   needs:
