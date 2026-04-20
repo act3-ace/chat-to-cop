@@ -10,6 +10,14 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-20
+
+### Fixed
+
+- Apptainer/Singularity CI jobs: added `entrypoint: [""]` so GitLab runner
+  can execute shell scripts in the Singularity container image
+- HPC Dockerfile: Ollama download URL changed from bare binary to .tgz archive
+
 ## [0.1.1] - 2026-04-20
 
 ### Fixed
