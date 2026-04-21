@@ -110,6 +110,7 @@ build-hpc-on-ag:
   variables:
     AG_NODE_TYPE: "m7i.4xlarge"
     AG_WALLTIME: "2:00:00"
+    AG_DISK_GB: "90"
   before_script:
     - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh

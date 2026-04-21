@@ -13,6 +13,7 @@
 # Optional CI variables:
 #   AG_NODE_TYPE        Node type for qsub (default: r5.4xlarge)
 #   AG_WALLTIME         Job walltime (default: 2:00:00)
+#   AG_DISK_GB          Local ephemeral disk in GB (default: 80)
 #
 # Also uses standard GitLab CI variables:
 #   CI_REGISTRY, CI_REGISTRY_USER, CI_REGISTRY_PASSWORD
@@ -23,6 +24,7 @@ set -euo pipefail
 
 NODE_TYPE="${AG_NODE_TYPE:-r5.4xlarge}"
 WALLTIME="${AG_WALLTIME:-2:00:00}"
+DISK_GB="${AG_DISK_GB:-90}"
 POLL_INTERVAL=5
 POLL_TIMEOUT=600
 SSH_RETRIES=3
@@ -43,11 +45,11 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== Phase 1: Submit AG compute job ==="
-echo "Node type: $NODE_TYPE  Walltime: $WALLTIME"
+echo "Node type: $NODE_TYPE  Walltime: $WALLTIME  Disk: ${DISK_GB}GB"
 
 # AG head node only allows: qsub, qstat, qdel, qextend, nc.
 OUTPUT=$(ssh $SSH_OPTS "$AG_HEAD" \
-    "qsub -l select=1:type=$NODE_TYPE -l walltime=$WALLTIME -N hpc-build ~/job-publish.sh" 2>&1) || true
+    "qsub -l select=1:type=$NODE_TYPE -l disk=$DISK_GB -l walltime=$WALLTIME -N hpc-build ~/job-publish.sh" 2>&1) || true
 echo "qsub output: $OUTPUT"
 
 JOBID=$(printf '%s\n' "$OUTPUT" | grep -E '^[0-9]+$' | head -n1)
