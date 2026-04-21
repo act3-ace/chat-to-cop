@@ -46,13 +46,8 @@ echo "=== Phase 1: Submit AG compute job ==="
 echo "Node type: $NODE_TYPE  Walltime: $WALLTIME"
 
 # AG head node only allows: qsub, qstat, qdel, qextend, nc.
-OUTPUT=""
-if ! OUTPUT=$(ssh $SSH_OPTS "$AG_HEAD" \
-    "qsub -l select=1:type=$NODE_TYPE -l walltime=$WALLTIME -N hpc-build ~/job-publish.sh" 2>&1); then
-    echo "ERROR: SSH/qsub failed (exit $?). Output:"
-    echo "  $OUTPUT"
-    exit 1
-fi
+OUTPUT=$(ssh $SSH_OPTS "$AG_HEAD" \
+    "qsub -l select=1:type=$NODE_TYPE -l walltime=$WALLTIME -N hpc-build ~/job-publish.sh" 2>&1) || true
 echo "qsub output: $OUTPUT"
 
 JOBID=$(printf '%s\n' "$OUTPUT" | grep -E '^[0-9]+$' | head -n1)
