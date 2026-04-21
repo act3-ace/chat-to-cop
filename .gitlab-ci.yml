@@ -108,7 +108,7 @@ build-hpc-on-ag:
   stage: build
   image: ubuntu:22.04
   variables:
-    AG_NODE_TYPE: "m5.2xlarge"
+    AG_NODE_TYPE: "bigmem"
     AG_WALLTIME: "2:00:00"
   before_script:
     - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
