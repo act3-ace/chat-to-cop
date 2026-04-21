@@ -65,7 +65,7 @@ NODE_IP=""
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
     sleep "$POLL_INTERVAL"
 
-    SNIPPET=$(curl -sS -H "PRIVATE-TOKEN: $DLE_GITLAB_TOKEN" "$SNIPPET_URL" 2>/dev/null) || continue
+    SNIPPET=$(curl -sS --cacert "${CI_SERVER_TLS_CA_FILE:-/dev/null}" -H "PRIVATE-TOKEN: $DLE_GITLAB_TOKEN" "$SNIPPET_URL" 2>/dev/null) || continue
     HOSTNAME=$(printf '%s' "$SNIPPET" | python3 -c "import json,sys; print(json.load(sys.stdin).get('hostname',''))" 2>/dev/null) || continue
 
     case "$HOSTNAME" in
