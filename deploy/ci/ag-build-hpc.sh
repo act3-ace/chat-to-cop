@@ -45,19 +45,11 @@ trap cleanup EXIT
 echo "=== Phase 1: Submit AG compute job ==="
 echo "Node type: $NODE_TYPE  Walltime: $WALLTIME"
 
-echo "SSH config:"
-cat ~/.ssh/config
-echo "---"
-echo "Testing SSH connectivity to $AG_HEAD..."
-ssh $SSH_OPTS "$AG_HEAD" "echo SSH_OK" || {
-    echo "ERROR: SSH to AG head node failed. Check AG_SSH_KEY and network."
-    echo "Trying with verbose SSH for diagnostics..."
-    ssh -vvv $SSH_OPTS "$AG_HEAD" "echo SSH_OK" 2>&1 | tail -30 || true
-    exit 1
-}
-
+# AG head node only allows: qsub, qstat, qdel, qextend, nc.
+# No echo/test commands -- use qsub itself as the connectivity check.
 OUTPUT=$(ssh $SSH_OPTS "$AG_HEAD" \
     "qsub -l select=1:type=$NODE_TYPE -l walltime=$WALLTIME -N hpc-build ~/job-publish.sh" 2>&1)
+echo "qsub output: $OUTPUT"
 
 JOBID=$(printf '%s\n' "$OUTPUT" | grep -E '^[0-9]+$' | head -n1)
 if [ -z "$JOBID" ]; then
