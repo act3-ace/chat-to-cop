@@ -21,7 +21,7 @@ from loguru import logger
 
 from chat_to_cop.agent.fusion_agent import FusionAgent
 from chat_to_cop.agent.supervisor import Supervisor
-from chat_to_cop.backend.degrading import DegradingBackend
+from chat_to_cop.backend.degrading import DegradingBackend, load_cascade_thresholds
 from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
 from chat_to_cop.backend.regex_fallback import RegexBackend
 from chat_to_cop.calibration import CalibrationModel
@@ -91,11 +91,17 @@ def _make_degrading_backend(
     backends.append(RegexBackend())
     timeouts.append(1.0)  # Regex is near-instant
 
+    # Issue #67: load per-UpdateType cascade thresholds if the configured
+    # JSON file exists. Missing file degrades to the scalar cascade_threshold
+    # (which defaults to 0, i.e. cascade disabled — same as pre-#67 behavior).
+    cascade_thresholds = load_cascade_thresholds(config.degrading.cascade_thresholds_path)
+
     return DegradingBackend(
         backends=backends,
         timeouts=timeouts,
         fail_max=config.degrading.circuit_fail_max,
         cooldown=config.degrading.circuit_cooldown,
+        cascade_thresholds=cascade_thresholds,
     )
 
 
