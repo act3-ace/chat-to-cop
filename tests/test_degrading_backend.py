@@ -636,26 +636,29 @@ class TestPerTypeCascade:
         assert low.call_count == 1
         assert high.call_count == 1
 
-    def test_schema_without_update_type_uses_default_or_scalar(self):
-        """Generic schemas (no update_type attribute) use 'default' map entry or scalar fallback."""
-        # FakeBackend returns SimpleResult which has no update_type and no confidence.
-        # Without a confidence attr, getattr falls back to 1.0 → never escalates regardless.
-        # So for this test, use ConfidenceBackend which always sets UpdateType.FUEL.
-        # The "no update_type" case is exercised when schema=SimpleResult; confidence
-        # resolves to 1.0 and cascade never fires. That is the existing
-        # test_cascade_accepts_above_threshold contract — no new test needed.
-        # Here we assert that when the map's default entry is used, it dominates.
-        low = TypedConfidenceBackend(0.40, UpdateType.FUEL, name="low")
-        high = TypedConfidenceBackend(0.99, UpdateType.FUEL, name="high")
-        # Map has no FUEL entry, has default=0.60 → fuel result 0.40 < 0.60 → escalate
+    def test_schema_without_update_type_never_escalates(self):
+        """Generic schemas (no update_type attribute) should not cascade-escalate.
+
+        ``_threshold_for`` falls back to map 'default' or scalar when the
+        result has no ``update_type``. But ``getattr(result, "confidence",
+        1.0)`` also defaults to 1.0 for schemas with no confidence field,
+        so the comparison ``1.0 < threshold`` is always False and the
+        first backend's result is accepted. This test locks in that
+        contract so a future refactor of ``_threshold_for`` can't silently
+        start escalating on generic (non-CoPUpdate) schemas.
+        """
+        backend1 = FakeBackend(name="first")
+        backend2 = FakeBackend(name="second")
         db = DegradingBackend(
-            backends=[low, high],
+            backends=[backend1, backend2],
             timeouts=[5.0, 5.0],
-            cascade_thresholds={"default": 0.60},
+            cascade_thresholds={"default": 0.99},
         )
-        asyncio.run(db.extract(self.messages, CoPUpdate))
-        assert low.call_count == 1
-        assert high.call_count == 1
+        asyncio.run(db.extract(self.messages, SimpleResult))
+        # SimpleResult has no update_type AND no confidence → confidence
+        # defaults to 1.0 → 1.0 < 0.99 is False → first backend accepted.
+        assert backend1.call_count == 1
+        assert backend2.call_count == 0
 
 
 class TestLoadCascadeThresholds:
