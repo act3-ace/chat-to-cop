@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from chat_to_cop.metrics import metrics
+from chat_to_cop.models.cop_update import EntityUpdate, UpdateType
 
 
 class RetryableError(Exception):
@@ -151,6 +152,16 @@ def build_system_prompt(
         "- For corrections ('disregard last', 'correction:'), update the entity to the corrected state.",
         "- Radio checks are NOT operational — set update_type to 'none'.",
         "- Be concise in reasoning. Focus on what changed in the battlespace.",
+        "",
+        # Canonical vocabulary, rendered from the Pydantic source of truth.
+        # tests/test_schema_alignment.py asserts every enum value and every
+        # EntityUpdate field name appears in this prompt. Changing either
+        # schema without this rendering is a CI failure by design — see the
+        # 2026-04-17 eval-prompt drift finding.
+        "CANONICAL update_type VALUES (use exactly one): " + ", ".join(t.value for t in UpdateType) + ".",
+        "CANONICAL EntityUpdate FIELDS (use these exact names when populating entities): "
+        + ", ".join(EntityUpdate.model_fields)
+        + ".",
         "",
         "EXAMPLES:",
         "",
