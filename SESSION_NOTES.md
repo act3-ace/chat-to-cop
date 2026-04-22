@@ -1,55 +1,60 @@
-# Session Notes -- 2026-04-21 (AG CI Build Pipeline)
+# Session Notes -- 2026-04-22 (Issue Queue: #75, #74, #73, #71, #72)
 
 ## Current State
 
-v0.1.4 release pipeline green. HPC image built locally and pushed to DLE
-registry (hpc-v0.1.4 + hpc-latest). New `build-hpc-on-ag` CI job written
-and CI variables configured. Ready to test on a branch.
+Five issues worked across two sessions (started 2026-04-22). Three merged,
+two MRs open with CI running:
+
+| Issue | MR | Status |
+|-------|----|--------|
+| #75 hard timeout on extract() | !119 | Merged |
+| #74 num_ctx port-fragile detection | !120 | Merged |
+| #73 prompt-regression harness | !121 | Merged |
+| #71 adapt-schema CLI | !124 | Open, CI running |
+| #72 hot-reload mapping | !123 | Open, CI running |
+
+!122 was closed and superseded by !124 after discovering a stash-pop
+conflict had reverted openai_compat.py on the original branch.
 
 ## What Changed This Session
 
-Added AG-based HPC image build to the CI pipeline. DLE shared runners OOM
-on the 20GB+ image (Kaniko snapshot memory limit). The new approach SSHes
-from a DLE shared runner to an AG compute node, which has Docker
-pre-installed and 128GB RAM.
+### Merged to main
 
-### Files Created
+- `src/chat_to_cop/backend/openai_compat.py` -- `hard_timeout` param (#75),
+  `is_ollama` flag + `_detect_ollama()` helper (#74)
+- `src/chat_to_cop/config.py` -- `llm_extract_hard_timeout`, `llm_is_ollama`,
+  `fallback_extract_hard_timeout`, `fallback_is_ollama` fields
+- `src/chat_to_cop/replay.py` -- plumb hard_timeout and is_ollama to backends
+- `tests/test_openai_backend.py` -- TestHardTimeout (4 tests), TestNumCtxDetection (7 tests)
+- `tests/test_config.py` -- config plumbing tests for hard_timeout + is_ollama
+- `tests/test_prompt_budget.py` -- CI guard: system prompt under 17,500 chars
+- `scripts/replay_bench.py` -- stratified replay benchmark with type_accuracy,
+  entity_overlap_jaccard, none_false_positive_rate, latency metrics
+- `scripts/blueback_replay_bench.sh` -- Slurm sbatch wrapper for Blueback
+- `docs/RUNBOOK.md` -- procedure for running replay bench pre-merge
 
-- `deploy/ci/ag-build-hpc.sh` -- orchestrator: qsub, snippet poll, SSH, qdel
-- `deploy/ci/ag-node-build.sh` -- runs on AG node: CA install, clone, build, push
+### Open MRs
 
-### Files Modified
+- `src/chat_to_cop/cli/adapt_schema.py` -- schema ingestion CLI (!124)
+- `src/chat_to_cop/cli/__init__.py`, `__main__.py` -- CLI entry points
+- `tests/test_adapt_schema.py` -- 11 tests for adapt-schema
+- `src/chat_to_cop/output/schema_adapter.py` -- HotReloadAdapter class (!123)
+- `tests/test_schema_adapter.py` -- 5 new + 2 updated hot-reload tests
 
-- `.gitlab-ci.yml` -- replaced Kaniko `build-hpc` with `build-hpc-on-ag`
-- `CHANGELOG.md` -- unreleased entries for AG build pipeline
+## Untracked Files
 
-### CI Variables Added (project 18350)
-
-- AG_SSH_KEY (file, protected) -- AG SSH private key
-- AG_USERNAME (protected, masked) -- hsclouse
-- AG_SNIPPET_ID (protected) -- 136
-- DLE_GITLAB_TOKEN (protected, masked) -- DLE GitLab PAT
-
-## How the AG Build Works
-
-1. DLE CI job (ubuntu:22.04) installs SSH client, configures AG SSH key
-2. SSHes to AG head node, submits `qsub` for r5.4xlarge (128GB RAM)
-3. Polls DLE GitLab snippet (ID 136) until compute node publishes its IP
-4. SSHes to compute node via ProxyJump through ag-head
-5. On node: installs DoD CA bundle, clones repo, `docker build`, pushes to DLE registry
-6. `qdel` cleans up the AG job (also runs on failure via trap)
+- `SourceCode.pdf` -- generated artifact, not committed
+- `scripts/texify_source.py` -- one-off script, not committed
 
 ## What to Do Next
 
-1. Create a branch, push, and test `build-hpc-on-ag` manually from the pipeline
-2. If SSH from DLE runner to AG doesn't work (network/firewall), fallback is
-   the laptop build path (already proven today)
-3. SIF conversion (`build-hpc-sif`) needs the AG build to succeed first --
-   it pulls from DLE registry via skopeo
+1. Merge !124 and !123 once CI is green
+2. Consider bumping version to 0.1.5 after both merge
+3. The stash-conflict revert issue suggests adding a CI check that diffs
+   feature branches against main for accidental file reversions -- low
+   priority but worth noting
 
-## Previous Session (2026-04-20)
+## Previous Session (2026-04-21)
 
-Converted CI from Docker-in-Docker to Kaniko. Fixed 8+ issues across
-pipeline iterations: DinD unsupported, TLS certs, Singularity entrypoints,
-Ollama URL changes, Docker Hub rate limits, protected tag variables,
-release-cli TLS trust. v0.1.4 release pipeline fully green (5/5 auto jobs).
+AG CI build pipeline. v0.1.4 release pipeline green. HPC image built
+locally and pushed to DLE registry. `build-hpc-on-ag` CI job written.

@@ -12,6 +12,26 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- CoP schema adapter layer (#70): `PassthroughAdapter` (default, preserves
+  existing payload shape) and `JsonSchemaAdapter` (mapping-config driven,
+  transforms CoPRecord into target schema). Closed set of transforms (upper,
+  lower, int, float, iso_datetime), construct-time validation, no user code
+  execution.
+- Hot-reload mapping config (#72): `HotReloadAdapter` wraps `JsonSchemaAdapter`
+  with mtime-based auto-reload (default 30s check interval). Invalid mappings
+  log a warning and keep the previous version. `build_adapter()` now returns
+  `HotReloadAdapter` for jsonschema specs.
+- adapt-schema CLI (#71): `python -m chat_to_cop.cli.adapt_schema` for at-event
+  CoP schema ingestion. Reads SQLite (PRAGMA table_info), Excel/CSV (openpyxl),
+  or live database (SQLAlchemy reflect). Generates mapping config via LLM (any
+  OpenAI-compatible endpoint) or template fallback with common field name
+  matching.
+- Prompt-regression replay harness (#73): `scripts/replay_bench.py` with
+  stratified sampling by update_type, `scripts/blueback_replay_bench.sh` Slurm
+  wrapper, `docs/RUNBOOK.md` procedure for pre-merge prompt regression checks.
+- CI token-budget guard (#73): `tests/test_prompt_budget.py` pins system prompt
+  at 17,500 chars (current is 15,010 + 15% headroom). Prevents silent prompt
+  bloat from breaking context windows.
 - HPC image build via AG compute nodes: `build-hpc-on-ag` CI job SSHes to an
   Analytics Gateway m7i.4xlarge node (64GB RAM, 90GB disk, Docker pre-installed),
   runs `docker build`, and pushes to DLE registry. Replaces Kaniko-based
@@ -22,6 +42,29 @@ The major version will advance to 1.0.0 when the API is considered stable.
   nodes (DoD CA install, Docker insecure-registries config, git clone, docker
   build/push)
 - CI variables: AG_SSH_KEY, AG_USERNAME, AG_SNIPPET_ID, DLE_GITLAB_TOKEN
+
+### Fixed
+
+- Hard wall-clock cap on `extract()` (#75): `hard_timeout` parameter bounds the
+  full instructor retry chain. Without it, pathological schema-validation loops
+  burn `timeout * (max_retries+1)` seconds per message (12 min observed on
+  Blueback with 14B / 120s / max_retries=2). Surfaced as `RetryableError` so
+  `DegradingBackend` falls through.
+- Replace port-fragile `num_ctx` heuristic with explicit `is_ollama` flag (#74):
+  old heuristic gated on '11434' or 'ollama' in the URL; any non-standard port
+  (HPC array jobs) silently dropped `num_ctx`, causing Ollama's 4K default to
+  truncate the system prompt. New: explicit `is_ollama` constructor param +
+  auto-detect fallback + loguru warning when detection is ambiguous.
+
+### Failed approaches
+
+- Stash-pop across branches that touch the same file: the #71 branch was cut
+  from main after #74 merged, but a `git stash pop` conflict during development
+  silently reverted `openai_compat.py` to its pre-#74/#75 state. The commit
+  looked clean locally (all tests passed because the test file also lacked the
+  #74/#75 tests at that point) but CI caught it. Lesson: after resolving stash
+  conflicts, diff the resolved files against main to verify no accidental
+  reversions.
 
 ## [0.1.4] - 2026-04-20
 
