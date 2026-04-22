@@ -114,6 +114,33 @@ class TestLLMConfigReachesBackend:
             "OpenAICompatibleBackend via _make_degrading_backend — !88 bug class"
         )
 
+    def test_is_ollama_default_none(self):
+        """Issue #74 — default is None (auto-detect from URL)."""
+        cfg = LLMBackendConfig()
+        assert cfg.llm_is_ollama is None
+
+    def test_is_ollama_env_override(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_LLM_IS_OLLAMA", "true")
+        cfg = LLMBackendConfig()
+        assert cfg.llm_is_ollama is True
+
+    def test_is_ollama_reaches_openai_backend(self, monkeypatch):
+        """Issue #74 end-to-end plumbing: env → PipelineConfig →
+        _make_degrading_backend → OpenAICompatibleBackend._is_ollama."""
+        from chat_to_cop.config import PipelineConfig
+        from chat_to_cop.replay import _make_degrading_backend
+
+        monkeypatch.setenv("CHAT_TO_COP_LLM_IS_OLLAMA", "true")
+        monkeypatch.setenv("CHAT_TO_COP_LLM_URL", "http://127.0.0.1:19999/v1")
+        cfg = PipelineConfig()
+        db = _make_degrading_backend(cfg)
+
+        primary = db._slots[0].backend
+        assert primary._is_ollama is True, (
+            "env-var CHAT_TO_COP_LLM_IS_OLLAMA=true did not reach "
+            "OpenAICompatibleBackend on a non-standard port — #74 bug"
+        )
+
 
 class TestFallbackConfigReachesBackend:
     """Verify fallback config fields would reach the fallback backend."""
@@ -158,6 +185,20 @@ class TestFallbackConfigReachesBackend:
         assert fallback._hard_timeout == 3.5, (
             "env-var CHAT_TO_COP_FALLBACK_EXTRACT_HARD_TIMEOUT did not reach "
             "the fallback OpenAICompatibleBackend via _make_degrading_backend"
+        )
+
+    def test_fallback_is_ollama_reaches_backend(self, monkeypatch):
+        """Issue #74: fallback_is_ollama plumbing through _make_degrading_backend."""
+        from chat_to_cop.config import PipelineConfig
+        from chat_to_cop.replay import _make_degrading_backend
+
+        monkeypatch.setenv("CHAT_TO_COP_FALLBACK_IS_OLLAMA", "true")
+        monkeypatch.setenv("CHAT_TO_COP_FALLBACK_URL", "http://127.0.0.1:29999/v1")
+        cfg = PipelineConfig()
+        db = _make_degrading_backend(cfg)
+        fallback = db._slots[1].backend
+        assert fallback._is_ollama is True, (
+            "env-var CHAT_TO_COP_FALLBACK_IS_OLLAMA=true did not reach the fallback OpenAICompatibleBackend — #74 bug"
         )
 
 

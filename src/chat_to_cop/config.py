@@ -46,6 +46,13 @@ class LLMBackendConfig(BaseSettings):
         default=8192,
         description="Context window size for Ollama models (num_ctx option)",
     )
+    llm_is_ollama: bool | None = Field(
+        default=None,
+        description=(
+            "Explicit Ollama detection override. True = always send num_ctx, "
+            "False = never send. None (default) = auto-detect from URL."
+        ),
+    )
     # Issue #75 — hard wall-clock cap on a single extract() call, wrapping the
     # full instructor retry chain. Without this a pathological message can burn
     # llm_timeout * (llm_max_retries + 1) seconds (up to 12 minutes observed on
@@ -74,6 +81,10 @@ class FallbackConfig(BaseSettings):
     fallback_timeout: float = Field(
         default=30.0,
         description="Timeout for fallback model",
+    )
+    fallback_is_ollama: bool | None = Field(
+        default=None,
+        description="Explicit Ollama detection override for the fallback backend.",
     )
     # Issue #75 — see llm_extract_hard_timeout. Tighter default for the
     # fallback slot so a flaky fallback can't by itself consume the primary's
