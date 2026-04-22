@@ -48,6 +48,7 @@ def _make_degrading_backend(
             email=asksage_config["email"],
             api_key=asksage_config["api_key"],
             model=asksage_config["model"],
+            hard_timeout=config.llm.llm_extract_hard_timeout,
         )
     elif bedrock_config:
         from chat_to_cop.backend.bedrock import BedrockBackend
@@ -57,6 +58,7 @@ def _make_degrading_backend(
             aws_region=bedrock_config["region"],
             timeout=bedrock_config["timeout"],
             max_retries=config.llm.llm_max_retries,
+            hard_timeout=config.llm.llm_extract_hard_timeout,
         )
     elif anthropic_config:
         from chat_to_cop.backend.anthropic_direct import AnthropicDirectBackend
@@ -65,6 +67,7 @@ def _make_degrading_backend(
             model=anthropic_config["model"],
             timeout=anthropic_config["timeout"],
             max_retries=config.llm.llm_max_retries,
+            hard_timeout=config.llm.llm_extract_hard_timeout,
         )
     else:
         primary = OpenAICompatibleBackend(
@@ -74,6 +77,7 @@ def _make_degrading_backend(
             timeout=config.llm.llm_timeout,
             max_retries=config.llm.llm_max_retries,
             num_ctx=config.llm.llm_num_ctx,
+            hard_timeout=config.llm.llm_extract_hard_timeout,
         )
     # Only add a separate fallback if it's a different model
     backends = [primary]
@@ -84,6 +88,7 @@ def _make_degrading_backend(
             base_url=config.fallback.fallback_url,
             model=config.fallback.fallback_model,
             timeout=config.fallback.fallback_timeout,
+            hard_timeout=config.fallback.fallback_extract_hard_timeout,
         )
         backends.append(fallback)
         timeouts.append(config.fallback.fallback_timeout)

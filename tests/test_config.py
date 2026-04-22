@@ -79,6 +79,41 @@ class TestLLMConfigReachesBackend:
         assert cfg.llm_timeout == 45.5
         assert isinstance(cfg.llm_timeout, float)
 
+    def test_extract_hard_timeout_default(self):
+        """Issue #75 — the default hard-timeout value must be present. 45s
+        is short enough to bound the 12-minute pathological case, generous
+        enough to let the 99% case succeed on 14B Ollama (typical 15-30s)."""
+        cfg = LLMBackendConfig()
+        assert cfg.llm_extract_hard_timeout == 45.0
+
+    def test_extract_hard_timeout_env_override(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_LLM_EXTRACT_HARD_TIMEOUT", "20")
+        cfg = LLMBackendConfig()
+        assert cfg.llm_extract_hard_timeout == 20.0
+
+    def test_extract_hard_timeout_reaches_openai_backend(self, monkeypatch):
+        """Issue #75 end-to-end plumbing: env var → PipelineConfig →
+        _make_degrading_backend → OpenAICompatibleBackend._hard_timeout.
+
+        Per the 2026-04-11 !88 lesson, a config field without a wired
+        consumer is dead. The earlier version of the cascade_thresholds
+        plumbing test proved only that the Field deserialized; this test
+        inspects the real backend's state after the real builder ran.
+        """
+        from chat_to_cop.config import PipelineConfig
+        from chat_to_cop.replay import _make_degrading_backend
+
+        monkeypatch.setenv("CHAT_TO_COP_LLM_EXTRACT_HARD_TIMEOUT", "7.5")
+        cfg = PipelineConfig()
+        db = _make_degrading_backend(cfg)
+
+        # The first slot in the chain wraps the primary OpenAICompatibleBackend.
+        primary = db._slots[0].backend
+        assert primary._hard_timeout == 7.5, (
+            "env-var CHAT_TO_COP_LLM_EXTRACT_HARD_TIMEOUT did not reach "
+            "OpenAICompatibleBackend via _make_degrading_backend — !88 bug class"
+        )
+
 
 class TestFallbackConfigReachesBackend:
     """Verify fallback config fields would reach the fallback backend."""
@@ -101,6 +136,29 @@ class TestFallbackConfigReachesBackend:
         cfg = FallbackConfig()
         assert cfg.fallback_model == "qwen2.5:1.5b"
         assert cfg.fallback_timeout == 10.0
+
+    def test_fallback_extract_hard_timeout_default(self):
+        """Issue #75 — fallback slot has its own, tighter default."""
+        cfg = FallbackConfig()
+        assert cfg.fallback_extract_hard_timeout == 20.0
+
+    def test_fallback_extract_hard_timeout_reaches_backend(self, monkeypatch):
+        """End-to-end plumbing for the fallback slot: env → config →
+        _make_degrading_backend → OpenAICompatibleBackend._hard_timeout.
+        """
+        from chat_to_cop.config import PipelineConfig
+        from chat_to_cop.replay import _make_degrading_backend
+
+        monkeypatch.setenv("CHAT_TO_COP_FALLBACK_EXTRACT_HARD_TIMEOUT", "3.5")
+        cfg = PipelineConfig()
+        # Default config has distinct llm_model and fallback_model, so the
+        # fallback slot is present at index 1 (primary is 0, regex is last).
+        db = _make_degrading_backend(cfg)
+        fallback = db._slots[1].backend
+        assert fallback._hard_timeout == 3.5, (
+            "env-var CHAT_TO_COP_FALLBACK_EXTRACT_HARD_TIMEOUT did not reach "
+            "the fallback OpenAICompatibleBackend via _make_degrading_backend"
+        )
 
 
 class TestDegradingConfigReachesCircuitBreaker:
