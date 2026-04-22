@@ -318,6 +318,132 @@ class TestChannelAgentCalibration:
         assert agent.calibration_model.calibrate(0.9) == pytest.approx(0.5)
 
 
+class TestCalibrationPlumbing:
+    """Verify calibration actually changes process_message output (same !88 bug class).
+
+    The existing TestChannelAgentCalibration tests only check attribute presence.
+    These tests assert that calibration changes the *output confidence* of a
+    full process_message call, catching the case where the parameter is accepted
+    but silently ignored.
+    """
+
+    @staticmethod
+    def _make_message(content: str = "RR15 F+40"):
+        from datetime import datetime, timezone
+
+        from chat_to_cop.models.messages import IRCMessage
+
+        return IRCMessage(
+            timestamp=datetime(2025, 9, 23, 14, 10, 0, tzinfo=timezone.utc),
+            channel="#c2_coord",
+            sender="Hydro_Tank",
+            content=content,
+        )
+
+    @staticmethod
+    def _make_backend(confidence: float = 0.85):
+        """Build a FakeBackend matching test_channel_agent's pattern."""
+        from datetime import datetime, timezone
+
+        from pydantic import BaseModel
+
+        from chat_to_cop.models.cop_update import CoPUpdate, EntityUpdate, UpdateType
+
+        class _Backend:
+            async def extract(self, messages: list[dict], schema: type[BaseModel]) -> CoPUpdate:
+                return CoPUpdate(
+                    update_type=UpdateType.FUEL,
+                    confidence=confidence,
+                    extraction_method="llm",
+                    entities=[EntityUpdate(callsign="RR15", fuel_state="F+40")],
+                    source_channel="",
+                    source_speaker="",
+                    source_message="",
+                    timestamp=datetime(2025, 9, 23, 14, 0, 0, tzinfo=timezone.utc),
+                )
+
+        return _Backend()
+
+    @staticmethod
+    def _make_calibration_model() -> CalibrationModel:
+        """A model where the 0.8-0.9 bucket has 50% accuracy (0.85 -> 0.5)."""
+        model = CalibrationModel(n_bins=10)
+        model.fit([0.85] * 100, [i < 50 for i in range(100)])
+        return model
+
+    def test_calibration_model_applied_in_process_message(self):
+        """Confidence WITH calibration must differ from confidence WITHOUT."""
+        import asyncio
+
+        from chat_to_cop.agent.channel_agent import ChannelAgent
+
+        cal = self._make_calibration_model()
+        msg = self._make_message()
+
+        agent_with = ChannelAgent(channel="#test", backend=self._make_backend(), calibration_model=cal)
+        agent_without = ChannelAgent(channel="#test", backend=self._make_backend())
+
+        async def _run():
+            result_with = await agent_with.process_message(msg)
+            result_without = await agent_without.process_message(msg)
+            return result_with, result_without
+
+        result_with, result_without = asyncio.run(_run())
+
+        assert len(result_with) == 1
+        assert len(result_without) == 1
+        # FakeBackend returns 0.85; calibration maps it to 0.5
+        assert result_with[0].confidence == pytest.approx(0.5)
+        assert result_without[0].confidence == pytest.approx(0.85)
+        assert result_with[0].confidence != result_without[0].confidence
+
+    def test_calibration_flows_through_supervisor(self):
+        """Supervisor must pass calibration_model to ChannelAgent."""
+        import asyncio
+
+        from chat_to_cop.agent.supervisor import Supervisor
+
+        cal = self._make_calibration_model()
+        backend_factory = lambda: self._make_backend()  # noqa: E731
+        sup = Supervisor(backend_factory=backend_factory, calibration_model=cal)
+        agent = sup.start_agent("#test")
+
+        # Verify attribute was forwarded
+        assert agent.calibration_model is not None
+        assert agent.calibration_model.calibrate(0.85) == pytest.approx(0.5)
+
+        # Verify the full route_message path applies it
+        msg = self._make_message()
+
+        async def _run():
+            return await sup.route_message(msg)
+
+        updates = asyncio.run(_run())
+        assert len(updates) == 1
+        assert updates[0].confidence == pytest.approx(0.5)
+
+    def test_supervisor_without_calibration_leaves_confidence_raw(self):
+        """Supervisor with no calibration_model must leave confidence unchanged."""
+        import asyncio
+
+        from chat_to_cop.agent.supervisor import Supervisor
+
+        backend_factory = lambda: self._make_backend()  # noqa: E731
+        sup = Supervisor(backend_factory=backend_factory, calibration_model=None)
+        agent = sup.start_agent("#test")
+
+        assert agent.calibration_model is None
+
+        msg = self._make_message()
+
+        async def _run():
+            return await sup.route_message(msg)
+
+        updates = asyncio.run(_run())
+        assert len(updates) == 1
+        assert updates[0].confidence == pytest.approx(0.85)
+
+
 class TestConfigCalibrationModel:
     def test_default_empty(self):
         from chat_to_cop.config import PipelineConfig
