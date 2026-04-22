@@ -10,6 +10,19 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+### Added
+
+- HPC image build via AG compute nodes: `build-hpc-on-ag` CI job SSHes to an
+  Analytics Gateway m7i.4xlarge node (64GB RAM, 90GB disk, Docker pre-installed),
+  runs `docker build`, and pushes to DLE registry. Replaces Kaniko-based
+  build-hpc which OOM'd on shared runners. Manual trigger, works on tags and main.
+- `deploy/ci/ag-build-hpc.sh`: orchestrator script (qsub with disk allocation,
+  snippet poll with TLS CA support, SSH build via ProxyJump, qdel cleanup)
+- `deploy/ci/ag-node-build.sh`: self-contained build script for AG compute
+  nodes (DoD CA install, Docker insecure-registries config, git clone, docker
+  build/push)
+- CI variables: AG_SSH_KEY, AG_USERNAME, AG_SNIPPET_ID, DLE_GITLAB_TOKEN
+
 ## [0.1.4] - 2026-04-20
 
 ### Fixed
