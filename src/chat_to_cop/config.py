@@ -123,6 +123,20 @@ class SupervisorConfig(BaseSettings):
         description="Max restarts before giving up on an agent",
     )
 
+    # Silent-failure alarm settings (issue #68)
+    health_alarm_interval: float = Field(
+        default=60.0,
+        description="Seconds between health alarm log emissions",
+    )
+    health_alarm_window_minutes: float = Field(
+        default=5.0,
+        description="Rolling window (minutes) for health alarm metrics",
+    )
+    passthrough_alarm_threshold: float = Field(
+        default=0.7,
+        description="Passthrough rate above this triggers CRITICAL status",
+    )
+
 
 class CoPWriterConfig(BaseSettings):
     """Configuration for the CoP REST API writer."""
