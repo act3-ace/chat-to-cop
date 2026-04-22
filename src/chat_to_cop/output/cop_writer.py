@@ -306,10 +306,18 @@ class CoPWriter:
     @classmethod
     def from_config(cls, config) -> CoPWriter:
         """Create a CoPWriter from a CoPWriterConfig."""
+        # Issue #70: build the schema adapter from the config field and pass
+        # it into the REST client. Default "passthrough" spec preserves
+        # prior behavior (record.model_dump). Per the 2026-04-11 !88 lesson,
+        # the consumer ships with the Field — not a later MR.
+        from chat_to_cop.output.schema_adapter import build_adapter
+
+        adapter = build_adapter(config.schema_adapter)
         rest_client = CoPRESTClient(
             base_url=config.cop_api_url,
             timeout=config.cop_write_timeout,
             retry_attempts=config.cop_retry_attempts,
+            adapter=adapter,
         )
         return cls(
             rest_client=rest_client,
