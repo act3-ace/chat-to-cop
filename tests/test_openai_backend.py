@@ -352,6 +352,92 @@ class TestHardTimeout:
         assert result.update_type == "fuel"
 
 
+class TestNumCtxDetection:
+    """Issue #74 — num_ctx must reach Ollama on non-standard ports.
+
+    The old heuristic gated on '11434' or 'ollama' in the URL. Any other
+    port (e.g. HPC array jobs) silently dropped num_ctx, causing Ollama to
+    use its 4K default and truncating the system prompt.
+    """
+
+    def test_explicit_is_ollama_sends_num_ctx_on_nonstandard_port(self):
+        """Regression: port 19999, is_ollama=True, assert extra_body present."""
+        backend = OpenAICompatibleBackend(
+            base_url="http://127.0.0.1:19999/v1",
+            num_ctx=8192,
+            is_ollama=True,
+        )
+        kwargs: dict = {}
+        kwargs["model"] = backend.model
+        kwargs["messages"] = [{"role": "user", "content": "test"}]
+        kwargs["response_model"] = SimpleExtraction
+        kwargs["max_retries"] = 0
+
+        if backend.num_ctx and backend._is_ollama:
+            kwargs["extra_body"] = {"options": {"num_ctx": backend.num_ctx}}
+
+        assert "extra_body" in kwargs
+        assert kwargs["extra_body"]["options"]["num_ctx"] == 8192
+
+    def test_default_port_auto_detects_ollama(self):
+        backend = OpenAICompatibleBackend(
+            base_url="http://127.0.0.1:11434/v1",
+            num_ctx=8192,
+        )
+        assert backend._is_ollama is True
+
+    def test_ollama_in_hostname_auto_detects(self):
+        backend = OpenAICompatibleBackend(
+            base_url="http://ollama.example.com:8080/v1",
+            num_ctx=8192,
+        )
+        assert backend._is_ollama is True
+
+    def test_openai_url_does_not_detect_as_ollama(self):
+        """Anti-regression: openai.com must NOT send extra_body."""
+        backend = OpenAICompatibleBackend(
+            base_url="https://api.openai.com/v1",
+            num_ctx=8192,
+            is_ollama=False,
+        )
+        assert backend._is_ollama is False
+
+    def test_auto_detect_nonstandard_port_warns(self):
+        """When num_ctx>0 and auto-detect fails, emit a visible warning."""
+        from io import StringIO
+
+        from loguru import logger
+
+        buf = StringIO()
+        sink_id = logger.add(buf, format="{message}", level="WARNING")
+        try:
+            OpenAICompatibleBackend(
+                base_url="http://127.0.0.1:19999/v1",
+                num_ctx=8192,
+            )
+            output = buf.getvalue()
+            assert "num_ctx" in output and "not detected" in output
+        finally:
+            logger.remove(sink_id)
+
+    def test_explicit_false_suppresses_num_ctx(self):
+        backend = OpenAICompatibleBackend(
+            base_url="http://127.0.0.1:11434/v1",
+            num_ctx=8192,
+            is_ollama=False,
+        )
+        assert backend._is_ollama is False
+
+    def test_num_ctx_zero_skips_regardless(self):
+        backend = OpenAICompatibleBackend(
+            base_url="http://127.0.0.1:11434/v1",
+            num_ctx=0,
+            is_ollama=True,
+        )
+        assert backend._is_ollama is True
+        assert backend.num_ctx == 0
+
+
 class TestIntegrationOllama:
     """Integration tests that require a running Ollama instance.
 
