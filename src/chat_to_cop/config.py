@@ -46,6 +46,16 @@ class LLMBackendConfig(BaseSettings):
         default=8192,
         description="Context window size for Ollama models (num_ctx option)",
     )
+    # Issue #75 — hard wall-clock cap on a single extract() call, wrapping the
+    # full instructor retry chain. Without this a pathological message can burn
+    # llm_timeout * (llm_max_retries + 1) seconds (up to 12 minutes observed on
+    # Blueback 2026-04-22). 45s keeps the 99% case alive on 14B models while
+    # bounding the worst case. DegradingBackend converts the timeout into a
+    # fall-through to the next backend slot.
+    llm_extract_hard_timeout: float = Field(
+        default=45.0,
+        description="Hard wall-clock cap (seconds) on a single extract call, independent of instructor retries",
+    )
 
 
 class FallbackConfig(BaseSettings):
@@ -64,6 +74,13 @@ class FallbackConfig(BaseSettings):
     fallback_timeout: float = Field(
         default=30.0,
         description="Timeout for fallback model",
+    )
+    # Issue #75 — see llm_extract_hard_timeout. Tighter default for the
+    # fallback slot so a flaky fallback can't by itself consume the primary's
+    # budget on top of the primary's own hard timeout.
+    fallback_extract_hard_timeout: float = Field(
+        default=20.0,
+        description="Hard wall-clock cap (seconds) on a single fallback extract call",
     )
 
 
