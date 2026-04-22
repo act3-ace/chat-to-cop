@@ -1,66 +1,55 @@
-# Session Notes — 2026-04-20
+# Session Notes -- 2026-04-21 (AG CI Build Pipeline)
 
-## Sweep: COMPLETE
+## Current State
 
-1,600/1,600 DBs, 0 failures, all 16 cells at N=100.
-Final eval report at `$WORKDIR/output/sweep/final_report.md` (Narwhal) and
-CSV at `data/narwhal_results_post_88/final_sweep_1600.csv` (local).
+v0.1.4 release pipeline green. HPC image built locally and pushed to DLE
+registry (hpc-v0.1.4 + hpc-latest). New `build-hpc-on-ag` CI job written
+and CI variables configured. Ready to test on a branch.
 
-Core-hours consumed: ~450,000 on AFSNW27526RYZ.
+## What Changed This Session
 
-## Final RQ1 Results
+Added AG-based HPC image build to the CI pipeline. DLE shared runners OOM
+on the 20GB+ image (Kaniko snapshot memory limit). The new approach SSHes
+from a DLE shared runner to an AG compute node, which has Docker
+pre-installed and 128GB RAM.
 
-Speakers hurt at EVERY model size. All p < 0.0001.
+### Files Created
 
-| Model | Type Exact Delta (pp) | Best (OFF) |
-|---|---|---|
-| 3B  | -1.54 | 17.7% |
-| 7B  | -4.12 | 40.5% |
-| 14B | -1.50 | 46.8% |
-| 32B | -2.74 | 47.8% |
+- `deploy/ci/ag-build-hpc.sh` -- orchestrator: qsub, snippet poll, SSH, qdel
+- `deploy/ci/ag-node-build.sh` -- runs on AG node: CA install, clone, build, push
 
-Temperature (det vs stoch): no significant effect (p=0.99).
-14B is the sweet spot (least speaker damage, near-32B accuracy).
-MASH recommendation: speakers OFF, ship 14B or 32B.
+### Files Modified
 
-## Completed (2026-04-20, second session)
+- `.gitlab-ci.yml` -- replaced Kaniko `build-hpc` with `build-hpc-on-ag`
+- `CHANGELOG.md` -- unreleased entries for AG build pipeline
 
-1. DONE: `docs/SPEAKER_MODEL_RESULTS.md` rewritten with full N=100 analysis, ANOVA, per-type breakdown
-2. DONE: #52 closed with final results comment
-3. DONE: `use_speaker_models` default flipped to `False` in config.py and channel_agent.py
-4. DONE: All tests updated for new default (964 passing, lint clean)
-5. DONE: Narwhal git pulled to latest main, eval re-run with fixed script
-6. DONE: eval_speaker_sweep.py patched with isinstance guard for string entities
-7. TODO: Validate on MASH target hardware (#26) if 24GB GPU becomes available
+### CI Variables Added (project 18350)
 
-## Test suite
+- AG_SSH_KEY (file, protected) -- AG SSH private key
+- AG_USERNAME (protected, masked) -- hsclouse
+- AG_SNIPPET_ID (protected) -- 136
+- DLE_GITLAB_TOKEN (protected, masked) -- DLE GitLab PAT
 
-964 passed, lint clean, CI green. MR !99 (test quality audit) merged.
-Issue #64 filed for calibration plumbing test (not blocking).
+## How the AG Build Works
 
-## Git state
+1. DLE CI job (ubuntu:22.04) installs SSH client, configures AG SSH key
+2. SSHes to AG head node, submits `qsub` for r5.4xlarge (128GB RAM)
+3. Polls DLE GitLab snippet (ID 136) until compute node publishes its IP
+4. SSHes to compute node via ProxyJump through ag-head
+5. On node: installs DoD CA bundle, clones repo, `docker build`, pushes to DLE registry
+6. `qdel` cleans up the AG job (also runs on failure via trap)
 
-- Branch: main (8 files modified, not yet committed)
-- `data/narwhal_results_post_88/final_sweep_1600.csv` downloaded by other session
-- Narwhal: pulled to latest main (a7853b7), eval_speaker_sweep.py also sed-patched with isinstance guard
+## What to Do Next
 
-## Eval script caveat
+1. Create a branch, push, and test `build-hpc-on-ag` manually from the pipeline
+2. If SSH from DLE runner to AG doesn't work (network/firewall), fallback is
+   the laptop build path (already proven today)
+3. SIF conversion (`build-hpc-sif`) needs the AG build to succeed first --
+   it pulls from DLE registry via skopeo
 
-The Narwhal copy of `scripts/eval_speaker_sweep.py` was manually patched
-via sed to fix the `data_json`/`entities` column mismatch. The local repo
-copy (from !99) has the correct code. If re-running eval on Narwhal, either
-`git pull` on Narwhal or re-upload the local copy.
+## Previous Session (2026-04-20)
 
-## Open issues (12)
-
-HIGH: #26 (24GB GPU validation), #17 (CoP writer — blocked on Sarah's schema)
-MEDIUM: #64 (cal plumbing test), #51 (vLLM on AG), #45 (DELTRON tier)
-LOW: #48, #47, #46, #44, #37, #30 (research/future)
-CLOSED this session: #52 (with final N=100 results)
-
-## Other sessions
-
-Blueback/Raider arch alternatives bench and LoRA training running from
-a separate session (see `C:\Users\hsclouse\GitProjects\SESSION_NOTES.md`
-for that work). Those test the architectural fixes the degradation report
-recommends; this sweep provides the statistical baseline.
+Converted CI from Docker-in-Docker to Kaniko. Fixed 8+ issues across
+pipeline iterations: DinD unsupported, TLS certs, Singularity entrypoints,
+Ollama URL changes, Docker Hub rate limits, protected tag variables,
+release-cli TLS trust. v0.1.4 release pipeline fully green (5/5 auto jobs).
