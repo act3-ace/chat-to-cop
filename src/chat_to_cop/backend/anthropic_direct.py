@@ -44,6 +44,7 @@ class AnthropicDirectBackend:
         timeout: float = 30.0,
         max_retries: int = 2,
         max_tokens: int = 4096,
+        hard_timeout: float | None = None,
     ) -> None:
         if not HAS_ANTHROPIC:
             raise ImportError("anthropic package required. Install with: pip install anthropic")
@@ -51,6 +52,8 @@ class AnthropicDirectBackend:
         self.model = model
         self.timeout = timeout
         self.max_tokens = max_tokens
+        # Issue #75 — hard wall-clock cap on the full instructor retry chain.
+        self._hard_timeout = hard_timeout
         self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
         self._raw_client = Anthropic()
@@ -83,7 +86,7 @@ class AnthropicDirectBackend:
 
         try:
             async with metrics.async_timer("extraction_latency_seconds", labels=labels):
-                result = await asyncio.get_event_loop().run_in_executor(
+                future = asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: self._client.messages.create(
                         model=self.model,
@@ -94,12 +97,18 @@ class AnthropicDirectBackend:
                         max_retries=self._max_retries,
                     ),
                 )
+                # Issue #75 — hard cap around the full instructor retry chain.
+                if self._hard_timeout is not None:
+                    result = await asyncio.wait_for(future, timeout=self._hard_timeout)
+                else:
+                    result = await future
             metrics.inc("backend_successes_total", labels=labels)
             return result
 
         except asyncio.TimeoutError as e:
             metrics.inc("backend_failures_total", labels={**labels, "reason": "timeout"})
-            raise RetryableError(f"Timeout after {self.timeout}s") from e
+            budget = self._hard_timeout if self._hard_timeout is not None else self.timeout
+            raise RetryableError(f"Hard timeout after {budget}s (issue #75)") from e
         except Exception as e:
             err_str = str(e).lower()
             if any(code in err_str for code in ("429", "rate limit", "503", "502", "timeout", "throttl")):

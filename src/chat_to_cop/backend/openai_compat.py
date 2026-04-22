@@ -42,11 +42,16 @@ class OpenAICompatibleBackend:
         timeout: float = 10.0,
         max_retries: int = 2,
         num_ctx: int = 8192,
+        hard_timeout: float | None = None,
     ) -> None:
         self.base_url = base_url
         self.model = model
         self.timeout = timeout
         self.num_ctx = num_ctx
+        # Issue #75 — hard wall-clock cap on the full instructor retry chain.
+        # None means "respect only the per-request timeout + instructor's
+        # retries" (pre-#75 behavior). See config.llm.llm_extract_hard_timeout.
+        self._hard_timeout = hard_timeout
         self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
         self._client = instructor.from_openai(
@@ -96,13 +101,23 @@ class OpenAICompatibleBackend:
                 # Only set for Ollama — other providers reject unknown options.
                 if self.num_ctx and ("11434" in self.base_url or "ollama" in self.base_url.lower()):
                     kwargs["extra_body"] = {"options": {"num_ctx": self.num_ctx}}
-                result = await self._client.chat.completions.create(**kwargs)
+                # Issue #75 — wrap the full instructor retry chain in a hard
+                # wall-clock cap. Without it a pathological schema-validation
+                # loop burns timeout * (max_retries+1) seconds per message.
+                if self._hard_timeout is not None:
+                    result = await asyncio.wait_for(
+                        self._client.chat.completions.create(**kwargs),
+                        timeout=self._hard_timeout,
+                    )
+                else:
+                    result = await self._client.chat.completions.create(**kwargs)
             metrics.inc("backend_successes_total", labels=labels)
             return result
 
         except asyncio.TimeoutError as e:
             metrics.inc("backend_failures_total", labels={**labels, "reason": "timeout"})
-            raise RetryableError(f"Timeout after {self.timeout}s") from e
+            budget = self._hard_timeout if self._hard_timeout is not None else self.timeout
+            raise RetryableError(f"Hard timeout after {budget}s (issue #75)") from e
         except Exception as e:
             err_str = str(e).lower()
             if any(code in err_str for code in ("429", "rate limit", "503", "502", "timeout")):
