@@ -47,3 +47,5 @@ Thumbs.db
 
 # Scratch / transient local artifacts
 test_critique.md
+SourceCode.pdf
+scripts/texify_source.py
