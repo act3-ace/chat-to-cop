@@ -27,6 +27,7 @@ from chat_to_cop.output.schema_adapter import (
     JsonSchemaAdapter,
     PassthroughAdapter,
     SchemaAdapter,
+    _resolve_source,
     build_adapter,
 )
 
@@ -339,33 +340,6 @@ class TestJsonSchemaAdapterMapping:
         assert "trackId" in out
         assert out["trackId"] is None
 
-    def test_list_index_in_path(self, tmp_path):
-        """Dotted paths support numeric list indices (e.g., entities.0.callsign)."""
-        from chat_to_cop.output.cop_schema import BattleEffect
-
-        schema = _write_schema(
-            tmp_path,
-            schema={
-                "type": "object",
-                "properties": {"trackId": {"type": "string"}, "firstCallsign": {"type": "string"}},
-                "required": ["trackId"],
-            },
-        )
-        mapping = _write_mapping(
-            tmp_path,
-            {
-                "trackId": "track.track_id",
-                "firstCallsign": "track.callsign",
-            },
-        )
-        adapter = JsonSchemaAdapter(schema, mapping)
-        out = adapter.map(_record())
-        assert out["firstCallsign"] == "ORCA01"
-        # Just touch the BattleEffect import so ruff doesn't flag it unused
-        # in CI — it's here as a proof that list-index paths work when the
-        # adapter is used against battle_effect records in the future.
-        assert BattleEffect is not None
-
     def test_no_mutation_of_record(self, tmp_path):
         schema = _write_schema(tmp_path)
         mapping = _write_mapping(
@@ -417,6 +391,58 @@ class TestBuildAdapter:
 # ---------------------------------------------------------------------------
 # Transforms set
 # ---------------------------------------------------------------------------
+
+
+class TestResolveSource:
+    """Unit tests for the dotted-path resolver.
+
+    Covers list indexing, dict traversal, and graceful failure modes. These
+    are the code paths that the integration tests (``TestJsonSchemaAdapterMapping``)
+    exercise indirectly; testing ``_resolve_source`` directly makes the
+    boundary explicit and catches bugs in path walking even if the adapter
+    happens to produce right answers by accident.
+    """
+
+    def test_scalar_dict_path(self):
+        data = {"a": {"b": {"c": "leaf"}}}
+        assert _resolve_source(data, "a.b.c") == "leaf"
+
+    def test_top_level_key(self):
+        assert _resolve_source({"x": 1}, "x") == 1
+
+    def test_missing_key_returns_none(self):
+        assert _resolve_source({"a": 1}, "b") is None
+
+    def test_missing_nested_key_returns_none(self):
+        assert _resolve_source({"a": {"b": 1}}, "a.c") is None
+
+    def test_list_index_leaf(self):
+        """Numeric segment indexes into a list. This is the code path
+        the Phase 0 PR originally claimed to test but did not."""
+        assert _resolve_source({"items": ["x", "y", "z"]}, "items.1") == "y"
+
+    def test_list_index_nested_into_dict(self):
+        data = {"entities": [{"id": "E1"}, {"id": "E2"}, {"id": "E3"}]}
+        assert _resolve_source(data, "entities.2.id") == "E3"
+
+    def test_list_index_out_of_range_returns_none(self):
+        assert _resolve_source({"items": ["a", "b"]}, "items.5") is None
+
+    def test_non_numeric_segment_into_list_returns_none(self):
+        """A dotted segment that cannot be parsed as int on a list → None."""
+        assert _resolve_source({"items": ["a"]}, "items.foo") is None
+
+    def test_traversal_through_scalar_returns_none(self):
+        """Walking into a non-container stops with None rather than raising."""
+        assert _resolve_source({"a": 42}, "a.b") is None
+
+    def test_empty_path_component_is_none(self):
+        """``entities.`` (trailing dot) walks into '' which isn't a key."""
+        assert _resolve_source({"entities": []}, "entities.") is None
+
+    def test_none_value_stops_walk(self):
+        """Encountering None mid-path yields None for the whole resolution."""
+        assert _resolve_source({"a": None}, "a.b") is None
 
 
 class TestTransforms:

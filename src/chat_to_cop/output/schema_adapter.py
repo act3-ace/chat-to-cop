@@ -150,6 +150,19 @@ def _collect_schema_properties(schema: dict[str, Any]) -> set[str]:
     return set(props.keys())
 
 
+def _valid_record_top_level_fields() -> set[str]:
+    """Return the set of top-level field names on ``CoPRecord``.
+
+    Used to warn at load time when a mapping source path starts with a
+    segment that could not be a CoPRecord field (typo class). This is a
+    permissive check — subsequent segments (e.g., ``track.track_nmbr`` —
+    typo in ``track_number``) aren't validated here because walking nested
+    Pydantic models from a string path is more complex than is warranted
+    for Phase 0.
+    """
+    return set(CoPRecord.model_fields.keys())
+
+
 def _collect_required(schema: dict[str, Any]) -> set[str]:
     required = schema.get("required")
     if not isinstance(required, list):
@@ -204,6 +217,19 @@ class JsonSchemaAdapter:
 
         schema_fields = _collect_schema_properties(self._schema)
         required_fields = _collect_required(self._schema)
+        record_fields = _valid_record_top_level_fields()
+
+        # Gotcha #3 from the post-merge review: schema without a top-level
+        # 'properties' block (e.g., one built from $ref, allOf, anyOf) would
+        # silently skip target-field validation. Warn so operators know.
+        if not schema_fields:
+            logger.warning(
+                "Schema at {} has no top-level 'properties' — target-field "
+                "validation skipped. Any mapping target will be accepted. "
+                "Phase 0 does not flatten $ref/allOf/anyOf; widen "
+                "_collect_schema_properties if your real schema uses composition.",
+                self.schema_path,
+            )
 
         # Normalize + validate. Target fields must exist in the schema's
         # top-level properties; unknown targets indicate the operator
@@ -221,6 +247,23 @@ class JsonSchemaAdapter:
                 )
             source, transform = _parse_mapping_entry(entry, target)
             normalized[target] = (source, transform)
+
+            # Gotcha #4 from the post-merge review: source paths whose first
+            # segment isn't a CoPRecord field are almost always typos. Warn
+            # — don't raise, because a source path *could* legitimately
+            # traverse a metadata dict or a future CoPRecord extension we
+            # don't know about yet.
+            first_segment = source.split(".", 1)[0]
+            if first_segment and first_segment not in record_fields:
+                logger.warning(
+                    "Mapping source path {!r} for target {!r} starts with "
+                    "{!r}, which is not a CoPRecord top-level field. Typo? "
+                    "Known fields: {}",
+                    source,
+                    target,
+                    first_segment,
+                    sorted(record_fields),
+                )
 
         missing_required = required_fields - normalized.keys()
         if missing_required:
