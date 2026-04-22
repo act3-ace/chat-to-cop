@@ -103,6 +103,83 @@ yields `None`. For optional targets the resulting key is elided from the
 payload. For required targets, `null` is emitted so the CoP's own
 validation can reject it with a clear HTTP 4xx.
 
+### Required-field semantics — deliberate choice
+
+A mis-mapped **required** field is visible two different ways:
+
+- **At load time** we enforce that every name in the schema's `required`
+  list has a mapping entry. Missing entries raise before the process
+  serves its first request.
+- **At send time** a required target whose source-path resolves to `None`
+  emits `"field": null` instead of being elided. The CoP then rejects the
+  record with a 4xx naming the field. This is preferable to silently
+  dropping the key (invisible data loss) or raising inside the writer
+  (the writer has no way to correct the message — only the CoP knows its
+  own contract). The operator sees the failure in the CoP's response
+  text and can adjust the source path or transform in the mapping file.
+
+The net effect: mapping structure problems fail at startup; mapping
+content problems fail at the CoP with a pointer back to the offending
+field.
+
+## Transform coverage
+
+The current closed set targets the mappings we expect at MASH. A few
+transforms that ship but are not yet used in anger:
+
+- `iso_datetime` — effectively identity on `CoPRecord.timestamp`, which
+  `model_dump(mode="json")` already serializes to an ISO string. Kept so
+  a future payload that carries a `datetime` object survives the round
+  trip unchanged.
+- `int` / `float` — applied only when a source value is non-`None`; both
+  pass `None` through so a missing optional stays missing.
+
+If a new mapping needs a transform that isn't in the set, add it in
+`schema_adapter.py::_TRANSFORMS`. Do **not** extend via config — that
+path would introduce code execution in a config file, which is an
+explicit non-goal for this layer.
+
+## What the test suite covers
+
+`tests/test_schema_adapter.py` (37 tests, 6 classes) exercises:
+
+- **Protocol conformance.** Both `PassthroughAdapter` and
+  `JsonSchemaAdapter` satisfy `SchemaAdapter` at runtime
+  (`isinstance(..., SchemaAdapter)` on a `@runtime_checkable` Protocol).
+- **Construct-time validation.** Missing schema/mapping files, unknown
+  transforms, unknown targets, missing required-field mappings, and
+  non-object mapping JSON all raise before first use.
+- **Transform behavior.** Each transform's happy path plus its handling
+  of `None` and type-mismatched input.
+- **Source-path resolution** (`TestResolveSource`). Exercises
+  `_resolve_source` directly with dict/list/scalar test data. Catches
+  the class of bug where a test claims to cover list indexing but
+  only ever walks dicts.
+- **Runtime mapping.** `PassthroughAdapter.map` is bit-identical to
+  `record.model_dump(mode="json")`. `JsonSchemaAdapter.map` produces
+  only mapped keys, elides missing optionals, and emits `null` for
+  missing required.
+- **End-to-end integration with `CoPRESTClient`.** The default client
+  uses `PassthroughAdapter`; the `CHAT_TO_COP_SCHEMA_ADAPTER=jsonschema:...`
+  env var actually reaches the real `CoPRESTClient` instance (not a
+  test double). This is the 2026-04-11 !88 lesson: testing that the
+  config object carries the value is not enough.
+
+Two intentionally-weak tests remain as smoke signals:
+`test_protocol_is_runtime_checkable` (Protocol-level assertion, not a
+behavior check) and `test_no_mutation_of_record` (confirms `map` does
+not mutate its input — cheap, but not a mapping-correctness test).
+
+## Malformed JSON at load time
+
+The adapter reads the schema and mapping with `json.loads`. A
+syntactically-broken file raises `json.JSONDecodeError` from the
+standard-library parser, which bubbles up through `__init__`. The
+error message names the line and column. This is covered
+implicitly by the "construct-time validation" class of tests but has
+no dedicated case — the behavior is inherited from the standard
+library.
+
 ## Phase 1 and Phase 2
 
 Phase 0 (this guide) covers the static-mapping case. Later phases, tracked
