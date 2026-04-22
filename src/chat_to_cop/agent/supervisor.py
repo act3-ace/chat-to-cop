@@ -7,15 +7,19 @@ Responsibilities:
 - Agent lifecycle (start, stop, restart, reassign channels)
 - Priority management (shed load by deprioritizing LOW channels)
 - New channel detection (spawn agent for channels appearing mid-exercise)
+- Silent-failure alarm (issue #68: periodic health status logging)
 - Metrics exposure (FastAPI /health and /agents endpoints)
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 
 from fastapi import FastAPI
 from loguru import logger
@@ -28,6 +32,151 @@ from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
 from chat_to_cop.models.feedback import FusionFeedback
 from chat_to_cop.models.messages import CHANNEL_PRIORITIES, ChannelPriority, IRCMessage
+
+
+class PipelineHealthStatus(str, Enum):
+    """Overall pipeline health for the silent-failure alarm."""
+
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    CRITICAL = "CRITICAL"
+
+
+@dataclass
+class _ExtractionRecord:
+    """A single extraction outcome for the rolling window."""
+
+    timestamp: float  # time.monotonic()
+    confidence: float
+    is_passthrough: bool
+    is_error: bool
+
+
+class HealthAlarm:
+    """Rolling-window health monitor that detects silent pipeline failures.
+
+    Tracks recent extraction outcomes and computes aggregate health metrics.
+    Emits periodic structured log lines so the operator (Mia at MASH) can
+    tell at a glance whether the pipeline is actually working or silently
+    stuck.
+    """
+
+    def __init__(
+        self,
+        *,
+        window_minutes: float = 5.0,
+        passthrough_threshold: float = 0.7,
+        idle_timeout_seconds: float = 120.0,
+    ) -> None:
+        self._window_seconds = window_minutes * 60.0
+        self._passthrough_threshold = passthrough_threshold
+        self._idle_timeout = idle_timeout_seconds
+        self._records: deque[_ExtractionRecord] = deque()
+        self._last_record_time: float | None = None
+
+    def record(self, update: CoPUpdate) -> None:
+        """Record an extraction outcome into the rolling window."""
+        now = time.monotonic()
+        self._last_record_time = now
+        is_passthrough = update.extraction_method in ("passthrough", "error", "shed")
+        is_error = update.extraction_method == "error"
+        self._records.append(
+            _ExtractionRecord(
+                timestamp=now,
+                confidence=update.confidence,
+                is_passthrough=is_passthrough,
+                is_error=is_error,
+            )
+        )
+        self._prune()
+
+    def _prune(self) -> None:
+        """Remove records older than the window."""
+        cutoff = time.monotonic() - self._window_seconds
+        while self._records and self._records[0].timestamp < cutoff:
+            self._records.popleft()
+
+    def compute(self, active_agents: int = 0) -> dict:
+        """Compute current health metrics from the rolling window.
+
+        Returns a dict with: status, passthrough_rate, avg_confidence,
+        messages_in_window, error_count, active_agents.
+        """
+        self._prune()
+        n = len(self._records)
+
+        if n == 0:
+            # No messages in window -- check if we're idle too long
+            idle = self._is_idle()
+            status = PipelineHealthStatus.CRITICAL if idle else PipelineHealthStatus.HEALTHY
+            return {
+                "status": status,
+                "passthrough_rate": 0.0,
+                "avg_confidence": 0.0,
+                "messages_in_window": 0,
+                "error_count": 0,
+                "active_agents": active_agents,
+            }
+
+        passthrough_count = sum(1 for r in self._records if r.is_passthrough)
+        error_count = sum(1 for r in self._records if r.is_error)
+        passthrough_rate = passthrough_count / n
+        avg_confidence = sum(r.confidence for r in self._records) / n
+
+        status = self._classify(passthrough_rate, avg_confidence)
+
+        return {
+            "status": status,
+            "passthrough_rate": round(passthrough_rate, 4),
+            "avg_confidence": round(avg_confidence, 4),
+            "messages_in_window": n,
+            "error_count": error_count,
+            "active_agents": active_agents,
+        }
+
+    def _is_idle(self) -> bool:
+        """True if no messages have been recorded for longer than the idle timeout."""
+        if self._last_record_time is None:
+            return False  # Never received a message -- not idle, just not started
+        return (time.monotonic() - self._last_record_time) > self._idle_timeout
+
+    def _classify(self, passthrough_rate: float, avg_confidence: float) -> PipelineHealthStatus:
+        """Classify health based on thresholds.
+
+        CRITICAL: passthrough_rate > threshold or avg_confidence < 0.3
+        DEGRADED: passthrough_rate 0.3-threshold or avg_confidence 0.3-0.5
+        HEALTHY: everything else
+        """
+        if passthrough_rate > self._passthrough_threshold or avg_confidence < 0.3:
+            return PipelineHealthStatus.CRITICAL
+        if passthrough_rate >= 0.3 or avg_confidence < 0.5:
+            return PipelineHealthStatus.DEGRADED
+        return PipelineHealthStatus.HEALTHY
+
+    def emit_log(self, active_agents: int = 0, backend_states: dict | None = None) -> None:
+        """Emit a structured health status log line."""
+        report = self.compute(active_agents=active_agents)
+        status = report["status"]
+        extra = ""
+        if backend_states:
+            extra = f", backends={backend_states}"
+
+        msg = (
+            f"pipeline_health={status.value} "
+            f"passthrough_rate={report['passthrough_rate']:.2%} "
+            f"avg_confidence={report['avg_confidence']:.3f} "
+            f"messages_in_window={report['messages_in_window']} "
+            f"errors={report['error_count']} "
+            f"active_agents={report['active_agents']}"
+            f"{extra}"
+        )
+
+        if status == PipelineHealthStatus.CRITICAL:
+            logger.error(msg)
+        elif status == PipelineHealthStatus.DEGRADED:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
 
 
 @dataclass
@@ -61,6 +210,9 @@ class Supervisor:
         error_rate_threshold: float = 0.1,
         health_check_interval: float = 5.0,
         max_restart_attempts: int = 3,
+        health_alarm_interval: float = 60.0,
+        health_alarm_window_minutes: float = 5.0,
+        passthrough_alarm_threshold: float = 0.7,
     ) -> None:
         self._backend_factory = backend_factory
         # AgentConfig() reads CHAT_TO_COP_* env vars on instantiation, so the
@@ -78,6 +230,13 @@ class Supervisor:
         self._max_restart_attempts = max_restart_attempts
         self._restart_counts: dict[str, int] = {}
         self._running = False
+
+        # Silent-failure alarm (issue #68)
+        self._health_alarm_interval = health_alarm_interval
+        self._health_alarm = HealthAlarm(
+            window_minutes=health_alarm_window_minutes,
+            passthrough_threshold=passthrough_alarm_threshold,
+        )
 
     # -- Properties --
 
@@ -160,25 +319,27 @@ class Supervisor:
         # Load shedding: return passthrough for shed channels
         if channel in self._shed_channels:
             metrics.inc("supervisor_messages_shed_total", labels={"channel": channel})
-            return [
-                CoPUpdate(
-                    update_type=UpdateType.NONE,
-                    confidence=0.0,
-                    extraction_method="shed",
-                    entities=[],
-                    source_channel=channel,
-                    source_speaker=message.sender,
-                    source_message=message.content,
-                    timestamp=message.timestamp,
-                    reasoning=f"Channel {channel} shed due to system load",
-                )
-            ]
+            shed_update = CoPUpdate(
+                update_type=UpdateType.NONE,
+                confidence=0.0,
+                extraction_method="shed",
+                entities=[],
+                source_channel=channel,
+                source_speaker=message.sender,
+                source_message=message.content,
+                timestamp=message.timestamp,
+                reasoning=f"Channel {channel} shed due to system load",
+            )
+            self._health_alarm.record(shed_update)
+            return [shed_update]
 
         # Delegate to channel agent
         health = self._health[channel]
         try:
             updates = await self._agents[channel].process_message(message)
             health.messages_processed = self._agents[channel].message_count
+            for u in updates:
+                self._health_alarm.record(u)
             return updates
         except Exception as e:
             # Belt-and-suspenders: ChannelAgent already catches internally,
@@ -187,19 +348,19 @@ class Supervisor:
             health.last_error = str(e)
             metrics.inc("supervisor_routing_errors_total", labels={"channel": channel})
             logger.error(f"Unhandled error routing to {channel}: {e}")
-            return [
-                CoPUpdate(
-                    update_type=UpdateType.NONE,
-                    confidence=0.0,
-                    extraction_method="error",
-                    entities=[],
-                    source_channel=channel,
-                    source_speaker=message.sender,
-                    source_message=message.content,
-                    timestamp=message.timestamp,
-                    reasoning=f"Supervisor routing error: {e}",
-                )
-            ]
+            error_update = CoPUpdate(
+                update_type=UpdateType.NONE,
+                confidence=0.0,
+                extraction_method="error",
+                entities=[],
+                source_channel=channel,
+                source_speaker=message.sender,
+                source_message=message.content,
+                timestamp=message.timestamp,
+                reasoning=f"Supervisor routing error: {e}",
+            )
+            self._health_alarm.record(error_update)
+            return [error_update]
 
     # -- Feedback routing --
 
@@ -300,15 +461,26 @@ class Supervisor:
     # -- Main loop --
 
     async def run(self) -> None:
-        """Main supervisor loop: periodic health checks."""
+        """Main supervisor loop: periodic health checks + alarm emissions."""
         self._running = True
-        logger.info(f"Supervisor started (health_check_interval={self._health_check_interval}s)")
+        logger.info(
+            f"Supervisor started (health_check_interval={self._health_check_interval}s, "
+            f"alarm_interval={self._health_alarm_interval}s)"
+        )
+        last_alarm_time = time.monotonic()
 
         while self._running:
             try:
                 self.health_check()
             except Exception as e:
                 logger.error(f"Health check failed: {e}")
+
+            # Emit health alarm on its own interval
+            now = time.monotonic()
+            if now - last_alarm_time >= self._health_alarm_interval:
+                self._health_alarm.emit_log(active_agents=len(self.active_channels))
+                last_alarm_time = now
+
             await asyncio.sleep(self._health_check_interval)
 
     def stop(self) -> None:
@@ -342,12 +514,17 @@ class Supervisor:
         """Overall system health for the /health endpoint."""
         total = len(self._agents)
         active = len(self.active_channels)
+        alarm = self._health_alarm.compute(active_agents=active)
         return {
             "status": "degraded" if self._shed_channels else "healthy",
             "total_agents": total,
             "active_agents": active,
             "shed_channels": sorted(self._shed_channels),
             "overloaded": self._is_system_overloaded(),
+            "pipeline_health": alarm["status"].value,
+            "passthrough_rate": alarm["passthrough_rate"],
+            "avg_confidence": alarm["avg_confidence"],
+            "messages_in_window": alarm["messages_in_window"],
         }
 
 

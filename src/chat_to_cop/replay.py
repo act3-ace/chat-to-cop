@@ -134,6 +134,9 @@ async def run_replay(
         error_rate_threshold=config.supervisor.error_rate_threshold,
         health_check_interval=config.supervisor.health_check_interval,
         max_restart_attempts=config.supervisor.max_restart_attempts,
+        health_alarm_interval=config.supervisor.health_alarm_interval,
+        health_alarm_window_minutes=config.supervisor.health_alarm_window_minutes,
+        passthrough_alarm_threshold=config.supervisor.passthrough_alarm_threshold,
     )
     fusion = FusionAgent()
     cop_writer = CoPWriter.from_config(config.cop_writer)
