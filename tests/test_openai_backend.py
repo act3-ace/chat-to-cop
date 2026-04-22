@@ -202,7 +202,7 @@ class TestOpenAICompatibleBackend:
 
         backend._client.chat.completions.create = mock_create
 
-        with pytest.raises(RetryableError, match="Timeout"):
+        with pytest.raises(RetryableError, match="(?i)timeout"):
             asyncio.run(
                 backend.extract(
                     messages=[{"role": "user", "content": "test"}],
@@ -272,6 +272,84 @@ class TestOpenAICompatibleBackend:
         assert result.update_type == "fuel"
         assert result.confidence == 0.85
         assert "RR15" in result.summary
+
+
+class TestHardTimeout:
+    """Issue #75 — hard wall-clock cap on the full instructor retry chain.
+
+    Without this cap, a pathological schema-validation loop can burn
+    timeout * (max_retries+1) seconds per message (12 min observed on
+    Blueback 2026-04-22 with 14B / 120s / max_retries=2).
+    """
+
+    def test_default_hard_timeout_is_none(self):
+        """Default is None to preserve pre-#75 behavior for any caller
+        that does not opt in (e.g. direct backend construction)."""
+        backend = OpenAICompatibleBackend()
+        assert backend._hard_timeout is None
+
+    def test_hard_timeout_fires_when_create_hangs(self):
+        """A create() that never resolves must be interrupted at the hard
+        timeout and surfaced as RetryableError so DegradingBackend falls
+        through to the next slot."""
+        backend = OpenAICompatibleBackend(hard_timeout=0.1)
+
+        async def mock_create(**kwargs):
+            await asyncio.sleep(5.0)  # far longer than 0.1s
+            return SimpleExtraction(update_type="none", confidence=0.0, summary="")
+
+        backend._client.chat.completions.create = mock_create
+
+        async def _timed_extract():
+            start = asyncio.get_event_loop().time()
+            with pytest.raises(RetryableError, match="(?i)hard timeout"):
+                await backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            # Budget + scheduling slop. Pre-#75 this would be ~5s (the mock
+            # sleep); with the hard cap it must land well under 1s.
+            return asyncio.get_event_loop().time() - start
+
+        elapsed = asyncio.run(_timed_extract())
+        assert elapsed < 1.0, f"extract ran {elapsed:.2f}s, exceeded hard timeout budget"
+
+    def test_hard_timeout_error_message_includes_budget(self):
+        """Operators read the error text in logs — it must name the budget."""
+        backend = OpenAICompatibleBackend(hard_timeout=0.05)
+
+        async def mock_create(**kwargs):
+            await asyncio.sleep(5.0)
+
+        backend._client.chat.completions.create = mock_create
+
+        with pytest.raises(RetryableError, match="0.05"):
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
+
+    def test_hard_timeout_none_allows_slow_call(self):
+        """When hard_timeout=None, a call that would exceed any fixed budget
+        must still succeed — this is the pre-#75 path for callers that
+        explicitly opt out of the cap."""
+        backend = OpenAICompatibleBackend(hard_timeout=None)
+
+        async def mock_create(**kwargs):
+            await asyncio.sleep(0.2)
+            return SimpleExtraction(update_type="fuel", confidence=0.9, summary="slow")
+
+        backend._client.chat.completions.create = mock_create
+
+        result = asyncio.run(
+            backend.extract(
+                messages=[{"role": "user", "content": "test"}],
+                schema=SimpleExtraction,
+            )
+        )
+        assert result.update_type == "fuel"
 
 
 class TestIntegrationOllama:
