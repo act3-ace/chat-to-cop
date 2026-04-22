@@ -33,6 +33,7 @@ from chat_to_cop.output.cop_schema import (
     WriteAuthority,
     cop_update_to_records,
 )
+from chat_to_cop.output.schema_adapter import PassthroughAdapter, SchemaAdapter
 
 
 @dataclass
@@ -75,6 +76,7 @@ class CoPWriter:
         auto_threshold: float = 0.95,
         flag_threshold: float = 0.5,
         high_risk_types: list[str] | None = None,
+        adapter: SchemaAdapter | None = None,
     ) -> None:
         self._base_url = cop_base_url
         self._client = http_client
@@ -83,6 +85,12 @@ class CoPWriter:
         self._pause_queue: deque[CoPUpdate] = deque(maxlen=max_queue_size)
         self._human_queue: deque[CoPRecord] = deque(maxlen=max_queue_size)
         self._max_queue_size = max_queue_size
+        # Issue #70: the legacy http_client path (cop_base_url + http_client)
+        # also needs to run records through the schema adapter, otherwise a
+        # test or operator who constructs a CoPWriter that bypasses
+        # CoPRESTClient silently sends the pre-#70 wire format. Default
+        # Passthrough preserves that pre-#70 behavior.
+        self._adapter: SchemaAdapter = adapter if adapter is not None else PassthroughAdapter()
 
         # Configurable thresholds
         self._auto_threshold = auto_threshold
@@ -257,7 +265,11 @@ class CoPWriter:
             # Path 2: Legacy http_client
             if self._base_url is not None and self._client is not None:
                 endpoint = self._resolve_endpoint(record)
-                payload = record.model_dump(mode="json")
+                # Issue #70: route through the adapter so the legacy path
+                # emits the same wire shape as CoPRESTClient. Without this,
+                # a writer constructed with (cop_base_url, http_client) would
+                # silently bypass the schema translation.
+                payload = self._adapter.map(record)
                 response = await self._client.post(endpoint, json=payload)
                 elapsed = time.perf_counter() - start
                 metrics.observe("cop_writer_send_seconds", elapsed)
@@ -306,10 +318,18 @@ class CoPWriter:
     @classmethod
     def from_config(cls, config) -> CoPWriter:
         """Create a CoPWriter from a CoPWriterConfig."""
+        # Issue #70: build the schema adapter from the config field and pass
+        # it into the REST client. Default "passthrough" spec preserves
+        # prior behavior (record.model_dump). Per the 2026-04-11 !88 lesson,
+        # the consumer ships with the Field — not a later MR.
+        from chat_to_cop.output.schema_adapter import build_adapter
+
+        adapter = build_adapter(config.schema_adapter)
         rest_client = CoPRESTClient(
             base_url=config.cop_api_url,
             timeout=config.cop_write_timeout,
             retry_attempts=config.cop_retry_attempts,
+            adapter=adapter,
         )
         return cls(
             rest_client=rest_client,
@@ -317,4 +337,5 @@ class CoPWriter:
             auto_threshold=config.cop_auto_threshold,
             flag_threshold=config.cop_flag_threshold,
             high_risk_types=config.cop_high_risk_types,
+            adapter=adapter,
         )
