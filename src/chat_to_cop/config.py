@@ -80,6 +80,19 @@ class DegradingConfig(BaseSettings):
         default=30.0,
         description="Seconds before circuit breaker allows retry",
     )
+    # Issue #67 — per-UpdateType cascade thresholds. Points to a JSON file
+    # mapping update_type values (and "default") to floats; consumed by
+    # _make_degrading_backend in replay.py and passed to DegradingBackend.
+    # Default path is relative to the repo root so `python -m chat_to_cop.replay`
+    # from the repo CWD picks it up. Absolute paths also work. Missing file
+    # degrades to scalar cascade_threshold only (see load_cascade_thresholds).
+    cascade_thresholds_path: str = Field(
+        default="config/cascade_thresholds.json",
+        description=(
+            "Path to JSON file with per-UpdateType confidence thresholds. "
+            "Missing file falls back to scalar cascade_threshold."
+        ),
+    )
 
 
 class AgentConfig(BaseSettings):
