@@ -78,6 +78,7 @@ def _make_degrading_backend(
             max_retries=config.llm.llm_max_retries,
             num_ctx=config.llm.llm_num_ctx,
             hard_timeout=config.llm.llm_extract_hard_timeout,
+            is_ollama=config.llm.llm_is_ollama,
         )
     # Only add a separate fallback if it's a different model
     backends = [primary]
@@ -89,6 +90,7 @@ def _make_degrading_backend(
             model=config.fallback.fallback_model,
             timeout=config.fallback.fallback_timeout,
             hard_timeout=config.fallback.fallback_extract_hard_timeout,
+            is_ollama=config.fallback.fallback_is_ollama,
         )
         backends.append(fallback)
         timeouts.append(config.fallback.fallback_timeout)
