@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 
 import instructor
+from loguru import logger
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -25,6 +26,10 @@ class RetryableError(Exception):
 
 class PermanentError(Exception):
     """Backend error that will not succeed on retry (400, schema)."""
+
+
+def _detect_ollama(base_url: str) -> bool:
+    return "11434" in base_url or "ollama" in base_url.lower()
 
 
 class OpenAICompatibleBackend:
@@ -42,11 +47,32 @@ class OpenAICompatibleBackend:
         timeout: float = 10.0,
         max_retries: int = 2,
         num_ctx: int = 8192,
+        hard_timeout: float | None = None,
+        is_ollama: bool | None = None,
     ) -> None:
         self.base_url = base_url
         self.model = model
         self.timeout = timeout
         self.num_ctx = num_ctx
+        # Issue #75 — hard wall-clock cap on the full instructor retry chain.
+        # None means "respect only the per-request timeout + instructor's
+        # retries" (pre-#75 behavior). See config.llm.llm_extract_hard_timeout.
+        self._hard_timeout = hard_timeout
+
+        # Issue #74 — resolve Ollama detection once at init, not per-request.
+        if is_ollama is not None:
+            self._is_ollama = is_ollama
+        else:
+            self._is_ollama = _detect_ollama(base_url)
+            if num_ctx and not self._is_ollama:
+                logger.warning(
+                    "num_ctx={} configured but backend at {} not detected as "
+                    "Ollama (no '11434' or 'ollama' in URL). num_ctx will be "
+                    "skipped — set is_ollama=True to force.",
+                    num_ctx,
+                    base_url,
+                )
+
         self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
         self._client = instructor.from_openai(
@@ -88,21 +114,25 @@ class OpenAICompatibleBackend:
                     response_model=schema,
                     max_retries=self._max_retries,
                 )
-                # Pass num_ctx to Ollama via extra_body. The OpenAI SDK merges
-                # extra_body into the top-level request JSON, and Ollama's
-                # /v1/chat/completions endpoint reads options.num_ctx from there.
-                # Verified: instructor >=1.11 forwards extra_body through its
-                # patch/retry pipeline without stripping it (see #39).
-                # Only set for Ollama — other providers reject unknown options.
-                if self.num_ctx and ("11434" in self.base_url or "ollama" in self.base_url.lower()):
+                if self.num_ctx and self._is_ollama:
                     kwargs["extra_body"] = {"options": {"num_ctx": self.num_ctx}}
-                result = await self._client.chat.completions.create(**kwargs)
+                # Issue #75 — wrap the full instructor retry chain in a hard
+                # wall-clock cap. Without it a pathological schema-validation
+                # loop burns timeout * (max_retries+1) seconds per message.
+                if self._hard_timeout is not None:
+                    result = await asyncio.wait_for(
+                        self._client.chat.completions.create(**kwargs),
+                        timeout=self._hard_timeout,
+                    )
+                else:
+                    result = await self._client.chat.completions.create(**kwargs)
             metrics.inc("backend_successes_total", labels=labels)
             return result
 
         except asyncio.TimeoutError as e:
             metrics.inc("backend_failures_total", labels={**labels, "reason": "timeout"})
-            raise RetryableError(f"Timeout after {self.timeout}s") from e
+            budget = self._hard_timeout if self._hard_timeout is not None else self.timeout
+            raise RetryableError(f"Hard timeout after {budget}s (issue #75)") from e
         except Exception as e:
             err_str = str(e).lower()
             if any(code in err_str for code in ("429", "rate limit", "503", "502", "timeout")):
@@ -154,10 +184,10 @@ def build_system_prompt(
         "- Be concise in reasoning. Focus on what changed in the battlespace.",
         "",
         # Canonical vocabulary, rendered from the Pydantic source of truth.
-        # The test in tests/test_schema_alignment.py asserts every enum value
-        # and every EntityUpdate field name appears in the prompt. Changing
-        # either schema without updating this rendering is a CI failure by
-        # design — see the 2026-04-17 eval-prompt drift finding.
+        # tests/test_schema_alignment.py asserts every enum value and every
+        # EntityUpdate field name appears in this prompt. Changing either
+        # schema without this rendering is a CI failure by design — see the
+        # 2026-04-17 eval-prompt drift finding.
         "CANONICAL update_type VALUES (use exactly one): " + ", ".join(t.value for t in UpdateType) + ".",
         "CANONICAL EntityUpdate FIELDS (use these exact names when populating entities): "
         + ", ".join(EntityUpdate.model_fields)
