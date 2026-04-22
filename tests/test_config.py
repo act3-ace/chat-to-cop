@@ -124,6 +124,77 @@ class TestDegradingConfigReachesCircuitBreaker:
         assert cfg.circuit_fail_max == 10
         assert isinstance(cfg.circuit_fail_max, int)
 
+    def test_cascade_thresholds_path_default(self):
+        """Default path points at the shipped JSON. Verifies the Field default."""
+        cfg = DegradingConfig()
+        assert cfg.cascade_thresholds_path == "config/cascade_thresholds.json"
+
+    def test_cascade_thresholds_path_env_override(self, monkeypatch, tmp_path):
+        """env var overrides the config — the 2026-04-11 !88 lesson guards this."""
+        custom = tmp_path / "custom_thresholds.json"
+        custom.write_text('{"csar": 0.99, "default": 0.5}', encoding="utf-8")
+        monkeypatch.setenv("CHAT_TO_COP_CASCADE_THRESHOLDS_PATH", str(custom))
+        cfg = DegradingConfig()
+        assert cfg.cascade_thresholds_path == str(custom)
+
+    def test_cascade_thresholds_path_reaches_degrading_backend(self, monkeypatch, tmp_path):
+        """The full config→loader→DegradingBackend chain.
+
+        Per the 2026-04-11 !88 config-bypass bug lesson: assert the env var
+        change actually flips DegradingBackend.extract() behavior, not just
+        the config object in isolation.
+        """
+        import asyncio
+
+        from pydantic import BaseModel
+
+        from chat_to_cop.backend.degrading import (
+            DegradingBackend,
+            load_cascade_thresholds,
+        )
+        from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
+
+        # Custom config: csar threshold very high, so a 0.8 csar result must
+        # escalate even though 0.8 would normally pass any reasonable scalar.
+        custom = tmp_path / "custom_thresholds.json"
+        custom.write_text('{"csar": 0.95, "default": 0.5}', encoding="utf-8")
+        monkeypatch.setenv("CHAT_TO_COP_CASCADE_THRESHOLDS_PATH", str(custom))
+
+        cfg = DegradingConfig()
+        thresholds = load_cascade_thresholds(cfg.cascade_thresholds_path)
+        assert thresholds == {"csar": 0.95, "default": 0.5}
+
+        class StubBackend:
+            def __init__(self, conf, name):
+                self.model = name
+                self.call_count = 0
+                self._conf = conf
+
+            async def extract(self, messages: list[dict], schema: type[BaseModel]) -> BaseModel:
+                del messages, schema
+                self.call_count += 1
+                return CoPUpdate(
+                    update_type=UpdateType.CSAR,
+                    confidence=self._conf,
+                    source_message="test",
+                    extraction_method="llm",
+                )
+
+        low = StubBackend(0.8, "low")
+        high = StubBackend(0.99, "high")
+        db = DegradingBackend(
+            backends=[low, high],
+            timeouts=[5.0, 5.0],
+            cascade_thresholds=thresholds,
+        )
+        asyncio.run(db.extract([{"role": "user", "content": "x"}], CoPUpdate))
+        # csar threshold is 0.95 from the env-var-pointed file; 0.8 is below,
+        # so escalation must happen. If the env var were silently dropped,
+        # the scalar (default 0.0 here) would apply and low.call_count would
+        # be 1 with high.call_count == 0.
+        assert low.call_count == 1, "low backend should have been called first"
+        assert high.call_count == 1, "env-var config did not reach DegradingBackend — !88 bug class"
+
 
 class TestCoPWriterConfigReachesWriter:
     """Verify CoPWriter config fields reach CoPWriter.from_config()."""

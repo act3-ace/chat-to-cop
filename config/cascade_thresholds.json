@@ -1,0 +1,19 @@
+{
+  "_description": "Per-UpdateType confidence thresholds for the DegradingBackend. A successful extraction whose confidence falls below the matching threshold triggers escalation to the next backend in the cascade. Thresholds reflect the operational cost of a wrong extraction: CSAR and FIRE_MISSION demand high confidence before accepting a cheap model's output; FUEL and ambient-status messages tolerate lower confidence because the downstream cost of a miss is small. Unknown UpdateType values fall back to `default`. Set every threshold to 0 to disable cascading. Changes to this file are effective at next process start.",
+  "_related_issue": "67",
+  "csar": 0.85,
+  "fire_mission": 0.80,
+  "cyber_ew": 0.75,
+  "threat": 0.75,
+  "handover": 0.70,
+  "sitrep": 0.70,
+  "tasking": 0.70,
+  "weapons": 0.70,
+  "entity_id": 0.65,
+  "location": 0.65,
+  "status_change": 0.65,
+  "environmental": 0.60,
+  "fuel": 0.55,
+  "none": 0.50,
+  "default": 0.70
+}
