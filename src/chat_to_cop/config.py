@@ -196,6 +196,15 @@ class CoPWriterConfig(BaseSettings):
         default=3,
         description="Number of retry attempts for transient HTTP failures.",
     )
+    # Issue #70 — schema adapter spec. "passthrough" ships the record's own
+    # model_dump as payload (pre-#70 default). At MASH, flip to
+    # "jsonschema:<schema_path>:<mapping_path>" once the contractor hands
+    # over the CoP schema and we write a mapping config. Consumer:
+    # CoPWriter.from_config → CoPRESTClient(adapter=build_adapter(spec)).
+    schema_adapter: str = Field(
+        default="passthrough",
+        description=("Schema adapter spec. 'passthrough' (default) or 'jsonschema:<schema_path>:<mapping_path>'."),
+    )
 
 
 class ReferenceDataConfig(BaseSettings):

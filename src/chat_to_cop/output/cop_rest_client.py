@@ -24,6 +24,7 @@ from tenacity import (
 
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.cop_schema import CoPRecord
+from chat_to_cop.output.schema_adapter import PassthroughAdapter, SchemaAdapter
 
 
 class CoPRESTClient:
@@ -40,12 +41,18 @@ class CoPRESTClient:
         base_url: str = "",
         timeout: float = 10.0,
         retry_attempts: int = 3,
+        adapter: SchemaAdapter | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/") if base_url else ""
         self._timeout = timeout
         self._retry_attempts = retry_attempts
         self._client: httpx.AsyncClient | None = None
         self._dry_run = not bool(self._base_url)
+        # Issue #70: schema adapter between CoPRecord and the wire payload.
+        # Default Passthrough preserves pre-#70 behavior (record.model_dump);
+        # JsonSchemaAdapter transforms into the contractor's target shape
+        # when a schema+mapping config is available.
+        self._adapter: SchemaAdapter = adapter if adapter is not None else PassthroughAdapter()
 
         # Counters for observability
         self._stats = {
@@ -103,7 +110,11 @@ class CoPRESTClient:
         In live mode, POSTs with retry on transient failures.
         """
         endpoint = self._resolve_endpoint(record)
-        payload = record.model_dump(mode="json")
+        # Issue #70: adapter produces the wire-format dict. Default is
+        # Passthrough (equivalent to record.model_dump(mode="json") — the
+        # pre-#70 behavior). JsonSchemaAdapter transforms into the target CoP
+        # schema's shape.
+        payload = self._adapter.map(record)
 
         if self._dry_run:
             self._stats["dry_run_logged"] += 1
