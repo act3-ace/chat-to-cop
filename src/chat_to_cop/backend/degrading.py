@@ -17,8 +17,10 @@ Degradation order (configurable):
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from loguru import logger
 from pybreaker import CircuitBreaker, CircuitBreakerError
@@ -30,6 +32,43 @@ from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
 
 # pybreaker uses datetime.now(UTC) internally
 _UTC = timezone.utc
+
+
+def load_cascade_thresholds(path: str | Path) -> dict[str, float]:
+    """Load a per-UpdateType cascade-threshold map from a JSON file.
+
+    The file is expected to contain a flat JSON object mapping update_type
+    values (and a ``"default"`` entry) to floats in [0.0, 1.0]. Keys starting
+    with an underscore (e.g. ``"_description"``, ``"_related_issue"``) are
+    treated as human-readable annotations and ignored. Non-numeric values
+    are dropped with a warning rather than raising, so a stray string in
+    the JSON doesn't crash the pipeline at startup.
+
+    Returns an empty dict if the path is missing. Callers combine this with
+    the scalar ``cascade_threshold`` fallback when constructing a
+    ``DegradingBackend``.
+    """
+    p = Path(path)
+    if not p.exists():
+        logger.warning("cascade_thresholds file not found: {} — scalar fallback only", p)
+        return {}
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        logger.error("cascade_thresholds file malformed: {} — {}", p, exc)
+        raise
+    if not isinstance(raw, dict):
+        logger.error("cascade_thresholds file not a JSON object: {}", p)
+        return {}
+    cleaned: dict[str, float] = {}
+    for key, val in raw.items():
+        if key.startswith("_"):
+            continue
+        if isinstance(val, bool) or not isinstance(val, (int, float)):
+            logger.warning("cascade_thresholds[{}] is not numeric ({!r}) — skipping", key, val)
+            continue
+        cleaned[key] = float(val)
+    return cleaned
 
 
 class _BackendSlot:
@@ -100,6 +139,7 @@ class DegradingBackend:
         fail_max: int = 3,
         cooldown: float = 30.0,
         cascade_threshold: float = 0.0,
+        cascade_thresholds: dict[str, float] | None = None,
     ) -> None:
         if not backends:
             raise ValueError("At least one backend is required")
@@ -117,6 +157,42 @@ class DegradingBackend:
         # triggers escalation to the next backend instead of returning immediately.
         # Default 0.0 preserves existing behavior (any success returns immediately).
         self._cascade_threshold = cascade_threshold
+        # Per-UpdateType escalation thresholds (issue #67). A fire_mission /
+        # csar extraction should demand higher confidence than a fuel report
+        # before accepting a cheap model's output. When non-empty, the
+        # per-type map takes precedence over the scalar cascade_threshold for
+        # every result whose schema carries an `update_type`; unknown types
+        # fall back to the map's "default" entry, which itself falls back to
+        # the scalar cascade_threshold. Empty map preserves the pre-#67
+        # behavior (scalar threshold only). Filter out non-numeric entries
+        # so a "_description" key or similar annotations in a JSON source
+        # don't trip a runtime comparison.
+        self._cascade_thresholds: dict[str, float] = {
+            k: float(v)
+            for k, v in (cascade_thresholds or {}).items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
+
+    def _threshold_for(self, result: BaseModel) -> float:
+        """Resolve the escalation threshold that applies to this result.
+
+        Priority: per-type map entry > per-type map "default" > scalar
+        cascade_threshold. Returning 0.0 means "cascade disabled for this
+        result" (caller checks ``effective > 0`` before escalating).
+        """
+        if not self._cascade_thresholds:
+            return self._cascade_threshold
+
+        update_type = getattr(result, "update_type", None)
+        if update_type is not None:
+            type_key = getattr(update_type, "value", update_type)
+            if isinstance(type_key, str) and type_key in self._cascade_thresholds:
+                return self._cascade_thresholds[type_key]
+
+        # Unknown type or schema without update_type — use map default,
+        # then scalar fallback. Use `.get` with a sentinel rather than
+        # `in`+lookup to keep the hot path to one dict access.
+        return self._cascade_thresholds.get("default", self._cascade_threshold)
 
     async def extract(
         self,
@@ -167,13 +243,14 @@ class DegradingBackend:
                     best_cascade_result = result
                     best_cascade_confidence = result_confidence
 
-                if self._cascade_threshold > 0 and result_confidence < self._cascade_threshold:
+                effective_threshold = self._threshold_for(result)
+                if effective_threshold > 0 and result_confidence < effective_threshold:
                     metrics.inc("confidence_cascade_escalations", labels={"backend": slot.name})
                     logger.info(
                         "Confidence cascade: {} returned {:.2f} < {:.2f} threshold, escalating",
                         slot.name,
                         result_confidence,
-                        self._cascade_threshold,
+                        effective_threshold,
                     )
                     continue
 

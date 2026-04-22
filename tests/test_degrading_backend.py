@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from pydantic import BaseModel
 
-from chat_to_cop.backend.degrading import DegradingBackend
+from chat_to_cop.backend.degrading import DegradingBackend, load_cascade_thresholds
 from chat_to_cop.metrics import metrics
 from chat_to_cop.models.cop_update import CoPUpdate, UpdateType
 
@@ -484,3 +484,239 @@ class TestConfidenceCascading:
         # Passthrough: confidence 0.0, Pattern B preserved
         assert result.confidence == 0.0
         assert "Pattern B" in (result.reasoning or "")
+
+
+# --- Per-UpdateType cascade thresholds (issue #67) ---------------------------
+
+
+class TypedConfidenceBackend:
+    """CoPUpdate with configurable confidence AND update_type. For per-type cascade tests."""
+
+    def __init__(self, confidence: float, update_type: UpdateType, name: str = "typed"):
+        self.model = name
+        self.call_count = 0
+        self._confidence = confidence
+        self._update_type = update_type
+
+    async def extract(self, messages: list[dict], schema: type[BaseModel]) -> BaseModel:
+        self.call_count += 1
+        return CoPUpdate(
+            update_type=self._update_type,
+            confidence=self._confidence,
+            source_message="test",
+            extraction_method="llm",
+        )
+
+
+class TestPerTypeCascade:
+    """Issue #67: per-UpdateType cascade thresholds override the scalar."""
+
+    messages = [{"role": "user", "content": "test"}]
+
+    # Representative sample of the map shipped in config/cascade_thresholds.json.
+    # The "default" key is the fallback for unknown update_types; the scalar
+    # cascade_threshold in the DegradingBackend constructor is the final
+    # fallback when the map has no "default".
+    PER_TYPE: dict[str, float] = {
+        "csar": 0.85,
+        "fire_mission": 0.80,
+        "fuel": 0.55,
+        "none": 0.50,
+        "default": 0.70,
+    }
+
+    @pytest.mark.parametrize(
+        "update_type,threshold",
+        [
+            (UpdateType.CSAR, 0.85),
+            (UpdateType.FIRE_MISSION, 0.80),
+            (UpdateType.FUEL, 0.55),
+            (UpdateType.NONE, 0.50),
+        ],
+    )
+    def test_below_type_threshold_escalates(self, update_type: UpdateType, threshold: float):
+        """A result 0.02 below the type's threshold triggers escalation."""
+        low = TypedConfidenceBackend(threshold - 0.02, update_type, name="low")
+        high = TypedConfidenceBackend(0.99, update_type, name="high")
+        db = DegradingBackend(
+            backends=[low, high],
+            timeouts=[5.0, 5.0],
+            cascade_thresholds=self.PER_TYPE,
+        )
+        result = asyncio.run(db.extract(self.messages, CoPUpdate))
+        # Both backends called — the low one escalated
+        assert low.call_count == 1
+        assert high.call_count == 1
+        assert result.confidence == 0.99
+
+    @pytest.mark.parametrize(
+        "update_type,threshold",
+        [
+            (UpdateType.CSAR, 0.85),
+            (UpdateType.FIRE_MISSION, 0.80),
+            (UpdateType.FUEL, 0.55),
+            (UpdateType.NONE, 0.50),
+        ],
+    )
+    def test_above_type_threshold_accepts(self, update_type: UpdateType, threshold: float):
+        """A result 0.02 above the type's threshold is accepted, no escalation."""
+        ok = TypedConfidenceBackend(threshold + 0.02, update_type, name="ok")
+        fallback = TypedConfidenceBackend(0.99, update_type, name="fallback")
+        db = DegradingBackend(
+            backends=[ok, fallback],
+            timeouts=[5.0, 5.0],
+            cascade_thresholds=self.PER_TYPE,
+        )
+        asyncio.run(db.extract(self.messages, CoPUpdate))
+        # Only the first backend is called
+        assert ok.call_count == 1
+        assert fallback.call_count == 0
+
+    def test_per_type_overrides_scalar(self):
+        """When both scalar cascade_threshold and per-type map are set, per-type wins.
+
+        A fire_mission at 0.75 is below the type's 0.80 threshold (escalates) but
+        above the scalar 0.50 threshold (would pass if scalar were applied). The
+        per-type entry must dominate, so this MUST escalate.
+        """
+        low = TypedConfidenceBackend(0.75, UpdateType.FIRE_MISSION, name="low")
+        high = TypedConfidenceBackend(0.99, UpdateType.FIRE_MISSION, name="high")
+        db = DegradingBackend(
+            backends=[low, high],
+            timeouts=[5.0, 5.0],
+            cascade_threshold=0.50,  # scalar would pass
+            cascade_thresholds={"fire_mission": 0.80, "default": 0.70},  # per-type escalates
+        )
+        asyncio.run(db.extract(self.messages, CoPUpdate))
+        assert low.call_count == 1
+        assert high.call_count == 1
+
+    def test_unknown_type_falls_back_to_default_entry(self):
+        """A type not in the map uses the 'default' entry, not the scalar."""
+        # environmental is in the real config but NOT in this map — so it hits default=0.70
+        low = TypedConfidenceBackend(0.65, UpdateType.ENVIRONMENTAL, name="low")
+        high = TypedConfidenceBackend(0.99, UpdateType.ENVIRONMENTAL, name="high")
+        db = DegradingBackend(
+            backends=[low, high],
+            timeouts=[5.0, 5.0],
+            cascade_threshold=0.10,  # scalar would pass, must not be used
+            cascade_thresholds={"csar": 0.85, "default": 0.70},
+        )
+        asyncio.run(db.extract(self.messages, CoPUpdate))
+        # 0.65 < 0.70 default → escalate
+        assert low.call_count == 1
+        assert high.call_count == 1
+
+    def test_no_default_in_map_falls_back_to_scalar(self):
+        """If the map has no 'default' and the type isn't listed, use the scalar cascade_threshold."""
+        low = TypedConfidenceBackend(0.40, UpdateType.THREAT, name="low")
+        high = TypedConfidenceBackend(0.99, UpdateType.THREAT, name="high")
+        db = DegradingBackend(
+            backends=[low, high],
+            timeouts=[5.0, 5.0],
+            cascade_threshold=0.50,
+            cascade_thresholds={"csar": 0.85},  # no "default", no "threat"
+        )
+        asyncio.run(db.extract(self.messages, CoPUpdate))
+        # 0.40 < 0.50 scalar → escalate
+        assert low.call_count == 1
+        assert high.call_count == 1
+
+    def test_empty_per_type_map_preserves_scalar_behavior(self):
+        """An empty per-type map keeps the pre-#67 behavior: scalar threshold drives escalation."""
+        low = ConfidenceBackend(0.40, name="low")
+        high = ConfidenceBackend(0.99, name="high")
+        db = DegradingBackend(
+            backends=[low, high],
+            timeouts=[5.0, 5.0],
+            cascade_threshold=0.50,
+            cascade_thresholds={},
+        )
+        asyncio.run(db.extract(self.messages, CoPUpdate))
+        assert low.call_count == 1
+        assert high.call_count == 1
+
+    def test_schema_without_update_type_never_escalates(self):
+        """Generic schemas (no update_type attribute) should not cascade-escalate.
+
+        ``_threshold_for`` falls back to map 'default' or scalar when the
+        result has no ``update_type``. But ``getattr(result, "confidence",
+        1.0)`` also defaults to 1.0 for schemas with no confidence field,
+        so the comparison ``1.0 < threshold`` is always False and the
+        first backend's result is accepted. This test locks in that
+        contract so a future refactor of ``_threshold_for`` can't silently
+        start escalating on generic (non-CoPUpdate) schemas.
+        """
+        backend1 = FakeBackend(name="first")
+        backend2 = FakeBackend(name="second")
+        db = DegradingBackend(
+            backends=[backend1, backend2],
+            timeouts=[5.0, 5.0],
+            cascade_thresholds={"default": 0.99},
+        )
+        asyncio.run(db.extract(self.messages, SimpleResult))
+        # SimpleResult has no update_type AND no confidence → confidence
+        # defaults to 1.0 → 1.0 < 0.99 is False → first backend accepted.
+        assert backend1.call_count == 1
+        assert backend2.call_count == 0
+
+
+class TestLoadCascadeThresholds:
+    """Issue #67: JSON loader for the per-UpdateType threshold map."""
+
+    def test_loads_valid_file(self, tmp_path):
+        p = tmp_path / "thresholds.json"
+        p.write_text('{"csar": 0.85, "fuel": 0.55, "default": 0.70}', encoding="utf-8")
+        result = load_cascade_thresholds(p)
+        assert result == {"csar": 0.85, "fuel": 0.55, "default": 0.70}
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        result = load_cascade_thresholds(tmp_path / "does_not_exist.json")
+        assert result == {}
+
+    def test_ships_with_valid_defaults(self):
+        """config/cascade_thresholds.json ships with the repo and must parse cleanly."""
+        from pathlib import Path
+
+        import chat_to_cop
+
+        # Walk up from package to repo root (parent of src/chat_to_cop)
+        pkg_dir = Path(chat_to_cop.__file__).resolve().parent
+        # src/chat_to_cop -> src -> repo root
+        repo_root = pkg_dir.parent.parent
+        path = repo_root / "config" / "cascade_thresholds.json"
+        if not path.exists():
+            pytest.skip(f"shipped config not found at {path} (editable install?)")
+        result = load_cascade_thresholds(path)
+        # Every UpdateType value should be in the map, plus "default"
+        for t in UpdateType:
+            assert t.value in result, f"shipped config missing {t.value}"
+        assert "default" in result
+        for key, val in result.items():
+            assert 0.0 <= val <= 1.0, f"shipped threshold {key}={val} outside [0, 1]"
+
+    def test_malformed_json_raises(self, tmp_path):
+        import json as _json
+
+        p = tmp_path / "bad.json"
+        p.write_text("{not valid json", encoding="utf-8")
+        with pytest.raises(_json.JSONDecodeError):
+            load_cascade_thresholds(p)
+
+    def test_non_object_json_returns_empty(self, tmp_path):
+        p = tmp_path / "list.json"
+        p.write_text("[0.5, 0.6, 0.7]", encoding="utf-8")
+        assert load_cascade_thresholds(p) == {}
+
+    def test_underscore_keys_ignored(self, tmp_path):
+        p = tmp_path / "annotated.json"
+        p.write_text('{"_description": "notes", "_version": "1", "csar": 0.85}', encoding="utf-8")
+        result = load_cascade_thresholds(p)
+        assert result == {"csar": 0.85}
+
+    def test_non_numeric_values_dropped(self, tmp_path):
+        p = tmp_path / "mixed.json"
+        # bool is numeric in Python but should be rejected (True == 1 would misroute)
+        p.write_text('{"csar": 0.85, "bogus": "high", "also_bogus": true}', encoding="utf-8")
+        result = load_cascade_thresholds(p)
+        assert result == {"csar": 0.85}

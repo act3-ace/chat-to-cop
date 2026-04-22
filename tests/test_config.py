@@ -124,6 +124,60 @@ class TestDegradingConfigReachesCircuitBreaker:
         assert cfg.circuit_fail_max == 10
         assert isinstance(cfg.circuit_fail_max, int)
 
+    def test_cascade_thresholds_path_default(self):
+        """Default path points at the shipped JSON. Verifies the Field default."""
+        cfg = DegradingConfig()
+        assert cfg.cascade_thresholds_path == "config/cascade_thresholds.json"
+
+    def test_cascade_thresholds_path_env_override(self, monkeypatch, tmp_path):
+        """env var overrides the config — the 2026-04-11 !88 lesson guards this."""
+        custom = tmp_path / "custom_thresholds.json"
+        custom.write_text('{"csar": 0.99, "default": 0.5}', encoding="utf-8")
+        monkeypatch.setenv("CHAT_TO_COP_CASCADE_THRESHOLDS_PATH", str(custom))
+        cfg = DegradingConfig()
+        assert cfg.cascade_thresholds_path == str(custom)
+
+    def test_cascade_thresholds_reach_make_degrading_backend(self, monkeypatch, tmp_path):
+        """End-to-end plumbing: env var → config → _make_degrading_backend → DegradingBackend state.
+
+        Per the 2026-04-11 !88 config-bypass bug lesson. The earlier version
+        of this test bypassed the actual consumer (_make_degrading_backend)
+        and manually wired a DegradingBackend with the loaded dict, which
+        proved only that the loader chain works — not that the production
+        builder actually passes the dict through. If someone ever refactored
+        _make_degrading_backend to drop the `cascade_thresholds=` kwarg, the
+        old test would still pass while production silently regressed to
+        scalar-only cascading. This version inspects the real builder's
+        output directly.
+        """
+        from chat_to_cop.config import PipelineConfig
+        from chat_to_cop.replay import _make_degrading_backend
+
+        custom = tmp_path / "custom_thresholds.json"
+        custom.write_text('{"csar": 0.95, "default": 0.5}', encoding="utf-8")
+        monkeypatch.setenv("CHAT_TO_COP_CASCADE_THRESHOLDS_PATH", str(custom))
+
+        cfg = PipelineConfig()
+        backend = _make_degrading_backend(cfg)
+
+        # Verify the loaded dict actually landed inside DegradingBackend's
+        # state — this is the "the consumer read the Field" part of the
+        # !88 contract, inspected on the real DegradingBackend produced by
+        # the real builder.
+        assert backend._cascade_thresholds == {"csar": 0.95, "default": 0.5}, (
+            "env-var CHAT_TO_COP_CASCADE_THRESHOLDS_PATH did not reach "
+            "DegradingBackend via _make_degrading_backend — !88 bug class"
+        )
+
+        # And verify the threshold resolution picks the right value for
+        # a csar result (the behavior side, not just the state).
+        import pydantic
+
+        class _Stub(pydantic.BaseModel):
+            update_type: str = "csar"
+
+        assert backend._threshold_for(_Stub()) == 0.95
+
 
 class TestCoPWriterConfigReachesWriter:
     """Verify CoPWriter config fields reach CoPWriter.from_config()."""
