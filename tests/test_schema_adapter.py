@@ -24,6 +24,7 @@ from chat_to_cop.output.cop_rest_client import CoPRESTClient, SendResult
 from chat_to_cop.output.cop_schema import CoPRecord, Track, WriteAuthority
 from chat_to_cop.output.schema_adapter import (
     _TRANSFORMS,
+    HotReloadAdapter,
     JsonSchemaAdapter,
     PassthroughAdapter,
     SchemaAdapter,
@@ -377,7 +378,7 @@ class TestBuildAdapter:
         )
         spec = f"jsonschema:{schema}:{mapping}"
         adapter = build_adapter(spec)
-        assert isinstance(adapter, JsonSchemaAdapter)
+        assert isinstance(adapter, HotReloadAdapter)
 
     def test_unknown_kind_raises(self):
         with pytest.raises(ValueError, match="Unknown schema adapter spec"):
@@ -584,10 +585,9 @@ class TestSchemaAdapterConfigPlumbing:
 
         writer = CoPWriter.from_config(cfg)
         adapter = writer._rest_client._adapter
-        assert isinstance(adapter, JsonSchemaAdapter), (
+        assert isinstance(adapter, HotReloadAdapter), (
             f"env var did not reach CoPRESTClient — got {type(adapter).__name__}. !88 plumbing regression."
         )
-        # And verify it is functionally wired — not just the right class.
         out = adapter.map(_record())
         assert out == {"trackId": "TM636", "confidence": 0.92}
 
@@ -610,3 +610,88 @@ def test_protocol_is_runtime_checkable():
 
     assert not isinstance(_NoMap(), SchemaAdapter)
     assert isinstance(PassthroughAdapter(), SchemaAdapter)
+
+
+# ---------------------------------------------------------------------------
+# HotReloadAdapter (issue #72)
+# ---------------------------------------------------------------------------
+
+
+class TestHotReloadAdapter:
+    def test_delegates_to_inner(self, tmp_path):
+        """HotReloadAdapter.map produces the same output as a direct JsonSchemaAdapter."""
+        schema = _write_schema(tmp_path)
+        mapping = _write_mapping(
+            tmp_path,
+            {"trackId": "track.track_id", "confidence": "extraction_confidence"},
+        )
+        adapter = HotReloadAdapter(schema, mapping)
+        out = adapter.map(_record())
+        assert out == {"trackId": "TM636", "confidence": 0.92}
+
+    def test_reload_on_mapping_change(self, tmp_path):
+        """When the mapping file is modified, the next map() call picks up the change."""
+        schema = _write_schema(tmp_path)
+        mapping_path = _write_mapping(
+            tmp_path,
+            {"trackId": "track.track_id", "confidence": "extraction_confidence"},
+        )
+        adapter = HotReloadAdapter(schema, mapping_path, check_interval=0)
+
+        out1 = adapter.map(_record())
+        assert out1 == {"trackId": "TM636", "confidence": 0.92}
+
+        import os
+
+        new_mapping = {
+            "trackId": {"source": "track.track_id", "transform": "upper"},
+            "confidence": {"source": "extraction_confidence", "transform": "int"},
+        }
+        mapping_path.write_text(json.dumps(new_mapping), encoding="utf-8")
+        # Bump mtime explicitly — Windows mtime granularity can miss sub-second writes.
+        future = adapter._last_mtime + 10
+        os.utime(mapping_path, (future, future))
+
+        out2 = adapter.map(_record())
+        assert out2 == {"trackId": "TM636", "confidence": 0}
+
+    def test_invalid_mapping_keeps_old(self, tmp_path):
+        """If the new mapping is invalid, the adapter keeps the previous version."""
+        schema = _write_schema(tmp_path)
+        mapping_path = _write_mapping(
+            tmp_path,
+            {"trackId": "track.track_id", "confidence": "extraction_confidence"},
+        )
+        adapter = HotReloadAdapter(schema, mapping_path, check_interval=0)
+
+        mapping_path.write_text("not valid json {{{", encoding="utf-8")
+
+        out = adapter.map(_record())
+        assert out == {"trackId": "TM636", "confidence": 0.92}
+
+    def test_check_interval_throttles(self, tmp_path):
+        """With a large check_interval, mtime is not checked on every call."""
+        schema = _write_schema(tmp_path)
+        mapping_path = _write_mapping(
+            tmp_path,
+            {"trackId": "track.track_id", "confidence": "extraction_confidence"},
+        )
+        adapter = HotReloadAdapter(schema, mapping_path, check_interval=9999)
+
+        new_mapping = {
+            "trackId": {"source": "track.track_id", "transform": "upper"},
+            "confidence": {"source": "extraction_confidence", "transform": "int"},
+        }
+        mapping_path.write_text(json.dumps(new_mapping), encoding="utf-8")
+
+        out = adapter.map(_record())
+        assert out == {"trackId": "TM636", "confidence": 0.92}, "should not have reloaded — check_interval not elapsed"
+
+    def test_satisfies_schema_adapter_protocol(self, tmp_path):
+        schema = _write_schema(tmp_path)
+        mapping = _write_mapping(
+            tmp_path,
+            {"trackId": "track.track_id", "confidence": "extraction_confidence"},
+        )
+        adapter = HotReloadAdapter(schema, mapping)
+        assert isinstance(adapter, SchemaAdapter)
