@@ -32,6 +32,7 @@ Tests assert round-trip equivalence against ``record.model_dump()``.
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -296,6 +297,62 @@ class JsonSchemaAdapter:
 
 
 # ---------------------------------------------------------------------------
+# Hot-reload wrapper (issue #72)
+# ---------------------------------------------------------------------------
+
+
+class HotReloadAdapter:
+    """Wraps a JsonSchemaAdapter with mtime-based auto-reload.
+
+    Checks the mapping file's mtime at most once every ``check_interval``
+    seconds. On change, re-validates the new mapping against the schema
+    and swaps atomically. If the new mapping is invalid, keeps the old
+    one and logs a warning.
+    """
+
+    def __init__(
+        self,
+        schema_path: str | Path,
+        mapping_path: str | Path,
+        check_interval: float = 30.0,
+    ) -> None:
+        self._schema_path = Path(schema_path)
+        self._mapping_path = Path(mapping_path)
+        self._check_interval = check_interval
+        self._inner = JsonSchemaAdapter(schema_path, mapping_path)
+        self._last_mtime = self._mapping_path.stat().st_mtime
+        self._last_check = time.monotonic()
+
+    def _maybe_reload(self) -> None:
+        now = time.monotonic()
+        if now - self._last_check < self._check_interval:
+            return
+        self._last_check = now
+        try:
+            current_mtime = self._mapping_path.stat().st_mtime
+        except OSError:
+            return
+        if current_mtime == self._last_mtime:
+            return
+        logger.info("Mapping file changed, reloading: {}", self._mapping_path)
+        try:
+            new_adapter = JsonSchemaAdapter(self._schema_path, self._mapping_path)
+            self._inner = new_adapter
+            self._last_mtime = current_mtime
+            logger.info("Mapping reloaded successfully")
+        except (ValueError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(
+                "New mapping at {} is invalid ({}), keeping previous version",
+                self._mapping_path,
+                e,
+            )
+
+    def map(self, record: CoPRecord) -> dict[str, Any]:
+        self._maybe_reload()
+        return self._inner.map(record)
+
+
+# ---------------------------------------------------------------------------
 # Factory (consumed by config + CoPRESTClient)
 # ---------------------------------------------------------------------------
 
@@ -331,7 +388,7 @@ def build_adapter(spec: str) -> SchemaAdapter:
         # or handle drive letters explicitly.
         payload = spec[len("jsonschema:") :]
         schema_path, mapping_path = _split_two_paths(payload)
-        return JsonSchemaAdapter(schema_path=schema_path, mapping_path=mapping_path)
+        return HotReloadAdapter(schema_path=schema_path, mapping_path=mapping_path)
     raise ValueError(
         f"Unknown schema adapter spec: {spec!r}. Expected 'passthrough' or 'jsonschema:<schema_path>:<mapping_path>'."
     )
