@@ -37,6 +37,8 @@ TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-1}"
 VLLM_IMAGE="${VLLM_IMAGE:-vllm/vllm-openai:v0.19.1-cu130}"
 VLLM_MODE="${VLLM_MODE:-auto}"
 GPU_MEMORY_UTIL="${GPU_MEMORY_UTIL:-0.90}"
+LOG_FILE="/tmp/vllm-chat2cop.log"
+PID_FILE="/tmp/vllm-chat2cop.pid"
 
 # ── GPU detection ─────────────────────────────────────────────────────
 
@@ -131,6 +133,9 @@ launch_docker() {
         trust_flag="--trust-remote-code"
     fi
 
+    # Remove any stopped container with the same name from a previous run
+    docker rm vllm-chat2cop 2>/dev/null || true
+
     docker run -d \
         --name vllm-chat2cop \
         --gpus all \
@@ -183,24 +188,26 @@ launch_native() {
         trust_flag="--trust-remote-code"
     fi
 
-    python3 -m vllm.entrypoints.openai.api_server \
+    nohup python3 -m vllm.entrypoints.openai.api_server \
         --model "${MODEL_NAME}" \
         --max-model-len "${MAX_MODEL_LEN}" \
         --host "${VLLM_HOST}" \
         --port "${VLLM_PORT}" \
         --gpu-memory-utilization "${GPU_MEMORY_UTIL}" \
         --dtype auto \
-        ${trust_flag} &
+        ${trust_flag} \
+        > "${LOG_FILE}" 2>&1 &
 
     VLLM_PID=$!
-    echo "vLLM PID: ${VLLM_PID}"
+    echo "${VLLM_PID}" > "${PID_FILE}"
+    echo "vLLM PID: ${VLLM_PID} (logging to ${LOG_FILE})"
 }
 
 # ── Health check ──────────────────────────────────────────────────────
 
 wait_for_health() {
     local url="http://127.0.0.1:${VLLM_PORT}/v1/models"
-    local max_wait=300  # 5 minutes -- model download can be slow
+    local max_wait=600  # 10 minutes -- first run downloads ~9 GB model
     local interval=5
     local elapsed=0
 
@@ -233,7 +240,7 @@ wait_for_health() {
     echo "ERROR: vLLM did not become healthy within ${max_wait}s." >&2
     echo "Check logs:" >&2
     echo "  Docker:  docker logs vllm-chat2cop" >&2
-    echo "  Native:  check terminal output" >&2
+    echo "  Native:  tail -50 ${LOG_FILE}" >&2
     return 1
 }
 
@@ -244,6 +251,24 @@ main() {
     echo "  chat-to-cop vLLM launcher for Analytics Gateway"
     echo "================================================================"
     echo ""
+
+    # ── Idempotent: skip if already running ──────────────────────────
+    if [ -f "${PID_FILE}" ]; then
+        OLD_PID=$(cat "${PID_FILE}")
+        if kill -0 "${OLD_PID}" 2>/dev/null; then
+            echo "vLLM already running (PID ${OLD_PID})."
+            echo "  To restart: kill ${OLD_PID} && bash $0"
+            if curl -sf "http://127.0.0.1:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
+                echo "  Health check: OK"
+            else
+                echo "  Health check: not yet ready (may still be loading model)"
+            fi
+            exit 0
+        else
+            echo "Stale PID file (PID ${OLD_PID} not running), cleaning up."
+            rm -f "${PID_FILE}"
+        fi
+    fi
 
     detect_gpu
 
