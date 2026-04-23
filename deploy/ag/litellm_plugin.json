@@ -7,12 +7,13 @@
   "friendly_name": "litellm-bedrock",
   "applications": {
     "litellm": {
-      "command": "bash /path/to/deploy/ag/launch-litellm.sh",
+      "command": "bash $HOME/chat-to-cop/deploy/ag/launch-litellm.sh",
       "port": 4000,
       "health_check": "/health",
       "environment": {
         "AWS_DEFAULT_REGION": "us-gov-west-1"
-      }
+      },
+      "note": "Update the command path to match where the repo is cloned on this node."
     }
   }
 }

@@ -72,14 +72,22 @@ fi
 
 # ── 3. Install litellm ────────────────────────────────────────────────
 
-if ${PYTHON} -c "import litellm" 2>/dev/null; then
+VENV_DIR="/tmp/litellm-venv"
+
+if [ -d "${VENV_DIR}" ] && "${VENV_DIR}/bin/python" -c "import litellm" 2>/dev/null; then
+    LITELLM_VER=$("${VENV_DIR}/bin/python" -c "import litellm; print(litellm.__version__)" 2>/dev/null || echo "unknown")
+    echo "[INFO] litellm already installed in ${VENV_DIR} (version ${LITELLM_VER})"
+    PYTHON="${VENV_DIR}/bin/python"
+elif ${PYTHON} -c "import litellm" 2>/dev/null; then
     LITELLM_VER=$(${PYTHON} -c "import litellm; print(litellm.__version__)" 2>/dev/null || echo "unknown")
-    echo "[INFO] litellm already installed (version ${LITELLM_VER})"
+    echo "[INFO] litellm already installed system-wide (version ${LITELLM_VER})"
 else
-    echo "[INFO] Installing litellm[proxy]..."
-    # Use /tmp for pip cache to avoid disk quota issues on AG home dirs
-    TMPDIR=/tmp PIP_CACHE_DIR=/tmp/pip-cache ${PYTHON} -m pip install --user "litellm[proxy]" 2>&1 | tail -5
-    echo "[OK] litellm installed"
+    echo "[INFO] Installing litellm[proxy] into ${VENV_DIR}..."
+    echo "[INFO] Using /tmp to avoid AG home directory disk quota."
+    ${PYTHON} -m venv "${VENV_DIR}"
+    TMPDIR=/tmp PIP_CACHE_DIR=/tmp/pip-cache "${VENV_DIR}/bin/pip" install "litellm[proxy]" 2>&1 | tail -5
+    PYTHON="${VENV_DIR}/bin/python"
+    echo "[OK] litellm installed in ${VENV_DIR}"
 fi
 
 # ── 4. Start LiteLLM proxy ────────────────────────────────────────────
