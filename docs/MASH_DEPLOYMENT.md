@@ -12,7 +12,7 @@ Chat-to-cop is an AI staff officer that runs **in the background** on a single w
 
 **Hardware:** One workstation with GPU (recommended) or internet access for cloud APIs. No special infrastructure required.
 
-**Five deployment options:**
+**Six deployment options:**
 
 | Option | Requires GPU? | Requires Internet? | Latency | Notes |
 |--------|--------------|-------------------|---------|-------|
@@ -21,6 +21,7 @@ Chat-to-cop is an AI staff officer that runs **in the background** on a single w
 | C: Ask Sage (NIPRNet) | No | Yes (NIPRNet) | ~10-15s | CAC + VPN required |
 | D: Docker Compose | Optional | Optional | Varies | Containerized, cleanest setup |
 | E: Hybrid (recommended) | Yes | Yes | ~5s primary | Cloud primary + local fallback |
+| G: AG vLLM | Yes (AG GPU node) | Yes (AG network) | ~3-5s | Best throughput, continuous batching |
 
 ---
 
@@ -393,6 +394,106 @@ Level 4: Passthrough              -- raw message, confidence 0.0 (never fails)
 ```
 
 **Why hybrid is recommended:** At DASH 3, the circuit breaker recovered from cloud outages in under 60 seconds on GPU. Zero messages were dropped across 935 messages on any backend configuration. The hybrid approach gives you cloud quality when available and guaranteed continuity when not.
+
+---
+
+## 7b. Option G: Analytics Gateway vLLM
+
+Run vLLM on an AG GPU node (g4dn.xlarge with T4, or p3.2xlarge with V100) serving Qwen2.5-14B-Instruct-AWQ. This gives the best throughput of any local inference option thanks to vLLM's continuous batching. The recommended AG configuration pairs vLLM as the primary backend with Bedrock (via LiteLLM proxy) as the fallback.
+
+### Requirements
+
+- AG GPU instance (g4dn.xlarge recommended, 92 credits/hr)
+- NVIDIA drivers installed on the AG node
+- Docker (recommended) or Python 3.10+ with CUDA toolkit
+- For hybrid: AWS GovCloud credentials (Bedrock access)
+
+### Step-by-step
+
+1. Launch a g4dn.xlarge GPU instance from the AG dashboard.
+
+2. SSH to the instance and install drivers if needed:
+
+```bash
+nvidia-smi || (sudo apt-get install -y nvidia-driver-535 && sudo modprobe nvidia)
+```
+
+3. Clone chat-to-cop and launch vLLM:
+
+```bash
+cd /tmp
+git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+cd chat-to-cop
+bash deploy/ag/launch-vllm-chat2cop.sh
+```
+
+The script auto-detects the GPU, downloads the model on first run (cached to /tmp/huggingface), and waits for the health check to pass.
+
+4. Connect chat-to-cop to vLLM:
+
+```bash
+pip install -e ".[dev]"
+
+export CHAT_TO_COP_LLM_URL=http://127.0.0.1:8000/v1
+export CHAT_TO_COP_LLM_MODEL=Qwen/Qwen2.5-14B-Instruct-AWQ
+export CHAT_TO_COP_LLM_IS_OLLAMA=false
+
+python scripts/quick_test.py --url http://127.0.0.1:8000/v1 --model Qwen/Qwen2.5-14B-Instruct-AWQ
+```
+
+5. For the recommended hybrid configuration (vLLM primary + Bedrock fallback), use the combined setup script:
+
+```bash
+bash deploy/ag/setup-ag-backends.sh --both
+```
+
+This starts both vLLM and the LiteLLM Bedrock proxy (from issue #77) and prints the env vars to configure the DegradingBackend:
+
+```
+Tier 1: vLLM (Qwen2.5-14B-AWQ on T4)     -- local GPU, ~3-5s latency
+    |  [circuit breaker: 3 failures -> open]
+    v
+Tier 2: Bedrock (Claude Sonnet via LiteLLM) -- cloud fallback, ~5s latency
+    |  [circuit breaker]
+    v
+Tier 3: Regex patterns
+    v
+Tier 4: Passthrough
+```
+
+```bash
+# Full hybrid configuration
+export CHAT_TO_COP_LLM_URL=http://127.0.0.1:8000/v1
+export CHAT_TO_COP_LLM_MODEL=Qwen/Qwen2.5-14B-Instruct-AWQ
+export CHAT_TO_COP_LLM_IS_OLLAMA=false
+export CHAT_TO_COP_FALLBACK_URL=http://127.0.0.1:4000/v1
+export CHAT_TO_COP_FALLBACK_MODEL=bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+6. Start the pipeline and dashboard:
+
+```bash
+python -m chat_to_cop.live --irc-url ws://IRC_SERVER_IP:8097
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8080 &
+```
+
+### Why vLLM over Ollama on AG
+
+- Continuous batching handles 10+ concurrent channel agents without queuing
+- AWQ quantization support lets 14B fit on T4 with room to spare (Ollama's AWQ support is limited)
+- No Modelfile hack for context window -- `--max-model-len 8192` at startup
+- Higher generation throughput: ~80-120 tok/s vs Ollama's ~40 tok/s for comparable models
+- Docker image is self-contained with CUDA runtime -- no driver compatibility issues
+
+### Credit cost estimate
+
+| Duration | g4dn.xlarge (T4) | p3.2xlarge (V100) |
+|----------|------------------|-------------------|
+| 1 hour test | 92 | 510 |
+| 4 hour exercise block | 368 | 2,040 |
+| Full day (8 hours) | 736 | 4,080 |
+
+Use g4dn.xlarge with 14B-AWQ. The V100 is only needed for full-precision 14B or experimental 32B models.
 
 ---
 

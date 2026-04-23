@@ -6,10 +6,11 @@ How to run chat-to-cop on Analytics Gateway with GPU acceleration.
 
 | Instance | GPU | VRAM | Credits/hr | Models That Fit |
 |----------|-----|------|-----------|-----------------|
-| **g4dn.xlarge** | 1x T4 | 16GB | 92 | 7B (4.5GB), 14B (9GB) |
+| **g4dn.xlarge** | 1x T4 | 16GB | 92 | 7B (4.5GB), 14B-AWQ (9GB) |
 | g4dn.2xlarge | 1x T4 | 16GB | 131 | Same GPU, more CPU/RAM |
+| p3.2xlarge | 1x V100 | 16GB | 510 | 14B full (28GB -- tight), 7B |
 
-**Note:** As of March 2026, g5 (A10G) and p3 instances may not be available in GovCloud. The g4dn.xlarge with T4 is the reliable option.
+**Note:** As of March 2026, g5 (A10G) instances may not be available in GovCloud. The g4dn.xlarge with T4 is the reliable and cost-effective option. p3 (V100) is available but expensive.
 
 ## Step-by-Step Setup
 
@@ -192,6 +193,113 @@ OLLAMA_MODELS=/tmp/ollama-models ollama serve 2>&1 | grep -v '^\[GIN\]' &
 ### "truncating input prompt"
 The conversation window exceeds the model's context length. This is normal for later messages in a long sequence. Consider reducing `window_size` in config.
 
+## vLLM Setup (Recommended for MASH)
+
+vLLM provides significantly better throughput and lower latency than Ollama for the same model, especially with quantized models (AWQ/GPTQ) and continuous batching. This is the recommended backend for AG GPU deployments.
+
+Reference: Jennifer Carlet's production vLLM scripts at
+https://gitlab.dle.afrl.af.mil/analytics-gateway/llms-on-ag
+
+### Docker Path (Recommended)
+
+Docker is simpler and avoids dependency conflicts with AG's system Python.
+
+```bash
+# One-command launch with chat-to-cop defaults
+cd deploy/ag
+./launch-vllm-chat2cop.sh
+```
+
+Or run Docker directly:
+
+```bash
+mkdir -p /tmp/huggingface
+
+docker run -d \
+    --name vllm-chat2cop \
+    --gpus all \
+    --shm-size 4g \
+    -p 8000:8000 \
+    -v /tmp/huggingface:/root/.cache/huggingface \
+    vllm/vllm-openai:v0.19.1-cu130 \
+    --model Qwen/Qwen2.5-14B-Instruct-AWQ \
+    --max-model-len 8192 \
+    --gpu-memory-utilization 0.90 \
+    --trust-remote-code \
+    --dtype auto
+```
+
+Verify:
+
+```bash
+curl http://127.0.0.1:8000/v1/models
+```
+
+### Native Python Path
+
+Use when Docker is unavailable or you need tighter control. Requires CUDA toolkit and build dependencies.
+
+```bash
+# Install build deps (from Jennifer Carlet's repo)
+# See: https://gitlab.dle.afrl.af.mil/analytics-gateway/llms-on-ag
+#      vllm_scripts/install_build_deps.sh
+sudo apt-get install -y python3-dev build-essential
+pip install vllm
+
+# Set cache to /tmp (avoid disk quota)
+export HF_HOME=/tmp/huggingface
+mkdir -p /tmp/huggingface
+
+# Launch
+python3 -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen2.5-14B-Instruct-AWQ \
+    --max-model-len 8192 \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --gpu-memory-utilization 0.90 \
+    --trust-remote-code \
+    --dtype auto
+```
+
+### Model Options
+
+| Model | Size | VRAM | Instance | Notes |
+|-------|------|------|----------|-------|
+| **Qwen/Qwen2.5-14B-Instruct-AWQ** | ~9 GB | T4 (16GB) | g4dn.xlarge | Recommended -- best quality/cost on T4 |
+| Qwen/Qwen2.5-7B-Instruct | ~14 GB | T4 (16GB) | g4dn.xlarge | Full precision, fits T4 but tight |
+| Qwen/Qwen2.5-14B-Instruct | ~28 GB | V100 (16GB) | p3.2xlarge | Full precision -- needs V100 or better |
+| Qwen/Qwen2.5-32B-Instruct-AWQ | ~18 GB | V100 (16GB) | p3.2xlarge | Experimental -- tight on V100, untested |
+
+AWQ quantization loses negligible quality on structured extraction tasks while cutting VRAM usage by ~60%. For chat-to-cop, 14B-AWQ on T4 is the sweet spot.
+
+### vLLM vs Ollama Performance
+
+| Metric | Ollama (7B on T4) | vLLM (14B-AWQ on T4) |
+|--------|--------------------|-----------------------|
+| Tokens/sec (generation) | ~40 | ~80-120 |
+| First-token latency | ~200ms | ~100ms |
+| Concurrent requests | 1 (sequential) | Batched (continuous) |
+| Context window | Requires Modelfile hack | Native --max-model-len |
+| Cold start | 30-90s | 60-120s (model download on first run) |
+
+vLLM's continuous batching means multiple channel agents can send concurrent requests without queuing. With 10+ IRC channels active during MASH, this matters.
+
+### Connecting chat-to-cop to vLLM
+
+```bash
+export CHAT_TO_COP_LLM_URL=http://127.0.0.1:8000/v1
+export CHAT_TO_COP_LLM_MODEL=Qwen/Qwen2.5-14B-Instruct-AWQ
+export CHAT_TO_COP_LLM_IS_OLLAMA=false
+
+python -m chat_to_cop.replay /path/to/chat.zip --db /tmp/vllm_test.db
+```
+
+**Important:** Set `CHAT_TO_COP_LLM_IS_OLLAMA=false` (or use `--no-ollama`) so the pipeline does not send Ollama-specific `num_ctx` options in the request body. vLLM handles context length via `--max-model-len` at server startup.
+
+### AG Plugin Definition
+
+The file `deploy/ag/vllm_chat2cop_plugin.json` defines chat-to-cop's vLLM setup as an AG custom plugin. This follows the format from Jennifer Carlet's `vllm_docker.json` and can be registered with the AG dashboard for managed deployments.
+
 ## Cost Estimation
 
 | Test | Instance | Duration | Credits |
@@ -200,5 +308,9 @@ The conversation window exceeds the model's context length. This is normal for l
 | Eval harness (100 messages) | g4dn.xlarge | 20 min | ~31 |
 | Full DASH replay (149 messages) | g4dn.xlarge | 30 min | ~46 |
 | **Total for a complete test session** | | **~1 hour** | **~92** |
+| Full MASH event (8 hours) | g4dn.xlarge | 8 hr | ~736 |
+| Full MASH event (8 hours) | p3.2xlarge | 8 hr | ~4080 |
 
-Including driver install and model pull: budget ~2 hours (184 credits) for a complete test session.
+Including driver install and model pull: budget ~2 hours (184 credits) for a complete test session on g4dn.
+
+For a multi-day event, prefer g4dn.xlarge with 14B-AWQ over p3.2xlarge with 14B full. The quality difference is negligible but the credit cost is 5.5x lower.
