@@ -65,8 +65,7 @@ check_litellm_running() {
 
 check_litellm_available() {
     # Check if the LiteLLM launch script exists (from issue #77)
-    [ -f "${SCRIPT_DIR}/launch-litellm-proxy.sh" ] || \
-    [ -f "${SCRIPT_DIR}/litellm-proxy.sh" ] || \
+    [ -f "${SCRIPT_DIR}/launch-litellm.sh" ] || \
     command -v litellm &>/dev/null
 }
 
@@ -165,19 +164,16 @@ start_litellm() {
         return 0
     fi
 
-    if [ -f "${SCRIPT_DIR}/launch-litellm-proxy.sh" ]; then
+    if [ -f "${SCRIPT_DIR}/launch-litellm.sh" ]; then
         echo "Starting LiteLLM proxy..."
-        bash "${SCRIPT_DIR}/launch-litellm-proxy.sh"
-    elif [ -f "${SCRIPT_DIR}/litellm-proxy.sh" ]; then
-        echo "Starting LiteLLM proxy..."
-        bash "${SCRIPT_DIR}/litellm-proxy.sh"
+        bash "${SCRIPT_DIR}/launch-litellm.sh"
     elif command -v litellm &>/dev/null; then
         echo "Starting LiteLLM from system install..."
         litellm --port "${LITELLM_PORT}" &
         echo "LiteLLM started on port ${LITELLM_PORT}"
     else
         echo "WARNING: No LiteLLM launch script found." >&2
-        echo "  Expected: ${SCRIPT_DIR}/launch-litellm-proxy.sh (from issue #77)" >&2
+        echo "  Expected: ${SCRIPT_DIR}/launch-litellm.sh (from issue #77)" >&2
         echo "  LiteLLM backend will not be available." >&2
         return 1
     fi
