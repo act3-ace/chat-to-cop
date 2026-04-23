@@ -120,7 +120,8 @@ print_dashboard() {
         echo "    export CHAT_TO_COP_LLM_MODEL=${MODEL_NAME:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
         echo "    export CHAT_TO_COP_LLM_IS_OLLAMA=false"
         echo "    export CHAT_TO_COP_FALLBACK_URL=http://127.0.0.1:${LITELLM_PORT}/v1"
-        echo "    export CHAT_TO_COP_FALLBACK_MODEL=bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+        echo "    export CHAT_TO_COP_FALLBACK_MODEL=claude-sonnet"
+        echo "    export CHAT_TO_COP_FALLBACK_IS_OLLAMA=false"
         echo ""
     elif check_vllm_running; then
         echo "  vLLM only (no cloud fallback):"
@@ -133,7 +134,8 @@ print_dashboard() {
         echo "  LiteLLM / Bedrock only (no local GPU):"
         echo ""
         echo "    export CHAT_TO_COP_LLM_URL=http://127.0.0.1:${LITELLM_PORT}/v1"
-        echo "    export CHAT_TO_COP_LLM_MODEL=bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+        echo "    export CHAT_TO_COP_LLM_MODEL=claude-sonnet"
+        echo "    export CHAT_TO_COP_LLM_IS_OLLAMA=false"
         echo ""
     else
         echo "  No backends running. Start with:"
