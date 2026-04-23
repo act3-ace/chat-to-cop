@@ -74,13 +74,22 @@ fi
 
 VENV_DIR="/tmp/litellm-venv"
 
-if [ -d "${VENV_DIR}" ] && "${VENV_DIR}/bin/python" -c "import litellm" 2>/dev/null; then
-    LITELLM_VER=$("${VENV_DIR}/bin/python" -c "import litellm; print(litellm.__version__)" 2>/dev/null || echo "unknown")
-    echo "[INFO] litellm already installed in ${VENV_DIR} (version ${LITELLM_VER})"
+litellm_works() {
+    # Verify litellm proxy is actually functional, not just importable
+    local py="$1"
+    "${py}" -c "from litellm.proxy.proxy_cli import run_server" 2>/dev/null
+}
+
+litellm_ver() {
+    local py="$1"
+    "${py}" -c "import importlib.metadata; print(importlib.metadata.version('litellm'))" 2>/dev/null || echo "unknown"
+}
+
+if [ -d "${VENV_DIR}" ] && litellm_works "${VENV_DIR}/bin/python"; then
+    echo "[INFO] litellm already installed in ${VENV_DIR} (version $(litellm_ver "${VENV_DIR}/bin/python"))"
     PYTHON="${VENV_DIR}/bin/python"
-elif ${PYTHON} -c "import litellm" 2>/dev/null; then
-    LITELLM_VER=$(${PYTHON} -c "import litellm; print(litellm.__version__)" 2>/dev/null || echo "unknown")
-    echo "[INFO] litellm already installed system-wide (version ${LITELLM_VER})"
+elif litellm_works "${PYTHON}"; then
+    echo "[INFO] litellm already installed system-wide (version $(litellm_ver "${PYTHON}"))"
 else
     echo "[INFO] Installing litellm[proxy] into ${VENV_DIR}..."
     echo "[INFO] Using /tmp to avoid AG home directory disk quota."
@@ -94,7 +103,17 @@ fi
 
 echo "[INFO] Starting LiteLLM proxy on ${HOST}:${PORT}..."
 
-nohup ${PYTHON} -m litellm \
+# Resolve the litellm CLI: prefer the venv's bin/ entry point, fall back to
+# running via the Python module path (older litellm versions).
+if [ -x "${VENV_DIR}/bin/litellm" ]; then
+    LITELLM_CMD="${VENV_DIR}/bin/litellm"
+elif command -v litellm &>/dev/null; then
+    LITELLM_CMD="litellm"
+else
+    LITELLM_CMD="${PYTHON} -m litellm.proxy.proxy_cli"
+fi
+
+nohup ${LITELLM_CMD} \
     --config "${CONFIG_FILE}" \
     --port "${PORT}" \
     --host "${HOST}" \

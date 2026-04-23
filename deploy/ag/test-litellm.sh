@@ -12,6 +12,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LITELLM_URL="${1:-${LITELLM_URL:-http://127.0.0.1:4000}}"
 # Strip trailing slash
 LITELLM_URL="${LITELLM_URL%/}"
@@ -62,7 +63,8 @@ fi
 
 # ── 3. Chat completion (claude-sonnet) ─────────────────────────────────
 echo "3. Chat completion (claude-sonnet)"
-RESPONSE=$(curl -sf --max-time 60 "${LITELLM_URL}/v1/chat/completions" \
+HTTP_CODE=$(curl -s -o /tmp/litellm-test-response.json -w "%{http_code}" --max-time 60 \
+    "${LITELLM_URL}/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -d '{
         "model": "claude-sonnet",
@@ -70,22 +72,26 @@ RESPONSE=$(curl -sf --max-time 60 "${LITELLM_URL}/v1/chat/completions" \
             {"role": "user", "content": "Reply with exactly: LITELLM SMOKE TEST OK"}
         ],
         "max_tokens": 20
-    }' 2>/dev/null || echo "TIMEOUT")
+    }' 2>/dev/null || echo "000")
+RESPONSE=$(cat /tmp/litellm-test-response.json 2>/dev/null || echo "")
 
-if [ "${RESPONSE}" = "TIMEOUT" ]; then
-    fail "Chat completion timed out after 60 seconds"
-elif echo "${RESPONSE}" | grep -q "choices"; then
+if [ "${HTTP_CODE}" = "000" ]; then
+    fail "Chat completion timed out or connection refused"
+elif [ "${HTTP_CODE}" = "200" ] && echo "${RESPONSE}" | grep -q "choices"; then
     pass "Chat completion succeeded (claude-sonnet)"
+elif [ "${HTTP_CODE}" = "401" ] || echo "${RESPONSE}" | grep -qi "credentials\|authentication"; then
+    skip "Chat completion returned auth error (expected without AWS credentials)"
 elif echo "${RESPONSE}" | grep -q "error"; then
-    ERROR_MSG=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error',{}).get('message','unknown'))" 2>/dev/null || echo "unknown")
-    fail "Chat completion returned error: ${ERROR_MSG}"
+    ERROR_MSG=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error',{}).get('message','unknown')[:120])" 2>/dev/null || echo "unknown")
+    fail "Chat completion returned error (HTTP ${HTTP_CODE}): ${ERROR_MSG}"
 else
-    fail "Chat completion returned unexpected response"
+    fail "Chat completion returned unexpected response (HTTP ${HTTP_CODE})"
 fi
 
 # ── 4. Chat completion (claude-haiku) ──────────────────────────────────
 echo "4. Chat completion (claude-haiku)"
-RESPONSE=$(curl -sf --max-time 60 "${LITELLM_URL}/v1/chat/completions" \
+HTTP_CODE=$(curl -s -o /tmp/litellm-test-response.json -w "%{http_code}" --max-time 60 \
+    "${LITELLM_URL}/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -d '{
         "model": "claude-haiku",
@@ -93,29 +99,39 @@ RESPONSE=$(curl -sf --max-time 60 "${LITELLM_URL}/v1/chat/completions" \
             {"role": "user", "content": "Reply with exactly: HAIKU OK"}
         ],
         "max_tokens": 20
-    }' 2>/dev/null || echo "TIMEOUT")
+    }' 2>/dev/null || echo "000")
+RESPONSE=$(cat /tmp/litellm-test-response.json 2>/dev/null || echo "")
 
-if [ "${RESPONSE}" = "TIMEOUT" ]; then
-    fail "Chat completion timed out after 60 seconds (haiku)"
-elif echo "${RESPONSE}" | grep -q "choices"; then
+if [ "${HTTP_CODE}" = "000" ]; then
+    fail "Chat completion timed out or connection refused (haiku)"
+elif [ "${HTTP_CODE}" = "200" ] && echo "${RESPONSE}" | grep -q "choices"; then
     pass "Chat completion succeeded (claude-haiku)"
+elif [ "${HTTP_CODE}" = "401" ] || echo "${RESPONSE}" | grep -qi "credentials\|authentication"; then
+    skip "Chat completion returned auth error (expected without AWS credentials)"
 elif echo "${RESPONSE}" | grep -q "error"; then
-    fail "Chat completion returned error (haiku)"
+    fail "Chat completion returned error (haiku, HTTP ${HTTP_CODE})"
 else
-    fail "Chat completion returned unexpected response (haiku)"
+    fail "Chat completion returned unexpected response (haiku, HTTP ${HTTP_CODE})"
 fi
+
+rm -f /tmp/litellm-test-response.json
 
 # ── 5. chat-to-cop quick_test (optional) ───────────────────────────────
 echo "5. chat-to-cop integration"
+REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." 2>/dev/null && pwd)
 if python3 -c "import chat_to_cop" 2>/dev/null; then
-    echo "   Running quick_test against proxy (may take 30-60s)..."
-    if python3 scripts/quick_test.py \
-        --url "${LITELLM_URL}/v1" \
-        --model claude-sonnet \
-        2>&1 | tail -5; then
-        pass "chat-to-cop quick_test succeeded"
+    if [ -f "${REPO_ROOT}/scripts/quick_test.py" ]; then
+        echo "   Running quick_test against proxy (may take 30-60s)..."
+        if python3 "${REPO_ROOT}/scripts/quick_test.py" \
+            --url "${LITELLM_URL}/v1" \
+            --model claude-sonnet \
+            2>&1 | tail -5; then
+            pass "chat-to-cop quick_test succeeded"
+        else
+            fail "chat-to-cop quick_test failed"
+        fi
     else
-        fail "chat-to-cop quick_test failed"
+        skip "quick_test.py not found at ${REPO_ROOT}/scripts/quick_test.py"
     fi
 else
     skip "chat-to-cop not installed (pip install -e '.[dev]' to enable)"
