@@ -6,6 +6,10 @@
 #
 # Region: us-gov-west-1 (AWS GovCloud, IL5-approved on AG)
 #
+# Note: Only models with Bedrock Model Access enabled will work.
+# As of 2026-04-24, only Sonnet 4.5 is enabled. Haiku requires a
+# separate Model Access request in the AG AWS console.
+#
 # Usage:
 #   litellm --config litellm_config.yaml --port 4000 --host 0.0.0.0
 
