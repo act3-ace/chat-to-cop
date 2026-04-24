@@ -53,7 +53,6 @@ else
     else
         fail "claude-sonnet not found in model list"
     fi
-
 fi
 
 # ── 3. Chat completion (claude-sonnet) ─────────────────────────────────

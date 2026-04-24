@@ -44,9 +44,12 @@ for arg in "$@"; do
         --vllm)     BACKEND_MODE="vllm" ;;
         --reuse)    REUSE_NODE=true ;;
         --status)
-            $SSH $SSH_OPTS ag-node "bash ~/chat-to-cop/deploy/ag/setup-ag-backends.sh --status" 2>/dev/null \
-                || echo "Could not reach ag-node. Is a compute node running? Try: agip"
-            exit $?
+            if $SSH $SSH_OPTS ag-node "bash ~/chat-to-cop/deploy/ag/setup-ag-backends.sh --status" 2>/dev/null; then
+                exit 0
+            else
+                echo "Could not reach ag-node. Is a compute node running? Try: agip"
+                exit 1
+            fi
             ;;
         --help|-h)
             sed -n '2,/^[^#]/s/^# \?//p' "$0" | head -20
@@ -76,7 +79,7 @@ SNIPPET_FILE="$HOME/.ag_snippet_id"
 
 if [ ! -f "$TOKEN_FILE" ]; then
     echo "ERROR: Missing $TOKEN_FILE" >&2
-    echo "  Create it with your DLE GitLab PAT (read_api scope):" >&2
+    echo "  Create it with your DLE GitLab PAT (read_api + read_repository scope):" >&2
     echo "    echo 'glpat-xxxxxxxxxxxxxxxxxxxx' > $TOKEN_FILE" >&2
     echo "    chmod 600 $TOKEN_FILE" >&2
     exit 1
@@ -112,10 +115,7 @@ else
     echo "Submitting: ${NODE_TYPE}, ${DISK_GB}GB disk, walltime ${WALLTIME}"
     echo ""
 
-    ag-start "$WALLTIME" "$NODE_TYPE" 1 hold ~/job-publish.sh 300 "$DISK_GB"
-    AG_START_RC=$?
-
-    if [ $AG_START_RC -ne 0 ]; then
+    if ! ag-start "$WALLTIME" "$NODE_TYPE" 1 hold '~/job-publish.sh' 300 "$DISK_GB"; then
         echo "ERROR: ag-start failed. Check ag-jobs for status." >&2
         exit 1
     fi
