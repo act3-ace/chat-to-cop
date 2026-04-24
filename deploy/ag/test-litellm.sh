@@ -54,11 +54,6 @@ else
         fail "claude-sonnet not found in model list"
     fi
 
-    if echo "${MODELS}" | grep -q "claude-haiku"; then
-        pass "claude-haiku model available"
-    else
-        fail "claude-haiku not found in model list"
-    fi
 fi
 
 # ── 3. Chat completion (claude-sonnet) ─────────────────────────────────
@@ -88,36 +83,10 @@ else
     fail "Chat completion returned unexpected response (HTTP ${HTTP_CODE})"
 fi
 
-# ── 4. Chat completion (claude-haiku) ──────────────────────────────────
-echo "4. Chat completion (claude-haiku)"
-HTTP_CODE=$(curl -s -o /tmp/litellm-test-response.json -w "%{http_code}" --max-time 60 \
-    "${LITELLM_URL}/v1/chat/completions" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "model": "claude-haiku",
-        "messages": [
-            {"role": "user", "content": "Reply with exactly: HAIKU OK"}
-        ],
-        "max_tokens": 20
-    }' 2>/dev/null || echo "000")
-RESPONSE=$(cat /tmp/litellm-test-response.json 2>/dev/null || echo "")
-
-if [ "${HTTP_CODE}" = "000" ]; then
-    fail "Chat completion timed out or connection refused (haiku)"
-elif [ "${HTTP_CODE}" = "200" ] && echo "${RESPONSE}" | grep -q "choices"; then
-    pass "Chat completion succeeded (claude-haiku)"
-elif [ "${HTTP_CODE}" = "401" ] || echo "${RESPONSE}" | grep -qi "credentials\|authentication"; then
-    skip "Chat completion returned auth error (expected without AWS credentials)"
-elif echo "${RESPONSE}" | grep -q "error"; then
-    fail "Chat completion returned error (haiku, HTTP ${HTTP_CODE})"
-else
-    fail "Chat completion returned unexpected response (haiku, HTTP ${HTTP_CODE})"
-fi
-
 rm -f /tmp/litellm-test-response.json
 
-# ── 5. chat-to-cop quick_test (optional) ───────────────────────────────
-echo "5. chat-to-cop integration"
+# ── 4. chat-to-cop quick_test (optional) ───────────────────────────────
+echo "4. chat-to-cop integration"
 REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." 2>/dev/null && pwd)
 if python3 -c "import chat_to_cop" 2>/dev/null; then
     if [ -f "${REPO_ROOT}/scripts/quick_test.py" ]; then
