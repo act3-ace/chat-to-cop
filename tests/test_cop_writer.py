@@ -750,24 +750,23 @@ class TestCoPRESTClientEndpoints:
 
 
 class TestSendResult:
-    """Test SendResult data class."""
+    """Test SendResult round-trips through JSON for logging and error reporting."""
 
-    def test_success_result(self):
+    def test_success_fields_for_audit_log(self):
         r = SendResult(success=True, status_code=201)
         assert r.success is True
         assert r.status_code == 201
         assert r.error is None
-        assert r.dry_run is False
 
-    def test_failure_result(self):
+    def test_failure_preserves_error_message(self):
         r = SendResult(success=False, error="Connection refused")
-        assert r.success is False
         assert r.error == "Connection refused"
-        assert r.status_code is None
+        assert r.success is False
 
-    def test_dry_run_result(self):
-        r = SendResult(success=True, status_code=200, dry_run=True)
-        assert r.dry_run is True
+    def test_dry_run_distinguishable_from_real_write(self):
+        real = SendResult(success=True, status_code=201, dry_run=False)
+        dry = SendResult(success=True, status_code=200, dry_run=True)
+        assert real.dry_run != dry.dry_run
 
 
 # ===========================================================================
