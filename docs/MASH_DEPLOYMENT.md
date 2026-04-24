@@ -12,7 +12,7 @@ Chat-to-cop is an AI staff officer that runs **in the background** on a single w
 
 **Hardware:** One workstation with GPU (recommended) or internet access for cloud APIs. No special infrastructure required.
 
-**Five deployment options:**
+**Six deployment options:**
 
 | Option | Requires GPU? | Requires Internet? | Latency | Notes |
 |--------|--------------|-------------------|---------|-------|
@@ -21,6 +21,7 @@ Chat-to-cop is an AI staff officer that runs **in the background** on a single w
 | C: Ask Sage (NIPRNet) | No | Yes (NIPRNet) | ~10-15s | CAC + VPN required |
 | D: Docker Compose | Optional | Optional | Varies | Containerized, cleanest setup |
 | E: Hybrid (recommended) | Yes | Yes | ~5s primary | Cloud primary + local fallback |
+| F: AG-Proxied Bedrock | No | Yes (AG network) | ~5s | No AWS creds on client, LiteLLM proxy on AG |
 
 ---
 
@@ -393,6 +394,99 @@ Level 4: Passthrough              -- raw message, confidence 0.0 (never fails)
 ```
 
 **Why hybrid is recommended:** At DASH 3, the circuit breaker recovered from cloud outages in under 60 seconds on GPU. Zero messages were dropped across 935 messages on any backend configuration. The hybrid approach gives you cloud quality when available and guaranteed continuity when not.
+
+---
+
+## 7b. Option F: AG-Proxied Bedrock
+
+Claude Sonnet via AWS Bedrock, proxied through a LiteLLM instance on Analytics Gateway. The operator's laptop needs no AWS credentials, no GPU, and no special SDK -- just an HTTP endpoint. The LiteLLM proxy on AG translates OpenAI-compatible requests to Bedrock calls using the AG node's IAM role.
+
+### Requirements
+
+- Network path from operator laptop to the AG node (AG VPN or same network)
+- LiteLLM proxy running on an AG node (see deploy/ag/)
+- No client-side AWS credentials needed
+
+### One-liner setup
+
+```bash
+export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
+export CHAT_TO_COP_LLM_MODEL=claude-sonnet
+```
+
+Or using the direct AG node IP (if the friendly name is not yet configured):
+
+```bash
+export CHAT_TO_COP_LLM_URL=http://172.33.68.166:4000/v1
+export CHAT_TO_COP_LLM_MODEL=claude-sonnet
+```
+
+### Available models
+
+| Alias | Bedrock Model ID | Notes |
+|-------|------------------|-------|
+| `claude-sonnet` | `us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0` | Primary, best quality |
+| `claude-haiku` | `us-gov.anthropic.claude-haiku-4-5-20251001-v1:0` | Faster, lower cost |
+
+### Step-by-step (operator)
+
+1. Verify the proxy is reachable:
+
+```bash
+curl https://litellm-bedrock.act3.analyticsgateway.com/v1/models
+```
+
+2. Set environment and run:
+
+```bash
+export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
+export CHAT_TO_COP_LLM_MODEL=claude-sonnet
+
+python -m chat_to_cop.replay /path/to/live/feed --db data/mash_ag.db
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+```
+
+### Hybrid config with local Ollama fallback
+
+Combine the AG proxy as primary with a local Ollama fallback for resilience. If the AG proxy or network goes down, extraction continues locally.
+
+```bash
+# Primary: AG-proxied Bedrock (Claude Sonnet)
+export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
+export CHAT_TO_COP_LLM_MODEL=claude-sonnet
+
+# Fallback: local Ollama
+export CHAT_TO_COP_FALLBACK_URL=http://127.0.0.1:11434/v1
+export CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b-8k
+```
+
+The degrading backend handles failover transparently, same as Option E.
+
+### Setting up the proxy (AG admin)
+
+See `deploy/ag/` for the full setup:
+
+```bash
+# On the AG node:
+cd chat-to-cop/deploy/ag
+bash launch-litellm.sh
+
+# Verify:
+bash test-litellm.sh
+```
+
+The launch script is idempotent (safe to re-run). LiteLLM runs on port 4000 and logs to `/tmp/litellm.log`.
+
+For a stable HTTPS URL, register the AG plugin using `litellm_plugin.json`. This gives the proxy a friendly name like `https://litellm-bedrock.act3.analyticsgateway.com`. Until that is configured, use the direct IP.
+
+### Friendly name URL vs direct IP
+
+| URL Type | Example | When to use |
+|----------|---------|-------------|
+| Friendly name | `https://litellm-bedrock.act3.analyticsgateway.com/v1` | AG plugin registered, HTTPS, stable |
+| Direct IP | `http://172.33.68.166:4000/v1` | No plugin yet, testing, or plugin unavailable |
+
+The friendly name provides TLS termination and a stable hostname. Prefer it for production use. The direct IP works for testing and when the plugin has not been registered with AG yet.
 
 ---
 
