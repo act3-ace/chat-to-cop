@@ -427,7 +427,9 @@ export CHAT_TO_COP_LLM_MODEL=claude-sonnet
 | Alias | Bedrock Model ID | Notes |
 |-------|------------------|-------|
 | `claude-sonnet` | `us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0` | Primary, best quality |
-| `claude-haiku` | `us-gov.anthropic.claude-haiku-4-5-20251001-v1:0` | Faster, lower cost |
+
+Only Claude Sonnet is enabled in AG Bedrock Model Access. Other models
+(Haiku, Opus) are not available on GovCloud at this time.
 
 ### Step-by-step (operator)
 
@@ -904,11 +906,114 @@ pip install -e ".[dev]"
 
 ---
 
+## AG Quickstart (Options F and G)
+
+This section covers the automated deployment path for AG-based backends
+(Options F and G). One script handles everything: provisioning the AG node,
+installing DoD CA certs, cloning the repo, and launching the backends.
+
+### Prerequisites
+
+1. **ag-helpers** sourced in your shell. Ask Scott for the repo, then:
+
+```bash
+source /path/to/ag-helpers/local/profile.sh
+```
+
+2. **DLE GitLab PAT** saved to `~/.dle_gitlab_token` (mode 600):
+
+```bash
+echo 'glpat-xxxxxxxxxxxxxxxxxxxx' > ~/.dle_gitlab_token
+chmod 600 ~/.dle_gitlab_token
+```
+
+3. **AG snippet ID** saved to `~/.ag_snippet_id`:
+
+```bash
+echo '42' > ~/.ag_snippet_id
+```
+
+4. **SSH config** with `ag-head` and `ag-node` hosts. See the ag-helpers
+   `local/ssh-config-snippet` for the template.
+
+### One-command deploy
+
+From your laptop, in the chat-to-cop repo:
+
+```bash
+# GPU node with vLLM (recommended for MASH):
+bash deploy/ag/deploy-to-ag.sh
+
+# GPU node with vLLM + Bedrock fallback:
+bash deploy/ag/deploy-to-ag.sh --both
+
+# CPU node with Bedrock proxy only (no GPU needed):
+bash deploy/ag/deploy-to-ag.sh --litellm
+
+# Reuse an already-running AG node:
+bash deploy/ag/deploy-to-ag.sh --reuse --both
+```
+
+The script will:
+- Submit a qsub job with the right node type and disk size (90GB for GPU)
+- Wait for the node to boot and publish its IP
+- SSH in and install the DoD CA bundle
+- Clone chat-to-cop using your DLE token
+- Launch the selected backends
+- Print the env vars to paste into your shell
+
+### After deploy
+
+Check status:
+```bash
+bash deploy/ag/deploy-to-ag.sh --status
+```
+
+SSH to the node directly:
+```bash
+ssh ag-node
+```
+
+Stop the AG job when done:
+```bash
+ag-stop
+```
+
+### Disk space
+
+The vLLM Docker image is ~20GB and the model is ~9GB. The deploy script
+requests 90GB by default. If you see "no space left on device", the node
+was provisioned with too little disk. Re-provision with:
+
+```bash
+ag-stop
+bash deploy/ag/deploy-to-ag.sh
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `ag-start` times out | Run `ag-jobs` to check queue. The node may still be booting. Try `agip` manually once it shows as running. |
+| SSH to ag-node fails | Run `agip` to refresh the IP in `~/.ssh/config`. |
+| No GPU detected | Verify node type is `g4dn.xlarge`, not `cpu`. Use `--litellm` for CPU-only nodes. |
+| vLLM "no space left" | Node disk too small. Re-provision (deploy script uses 90GB by default). |
+| LiteLLM auth error | Expected without AWS credentials. Bedrock IAM role is bound to the AG node, not your laptop. |
+| Git clone fails | Check that `~/.dle_gitlab_token` exists and the PAT has `read_repository` scope. |
+
+---
+
 ## Quick Reference Card
 
 Print this and tape it to your monitor.
 
 ```
+DEPLOY TO AG (one command):
+  bash deploy/ag/deploy-to-ag.sh              # GPU + vLLM
+  bash deploy/ag/deploy-to-ag.sh --both       # GPU + vLLM + Bedrock fallback
+  bash deploy/ag/deploy-to-ag.sh --litellm    # CPU + Bedrock only
+  bash deploy/ag/deploy-to-ag.sh --status     # check what's running
+
 START PIPELINE (local GPU):
   ollama serve &
   python -m chat_to_cop.replay <data> --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --db data/mash.db
