@@ -93,9 +93,14 @@ elif litellm_works "${PYTHON}"; then
 else
     echo "[INFO] Installing litellm[proxy] into ${VENV_DIR}..."
     echo "[INFO] Using /tmp to avoid AG home directory disk quota."
-    ${PYTHON} -m venv "${VENV_DIR}"
-    TMPDIR=/tmp PIP_CACHE_DIR=/tmp/pip-cache "${VENV_DIR}/bin/pip" install "litellm[proxy]" 2>&1 | tail -5
-    PYTHON="${VENV_DIR}/bin/python"
+    if ${PYTHON} -m venv "${VENV_DIR}" 2>/dev/null; then
+        TMPDIR=/tmp PIP_CACHE_DIR=/tmp/pip-cache "${VENV_DIR}/bin/pip" install "litellm[proxy]" 2>&1 | tail -5
+        PYTHON="${VENV_DIR}/bin/python"
+    else
+        echo "[INFO] python3-venv unavailable, falling back to pip install --target"
+        TMPDIR=/tmp PIP_CACHE_DIR=/tmp/pip-cache pip3 install --target "${VENV_DIR}" "litellm[proxy]" 2>&1 | tail -5
+        export PYTHONPATH="${VENV_DIR}:${PYTHONPATH:-}"
+    fi
     echo "[OK] litellm installed in ${VENV_DIR}"
 fi
 
