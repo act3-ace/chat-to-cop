@@ -10,10 +10,6 @@ from chat_to_cop.calibration import CalibrationBucket, CalibrationModel
 
 
 class TestCalibrationBucket:
-    def test_accuracy_empty(self):
-        b = CalibrationBucket(lower=0.0, upper=0.1)
-        assert b.accuracy == 0.0
-
     def test_accuracy_computed(self):
         b = CalibrationBucket(lower=0.8, upper=0.9, total=10, correct=7)
         assert b.accuracy == pytest.approx(0.7)
@@ -29,6 +25,12 @@ class TestCalibrationBucket:
 
 
 class TestCalibrationModelFit:
+    def test_empty_buckets_do_not_break_ece(self):
+        model = CalibrationModel(n_bins=10)
+        model.fit([0.95] * 5, [True] * 5)
+        ece = model.ece()
+        assert ece < 0.1
+
     def test_fit_basic(self):
         model = CalibrationModel(n_bins=10)
         # All predictions at 0.9 confidence, only half correct
@@ -76,9 +78,14 @@ class TestCalibrationModelFit:
 
 
 class TestCalibrationModelCalibrate:
-    def test_calibrate_unfitted_returns_raw(self):
-        model = CalibrationModel()
-        assert model.calibrate(0.75) == 0.75
+    def test_calibrate_unfitted_then_fitted_changes_output(self):
+        model = CalibrationModel(n_bins=10)
+        raw = model.calibrate(0.9)
+        assert raw == 0.9
+        model.fit([0.9] * 100, [i < 50 for i in range(100)])
+        calibrated = model.calibrate(0.9)
+        assert calibrated == pytest.approx(0.5)
+        assert calibrated != raw
 
     def test_calibrate_overconfident(self):
         model = CalibrationModel(n_bins=10)

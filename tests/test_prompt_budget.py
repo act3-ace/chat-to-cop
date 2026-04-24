@@ -28,6 +28,17 @@ def test_system_prompt_under_budget():
 
 def test_prompt_without_glossary_is_compact():
     """The bare prompt (no glossary, no world state, no speakers) should be
-    well under the ceiling. If it isn't, the few-shot examples have bloated."""
+    well under the ceiling. If it isn't, the few-shot examples have bloated.
+
+    Threshold: 10,000 chars (~2,500 tokens) leaves room for glossary, speaker
+    context, and world state within a typical 4K-8K token context window."""
     prompt = build_system_prompt()
     assert len(prompt) < 10_000, f"Bare prompt is {len(prompt)} chars, unexpectedly large"
+
+
+def test_glossary_adds_meaningful_content():
+    """Glossary should add substantial content, not be empty or trivial."""
+    bare = build_system_prompt()
+    with_glossary = build_system_prompt(glossary=DEFAULT_GLOSSARY)
+    delta = len(with_glossary) - len(bare)
+    assert delta > 500, f"Glossary only adds {delta} chars -- may be empty or truncated"
