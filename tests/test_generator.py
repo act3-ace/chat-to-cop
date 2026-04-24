@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 
 from chat_to_cop.models.cop_update import UpdateType
-from chat_to_cop.models.messages import IRCMessage
 from chat_to_cop.testing.generator import generate_messages
 
 
@@ -13,15 +12,17 @@ class TestGenerateMessages:
         assert len(msgs) == 20
         assert len(gt) == 20
 
-    def test_all_are_irc_messages(self):
+    def test_messages_have_required_fields(self):
         msgs, _ = generate_messages(count=10)
         for m in msgs:
-            assert isinstance(m, IRCMessage)
+            assert m.channel.startswith("#"), f"Channel {m.channel!r} missing # prefix"
+            assert m.sender, "Sender must be non-empty"
+            assert m.content, "Content must be non-empty"
+            assert m.timestamp is not None
 
     def test_noise_ratio(self):
         msgs, gt = generate_messages(count=100, noise_ratio=0.3)
         noise_count = sum(1 for g in gt if g is None)
-        # Should be roughly 30% noise (with some random variance)
         assert 15 <= noise_count <= 45
 
     def test_zero_noise(self):
@@ -34,11 +35,11 @@ class TestGenerateMessages:
         noise_count = sum(1 for g in gt if g is None)
         assert noise_count == 20
 
-    def test_ground_truth_has_update_types(self):
-        msgs, gt = generate_messages(count=100, noise_ratio=0.0)
+    def test_ground_truth_covers_known_update_types(self):
+        msgs, gt = generate_messages(count=200, noise_ratio=0.0)
         types = {g.update_type for g in gt if g is not None}
-        # Should have at least a few different types
-        assert len(types) >= 3
+        for expected in (UpdateType.FUEL, UpdateType.THREAT, UpdateType.STATUS_CHANGE):
+            assert expected in types, f"{expected} not generated in 200 messages"
 
     def test_timestamps_increase(self):
         msgs, _ = generate_messages(count=20, rate_per_min=5.0)

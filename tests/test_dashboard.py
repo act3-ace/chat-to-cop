@@ -71,10 +71,14 @@ class TestDashboardAPIContract:
         assert "'/admin/resume'" in DASHBOARD_HTML
         assert "fetch('/admin/status')" in DASHBOARD_HTML
 
-    def test_confidence_thresholds_match_cop_writer_defaults(self):
-        """JS confidence-class thresholds must match the writer's tier boundaries.
-        If cop_writer changes AUTO from 0.95 to 0.9, the dashboard colors
-        should change too — this test catches the drift."""
-        # The JS uses c > 0.8 for high and c >= 0.5 for mid
-        assert "c > 0.8" in DASHBOARD_HTML
-        assert "c >= 0.5" in DASHBOARD_HTML
+    def test_confidence_color_thresholds_consistent_with_cop_writer(self):
+        """JS confidence-class thresholds should sit at or below the writer's
+        flag_threshold boundary. If cop_writer changes flag_threshold,
+        the dashboard visual cue should change too."""
+        from chat_to_cop.config import CoPWriterConfig
+
+        defaults = CoPWriterConfig()
+        assert f"c >= {defaults.cop_flag_threshold}" in DASHBOARD_HTML, (
+            f"Dashboard mid-confidence threshold doesn't match CoPWriter flag_threshold ({defaults.cop_flag_threshold})"
+        )
+        assert "c > 0.8" in DASHBOARD_HTML, "Dashboard high-confidence threshold (c > 0.8) missing from JS"

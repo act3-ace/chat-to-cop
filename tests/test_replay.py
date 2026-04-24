@@ -93,13 +93,12 @@ class TestChannelFromFilename:
         assert _channel_from_filename("#fires_2025-09-17_20-20-06.log") == "#fires"
 
     def test_combined_log(self):
-        # combined.log doesn't start with #, should get # prepended
         result = _channel_from_filename("combined.log")
-        assert result.startswith("#")
+        assert result == "#combined"
 
     def test_plain_txt(self):
         result = _channel_from_filename("c2.log.txt")
-        assert result.startswith("#")
+        assert result == "#c2.log"
 
 
 class TestExtractDate:
@@ -205,11 +204,10 @@ class TestParsePath:
 
     def test_directory(self):
         msgs = parse_path(FIXTURES)
-        # Should find all three sample files
-        assert len(msgs) > 0
-        # Should have messages from multiple files
+        assert len(msgs) >= 28, f"Expected at least 28 msgs from 3 fixture files, got {len(msgs)}"
         channels = {m.channel for m in msgs}
-        assert len(channels) > 1  # Combined file has multiple channels
+        assert "#c2_coord" in channels
+        assert "#fires" in channels
 
     def test_nonexistent_path(self):
         msgs = parse_path(Path("/nonexistent/path"))
@@ -247,6 +245,29 @@ class TestReplayMessages:
 
         msgs = asyncio.run(run())
         assert len(msgs) == 0
+
+    def test_replay_malformed_lines_skipped(self, tmp_path):
+        """Malformed lines (truncated timestamps, garbage) should be silently skipped."""
+        bad = tmp_path / "malformed.txt"
+        bad.write_text(
+            "[10:39:06] WF_Clark: good message\n"
+            "[10:39\n"
+            "just random garbage\n"
+            "[10:39:07] VEGAS_SL: another good one\n"
+            "\n"
+            "[bad:time:stamp] someone: something\n"
+        )
+
+        async def run():
+            msgs = []
+            async for msg in replay_messages(bad, speed=0):
+                msgs.append(msg)
+            return msgs
+
+        msgs = asyncio.run(run())
+        assert len(msgs) == 2
+        assert msgs[0].sender == "WF_Clark"
+        assert msgs[1].sender == "VEGAS_SL"
 
     def test_replay_with_real_dash_data(self):
         """Integration test with actual DASH data if available."""

@@ -138,3 +138,45 @@ class TestE2EReplayWithMockBackend:
                 assert row["cnt"] == 10
 
         asyncio.run(run())
+
+    def test_replay_nonexistent_path_produces_empty_db(self, tmp_path):
+        """Replaying a non-existent file should not crash, just produce an empty store."""
+        db_path = str(tmp_path / "test.db")
+
+        async def run():
+            with patch(
+                "chat_to_cop.replay._make_degrading_backend",
+                return_value=FakeBackendForE2E(),
+            ):
+                await run_replay(
+                    path=Path("/nonexistent/chat.txt"),
+                    config=_fake_config(db_path),
+                    speed=0,
+                )
+
+            async with WorldStateStore(db_path) as store:
+                assert await store.count_updates() == 0
+
+        asyncio.run(run())
+
+    def test_replay_empty_file_produces_no_updates(self, tmp_path):
+        """An empty chat file should process without errors."""
+        db_path = str(tmp_path / "test.db")
+        empty_file = tmp_path / "empty.txt"
+        empty_file.write_text("")
+
+        async def run():
+            with patch(
+                "chat_to_cop.replay._make_degrading_backend",
+                return_value=FakeBackendForE2E(),
+            ):
+                await run_replay(
+                    path=empty_file,
+                    config=_fake_config(db_path),
+                    speed=0,
+                )
+
+            async with WorldStateStore(db_path) as store:
+                assert await store.count_updates() == 0
+
+        asyncio.run(run())
