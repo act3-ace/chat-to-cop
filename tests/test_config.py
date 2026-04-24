@@ -407,3 +407,34 @@ class TestPipelineConfigAggregation:
         monkeypatch.setenv("CHAT_TO_COP_METRICS", "false")
         cfg = PipelineConfig()
         assert cfg.metrics is False
+
+
+class TestConfigEdgeCases:
+    """Test that config rejects or handles invalid values."""
+
+    def test_negative_timeout_coerced_to_float(self, monkeypatch):
+        """Negative timeout should be accepted as a float (pydantic coercion).
+        The consumer (OpenAI client) will raise at request time, not at config time."""
+        monkeypatch.setenv("CHAT_TO_COP_LLM_TIMEOUT", "-5")
+        cfg = LLMBackendConfig()
+        assert cfg.llm_timeout == -5.0
+
+    def test_zero_circuit_breaker_threshold(self, monkeypatch):
+        """Zero circuit breaker max should be accepted (disables circuit breaker)."""
+        monkeypatch.setenv("CHAT_TO_COP_CIRCUIT_FAIL_MAX", "0")
+        cfg = DegradingConfig()
+        assert cfg.circuit_fail_max == 0
+
+    def test_empty_url_accepted(self, monkeypatch):
+        """Empty URL should be accepted at config level (fails at connect time)."""
+        monkeypatch.setenv("CHAT_TO_COP_LLM_URL", "")
+        cfg = LLMBackendConfig()
+        assert cfg.llm_url == ""
+
+    def test_non_numeric_timeout_rejected(self, monkeypatch):
+        """Non-numeric timeout should raise a validation error."""
+        from pydantic import ValidationError
+
+        monkeypatch.setenv("CHAT_TO_COP_LLM_TIMEOUT", "not-a-number")
+        with pytest.raises(ValidationError):
+            LLMBackendConfig()

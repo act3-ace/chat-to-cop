@@ -298,7 +298,7 @@ class TestAgentSpeakerIntegration:
             model = agent.speakers.get("Hydro_Tank")
             assert model is not None
             assert model.message_count == 1
-            assert model.username == "Hydro_Tank"
+            assert "RR15 F+40" in model.recent_messages
 
         asyncio.run(run())
 

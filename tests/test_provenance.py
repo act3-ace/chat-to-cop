@@ -148,14 +148,19 @@ class TestOpenAIBackendPromptHash:
         assert b1.prompt_hash == b2.prompt_hash
 
     def test_prompt_hash_changes_with_glossary(self):
-        """Different glossary → different hash (detects prompt drift)."""
-        from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
+        """Different glossary produces a different hash (detects prompt drift)."""
+        from unittest.mock import patch as mock_patch
 
-        b1 = OpenAICompatibleBackend(base_url="http://fake:1234/v1", model="test:1b")
-        # A backend with a different glossary would produce a different prompt
-        # and therefore a different hash. We can't easily inject a custom glossary
-        # into the backend, but we can verify the hash isn't hardcoded.
-        assert b1.prompt_hash != "0" * 64
+        from chat_to_cop.backend.openai_compat import DEFAULT_GLOSSARY, OpenAICompatibleBackend
+
+        b_default = OpenAICompatibleBackend(base_url="http://fake:1234/v1", model="test:1b")
+
+        with mock_patch("chat_to_cop.backend.openai_compat.DEFAULT_GLOSSARY", DEFAULT_GLOSSARY + "\nCUSTOM: test"):
+            b_custom = OpenAICompatibleBackend(base_url="http://fake:1234/v1", model="test:1b")
+
+        assert b_default.prompt_hash != b_custom.prompt_hash, (
+            "Same hash with different glossaries -- prompt_hash is not incorporating glossary content"
+        )
 
 
 # ---------------------------------------------------------------------------
