@@ -999,7 +999,7 @@ bash deploy/ag/deploy-to-ag.sh
 | No GPU detected | Verify node type is `g4dn.xlarge`, not `cpu`. Use `--litellm` for CPU-only nodes. |
 | vLLM "no space left" | Node disk too small. Re-provision (deploy script uses 90GB by default). |
 | LiteLLM auth error | Expected without AWS credentials. Bedrock IAM role is bound to the AG node, not your laptop. |
-| Git clone fails | Check that `~/.dle_gitlab_token` exists and the PAT has `read_repository` scope. |
+| Git clone fails | Check that `~/.dle_gitlab_token` exists and the PAT has `read_api` scope (includes repository read). |
 
 ---
 
