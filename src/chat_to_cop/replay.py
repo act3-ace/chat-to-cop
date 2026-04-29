@@ -27,6 +27,7 @@ from chat_to_cop.backend.regex_fallback import RegexBackend
 from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.config import PipelineConfig
 from chat_to_cop.equifinality import PathEntropyTracker
+from chat_to_cop.ingestion.irc_client import IRCClient
 from chat_to_cop.ingestion.replay import replay_messages
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.cop_writer import CoPWriter
@@ -113,14 +114,19 @@ def _make_degrading_backend(
 
 
 async def run_replay(
-    path: Path,
+    path: Path | None,
     config: PipelineConfig,
     speed: float,
     bedrock_config: dict | None = None,
     anthropic_config: dict | None = None,
     asksage_config: dict | None = None,
+    irc_url: str | None = None,
+    irc_channels: list[str] | None = None,
 ) -> None:
-    """Run the full replay pipeline with supervisor + fusion."""
+    """Run the full pipeline with supervisor + fusion.
+
+    Message source is either file replay (path) or live IRC (irc_url).
+    """
 
     # Build the degrading backend factory for the supervisor
     def backend_factory():
@@ -154,13 +160,14 @@ async def run_replay(
     fusion = FusionAgent()
     cop_writer = CoPWriter.from_config(config.cop_writer)
     tracker = PipelineTracker()
+    run_name = f"live-{irc_url}" if irc_url else f"replay-{path.stem}" if path else "unknown"
     tracker.start_run(
         model=config.llm.llm_model,
         url=config.llm.llm_url,
         timeout=config.llm.llm_timeout,
         num_ctx=config.llm.llm_num_ctx,
         window_size=config.agent.window_size,
-        run_name=f"replay-{path.stem}",
+        run_name=run_name,
     )
     entropy_tracker = PathEntropyTracker()
     type_counts: dict[str, int] = defaultdict(int)
@@ -168,7 +175,29 @@ async def run_replay(
     total_updates = 0
 
     async with WorldStateStore(config.db_path) as store:
-        logger.info(f"Replaying {path}")
+        if irc_url:
+            _default_channels = [
+                "#c2_coord",
+                "#fires",
+                "#isr_reports",
+                "#jprc",
+                "#stt_C2Coord",
+                "#stt_hydroBMA",
+                "#stt_crusherBMA",
+                "#stt_mesquiteBMA",
+                "#stt_taipanBMA",
+                "#vegas_internal",
+            ]
+            channels = irc_channels or _default_channels
+            irc_client = IRCClient(irc_url, channels)
+            message_source = irc_client.iter_messages()
+            logger.info(f"Live IRC: {irc_url}")
+            logger.info(f"Channels: {', '.join(channels)}")
+        else:
+            assert path is not None
+            message_source = replay_messages(path, speed=speed)
+            logger.info(f"Replaying {path}")
+
         logger.info(f"LLM: {config.llm.llm_url} / {config.llm.llm_model}")
         if config.fallback.fallback_model != config.llm.llm_model:
             logger.info(f"Fallback: {config.fallback.fallback_model}")
@@ -176,7 +205,8 @@ async def run_replay(
         logger.info(f"Store: {config.db_path}")
         cop_mode = "dry-run" if not config.cop_writer.cop_api_url else config.cop_writer.cop_api_url
         logger.info(f"CoP writer: {cop_mode}")
-        logger.info(f"Speed: {'instant' if speed == 0 else f'{speed}x'}")
+        if not irc_url:
+            logger.info(f"Speed: {'instant' if speed == 0 else f'{speed}x'}")
         logger.info("---")
 
         # Collect updates in batches for fusion
@@ -186,7 +216,7 @@ async def run_replay(
         _replay_start = _time.monotonic()
         _msg_latencies: list[float] = []
 
-        async for message in replay_messages(path, speed=speed):
+        async for message in message_source:
             total_messages += 1
             _msg_start = _time.monotonic()
 
@@ -328,7 +358,19 @@ def main() -> None:
     parser.add_argument(
         "path",
         type=Path,
-        help="Path to chat log file, zip, or directory",
+        nargs="?",
+        default=None,
+        help="Path to chat log file, zip, or directory (omit when using --irc-url)",
+    )
+    parser.add_argument(
+        "--irc-url",
+        default=None,
+        help="Live IRC WebSocket URL (e.g. ws://127.0.0.1:8097). Replaces file replay.",
+    )
+    parser.add_argument(
+        "--irc-channels",
+        default=None,
+        help="Comma-separated IRC channels to join (default: DASH 3 channel list)",
     )
     parser.add_argument(
         "--url",
@@ -396,7 +438,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if not args.path.exists():
+    if not args.irc_url and not args.path:
+        parser.error("either path or --irc-url is required")
+    if args.path and not args.irc_url and not args.path.exists():
         logger.error(f"Path not found: {args.path}")
         sys.exit(1)
 
@@ -443,6 +487,8 @@ def main() -> None:
             sys.exit(1)
         config.llm.llm_model = asksage_config["model"]
 
+    irc_channels = args.irc_channels.split(",") if args.irc_channels else None
+
     asyncio.run(
         run_replay(
             args.path,
@@ -451,6 +497,8 @@ def main() -> None:
             bedrock_config=bedrock_config,
             anthropic_config=anthropic_config,
             asksage_config=asksage_config,
+            irc_url=args.irc_url,
+            irc_channels=irc_channels,
         )
     )
 
