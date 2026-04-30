@@ -1,0 +1,139 @@
+chat-to-cop -- AI Staff Officer for MASH Wargame Events
+=======================================================
+
+This is a self-contained package for the chat-to-cop pipeline. It
+monitors IRC chat channels from a MASH/DASH exercise, uses a local
+LLM to extract world-state information (tracks, fuel, weapons,
+taskings, CSAR events), and writes structured updates to a database.
+
+The package includes a demo mode with canned exercise messages so you
+can see it working immediately. No internet connection required.
+
+
+PREREQUISITES
+
+  - Docker Desktop (Windows, Mac, or Linux)
+    https://www.docker.com/products/docker-desktop/
+  - No other software is needed
+
+
+QUICK START
+
+  Linux / Mac:
+    cd chat-to-cop-portable
+    bash start.sh
+
+  Windows:
+    cd chat-to-cop-portable
+    start.bat
+
+  First startup takes 30-60 seconds while the LLM model loads into
+  memory. Once ready, the pipeline begins processing demo messages
+  automatically.
+
+
+WHAT YOU WILL SEE
+
+  The pipeline connects to a mock IRC server that replays canned
+  exercise messages (fuel reports, weapons status, CSAR events, ISR
+  contacts, STT voice transcriptions). For each message, the LLM
+  extracts structured data and writes it to a SQLite database.
+
+  Watch the pipeline logs:
+    docker compose logs -f pipeline
+
+  Browse the REST API:
+    http://localhost:8001/docs
+
+
+CONNECTING TO A REAL IRC SERVER
+
+  To use with a real MASH/DASH IRC server instead of the demo:
+
+  1. Edit docker-compose.yml
+  2. In the pipeline service, change CHAT_TO_COP_IRC_URL from
+     ws://mock-irc:8097 to your real IRC server, e.g.:
+       CHAT_TO_COP_IRC_URL: ws://10.5.185.72:8097
+  3. Update CHAT_TO_COP_IRC_CHANNELS if needed
+  4. Remove the mock-irc service (or just leave it -- it won't
+     interfere if the pipeline points elsewhere)
+  5. Remove "mock-irc" from depends_on in the pipeline service
+  6. Run: docker compose up -d
+
+
+GPU VS CPU
+
+  The default configuration uses an NVIDIA GPU for LLM inference.
+  This is significantly faster (sub-second vs 30-60 second responses).
+
+  If you do not have an NVIDIA GPU, or if Docker cannot see it:
+    Linux/Mac:  bash start.sh --no-gpu
+    Windows:    start.bat --no-gpu
+
+  CPU mode works on any machine but inference is much slower. The
+  pipeline will still process all messages -- it just takes longer.
+
+  For GPU support on Docker Desktop:
+    - Windows: Install NVIDIA drivers and enable WSL2 GPU support
+    - Linux: Install nvidia-container-toolkit
+
+
+STOPPING
+
+  Linux/Mac:  bash start.sh --stop
+  Windows:    start.bat --stop
+
+  Or from any terminal:  docker compose down
+
+
+PORTS
+
+  11434   Ollama LLM API (internal use)
+  8097    Mock IRC server (demo mode only)
+  8001    REST API + interactive docs
+
+  If any port is already in use on your machine, edit
+  docker-compose.yml and change the left side of the port mapping
+  (e.g., "8001:8000" to "9001:8000").
+
+
+TROUBLESHOOTING
+
+  "Docker is not running"
+    Start Docker Desktop. On Linux, run: sudo systemctl start docker
+
+  "Port already in use"
+    Another program is using port 11434, 8097, or 8001. Either stop
+    that program or edit docker-compose.yml to use different ports.
+
+  "GPU not detected" or deploy error
+    Run with --no-gpu flag. GPU support requires NVIDIA drivers and
+    nvidia-container-toolkit.
+
+  Pipeline shows connection errors
+    The pipeline starts before ollama finishes loading the model.
+    Wait 30-60 seconds and check logs again. It will retry
+    automatically.
+
+  "No space left on device"
+    The Docker images are large (~5-8 GB total). Free disk space or
+    run: docker system prune
+
+  How to check service status:
+    docker compose ps
+    docker compose logs ollama
+    docker compose logs pipeline
+
+
+FILE STRUCTURE
+
+  chat-to-cop-portable/
+    README.txt              This file
+    start.sh                Start script (Linux/Mac)
+    start.bat               Start script (Windows)
+    docker-compose.yml      Service definitions
+    .env                    Configuration (model, channels)
+    images/
+      chat-to-cop.tar       Pipeline Docker image
+      ollama-with-model.tar Ollama + pre-loaded model weights
+    data/                   Created at runtime, holds SQLite database
