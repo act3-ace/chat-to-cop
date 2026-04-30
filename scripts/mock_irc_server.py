@@ -19,7 +19,7 @@ Usage:
     python scripts/mock_irc_server.py --replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip --speed 10
 
     # Then in another terminal:
-    python -m chat_to_cop.live --irc-url ws://127.0.0.1:8097
+    python -m chat_to_cop.replay --irc-url ws://127.0.0.1:8097
 """
 
 from __future__ import annotations
