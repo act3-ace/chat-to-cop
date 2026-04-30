@@ -72,5 +72,25 @@ services:
       retries: 3
       start_period: 10s
 
+  # Live IRC extraction pipeline — connects to a real or mock IRC server
+  # Usage: docker compose up live
+  live:
+    build: .
+    command: ["python", "-m", "chat_to_cop.replay"]
+    environment:
+      - CHAT_TO_COP_IRC_URL=${CHAT_TO_COP_IRC_URL:-ws://host.docker.internal:8097}
+      - CHAT_TO_COP_IRC_CHANNELS=${CHAT_TO_COP_IRC_CHANNELS:-#c2_coord,#fires,#isr_reports,#jprc,#stt_C2Coord,#stt_hydroBMA,#stt_crusherBMA,#stt_mesquiteBMA,#stt_taipanBMA,#vegas_internal}
+      - CHAT_TO_COP_LLM_URL=${CHAT_TO_COP_LLM_URL:-http://ollama:11434/v1}
+      - CHAT_TO_COP_LLM_MODEL=${CHAT_TO_COP_LLM_MODEL:-qwen2.5:7b}
+      - CHAT_TO_COP_FALLBACK_MODEL=${CHAT_TO_COP_FALLBACK_MODEL:-qwen2.5:3b}
+      - CHAT_TO_COP_DB_PATH=${CHAT_TO_COP_DB_PATH:-/app/data/world_state.db}
+      - CHAT_TO_COP_METRICS=true
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    depends_on:
+      ollama:
+        condition: service_healthy
+
 volumes:
   ollama_models:

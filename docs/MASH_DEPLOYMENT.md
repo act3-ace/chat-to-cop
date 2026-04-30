@@ -179,7 +179,7 @@ For live IRC (not replay), use the IRC client directly:
 export CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
 export CHAT_TO_COP_LLM_MODEL=qwen2.5:7b-8k
 export CHAT_TO_COP_DB_PATH=data/mash_live.db
-python -m chat_to_cop.live --irc-url ws://IRC_SERVER_IP:8097
+python -m chat_to_cop.replay --irc-url ws://IRC_SERVER_IP:8097
 ```
 
 4. Start the dashboard:
@@ -569,7 +569,7 @@ export CHAT_TO_COP_FALLBACK_MODEL=bedrock/anthropic.claude-sonnet-4-5-20250929-v
 6. Start the pipeline and dashboard:
 
 ```bash
-python -m chat_to_cop.live --irc-url ws://IRC_SERVER_IP:8097
+python -m chat_to_cop.replay --irc-url ws://IRC_SERVER_IP:8097
 uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8080 &
 ```
 
