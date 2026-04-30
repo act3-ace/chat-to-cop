@@ -210,7 +210,7 @@ cd deploy/ag
 ./launch-vllm-chat2cop.sh
 ```
 
-Or run Docker directly:
+Or run Docker directly (T4 example with recommended flags):
 
 ```bash
 mkdir -p /tmp/huggingface
@@ -221,13 +221,18 @@ docker run -d \
     --shm-size 4g \
     -p 8000:8000 \
     -v /tmp/huggingface:/root/.cache/huggingface \
+    -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
+    -e VLLM_NO_USAGE_STATS=1 \
     vllm/vllm-openai:v0.19.1-cu130 \
     --model org-b/model-b-14b-awq \
     --max-model-len 8192 \
     --gpu-memory-utilization 0.90 \
     --trust-remote-code \
-    --dtype auto
+    --dtype float16 \
+    --max-num-seqs 16
 ```
+
+For non-T4 GPUs (V100, A10G, etc.), replace `--dtype float16 --max-num-seqs 16` with `--dtype auto`.
 
 Verify:
 
@@ -250,7 +255,7 @@ pip install vllm
 export HF_HOME=/tmp/huggingface
 mkdir -p /tmp/huggingface
 
-# Launch
+# Launch (T4 example -- use --dtype auto on V100/A10G)
 python3 -m vllm.entrypoints.openai.api_server \
     --model org-b/model-b-14b-awq \
     --max-model-len 8192 \
@@ -258,8 +263,20 @@ python3 -m vllm.entrypoints.openai.api_server \
     --port 8000 \
     --gpu-memory-utilization 0.90 \
     --trust-remote-code \
-    --dtype auto
+    --dtype float16 \
+    --max-num-seqs 16
 ```
+
+### T4-Specific Notes
+
+The T4 has compute capability 7.5 (Turing architecture). vLLM needs two flags for reliable T4 operation:
+
+- `--dtype float16` -- T4 does not support bfloat16; vLLM's auto-detect may pick the wrong dtype
+- `--max-num-seqs 16` -- reduces concurrent sequence memory pressure on 16 GB VRAM
+
+The `launch-vllm-chat2cop.sh` script auto-detects T4 and applies these flags. If running Docker manually, add them explicitly.
+
+There is also a known Triton shared memory exhaustion issue on CC <8.0 GPUs. Jennifer Carlet's repo includes a patch (`vllm_scripts/patch-vllm-triton.sh`) that may be needed for some models. See https://github.com/vllm-project/vllm/issues/38918.
 
 ### Model Options
 
@@ -269,6 +286,18 @@ python3 -m vllm.entrypoints.openai.api_server \
 | org-b/model-b-7b | ~14 GB | T4 (16GB) | g4dn.xlarge | Full precision, fits T4 but tight |
 | org-b/model-b-14b | ~28 GB | V100 (16GB) | p3.2xlarge | Full precision -- needs V100 or better |
 | org-b/model-b-32b-awq | ~18 GB | V100 (16GB) | p3.2xlarge | Experimental -- tight on V100, untested |
+
+Jennifer Carlet's vLLM benchmarks on T4 (from `analytics-gateway/llms-on-ag`):
+
+| Model (vLLM, g4dn T4) | GPU Mem | Tokens/s |
+|------------------------|---------|----------|
+| model-b-2b | 14211 MiB | 50/s |
+| model-b-4b (optimized) | 12545 MiB | 25/s |
+| RedHatAI/model-b-4b-quantized.w8a8 | 12557 MiB | 30/s |
+| model-b-9b | OOM | -- |
+| google/gemma-4-E2B-it | 14199 MiB | 40/s |
+
+These benchmarks confirm that 9B+ full-precision models do not fit on T4 via vLLM. Quantized 14B (AWQ) does fit because it compresses to ~9 GB.
 
 AWQ quantization loses negligible quality on structured extraction tasks while cutting VRAM usage by ~60%. For chat-to-cop, 14B-AWQ on T4 is the sweet spot.
 
