@@ -52,6 +52,7 @@ fi
 echo "Working at $(git rev-parse --short HEAD)"
 
 echo "=== [node] Step 3: Build chat-to-cop image ==="
+docker system prune -f 2>/dev/null || true
 docker build -t "chat-to-cop:${IMAGE_TAG}" .
 
 echo "=== [node] Step 4: Pull ollama and bake model ==="
@@ -79,6 +80,8 @@ echo "Model pull complete."
 
 docker commit "$CONTAINER_NAME" "chat-to-cop/ollama-with-model:${IMAGE_TAG}"
 docker rm -f "$CONTAINER_NAME" &>/dev/null || true
+docker rmi ollama/ollama:latest 2>/dev/null || true
+docker system prune -f 2>/dev/null || true
 echo "Created image chat-to-cop/ollama-with-model:${IMAGE_TAG}"
 
 echo "=== [node] Step 5: Save images to tarballs ==="
