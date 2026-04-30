@@ -1,6 +1,6 @@
 """Mock IRC WebSocket server for end-to-end live pipeline testing.
 
-Simulates the MASH exercise IRC server so `python -m chat_to_cop.live`
+Simulates the MASH exercise IRC server so `python -m chat_to_cop.replay --irc-url ws://...`
 can be tested without real exercise infrastructure. Speaks the same
 WebSocket protocol the IRCClient expects: raw IRC lines over WebSocket,
 NICK/USER registration, JOIN/PART, PING/PONG, and PRIVMSG delivery.

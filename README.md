@@ -114,7 +114,7 @@ python scripts/explore_and_download_chat.py download --output data/chat
 python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat/
 
 # 4. Connect to live IRC for real-time processing
-python -m chat_to_cop.live --server ws://10.5.185.72:8097
+python -m chat_to_cop.replay --irc-url ws://10.5.185.72:8097
 ```
 
 ## Key Documents

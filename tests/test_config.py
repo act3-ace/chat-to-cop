@@ -438,3 +438,84 @@ class TestConfigEdgeCases:
         monkeypatch.setenv("CHAT_TO_COP_LLM_TIMEOUT", "not-a-number")
         with pytest.raises(ValidationError):
             LLMBackendConfig()
+
+
+class TestIRCConfigPlumbing:
+    """Verify IRC env vars reach the replay main() consumer path.
+
+    Per the 2026-04-11 !88 config-bypass lesson: every config Field must
+    have a consumer wired in the same MR, and the test must monkeypatch
+    the env var and assert the resulting *behavior*, not just that the
+    config object deserialized correctly.
+    """
+
+    def test_irc_url_default_none(self):
+        cfg = PipelineConfig()
+        assert cfg.irc_url is None
+
+    def test_irc_channels_default_none(self):
+        cfg = PipelineConfig()
+        assert cfg.irc_channels is None
+
+    def test_irc_url_env_override(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_IRC_URL", "ws://10.5.185.72:8097")
+        cfg = PipelineConfig()
+        assert cfg.irc_url == "ws://10.5.185.72:8097"
+
+    def test_irc_channels_env_override(self, monkeypatch):
+        monkeypatch.setenv("CHAT_TO_COP_IRC_CHANNELS", "#c2_coord,#fires")
+        cfg = PipelineConfig()
+        assert cfg.irc_channels == "#c2_coord,#fires"
+
+    def test_irc_channels_parsed_to_list(self, monkeypatch):
+        """The env var is a comma-separated string; replay.py splits it to a list."""
+        monkeypatch.setenv("CHAT_TO_COP_IRC_CHANNELS", "#c2_coord,#fires,#jprc")
+        cfg = PipelineConfig()
+        channels = cfg.irc_channels.split(",")
+        assert channels == ["#c2_coord", "#fires", "#jprc"]
+
+    def test_irc_url_env_var_satisfies_argparse(self, monkeypatch):
+        """End-to-end plumbing: CHAT_TO_COP_IRC_URL env var makes --irc-url
+        and path unnecessary. We monkeypatch asyncio.run to capture the
+        args passed to run_replay and verify the env var value arrived."""
+        import sys
+
+        monkeypatch.setenv("CHAT_TO_COP_IRC_URL", "ws://127.0.0.1:9999")
+        monkeypatch.setattr(sys, "argv", ["replay"])
+
+        captured = {}
+
+        def fake_run(coro):
+            coro.close()
+            captured["called"] = True
+
+        monkeypatch.setattr("asyncio.run", fake_run)
+
+        from chat_to_cop.replay import main
+
+        main()
+        assert captured.get("called"), "CHAT_TO_COP_IRC_URL env var did not satisfy the argparse requirement"
+
+    def test_irc_channels_env_var_reaches_run_replay(self, monkeypatch):
+        """CHAT_TO_COP_IRC_CHANNELS env var is split and passed to run_replay."""
+        import sys
+
+        import chat_to_cop.replay as replay_mod
+
+        monkeypatch.setenv("CHAT_TO_COP_IRC_URL", "ws://127.0.0.1:9999")
+        monkeypatch.setenv("CHAT_TO_COP_IRC_CHANNELS", "#alpha,#bravo")
+        monkeypatch.setattr(sys, "argv", ["replay"])
+
+        captured = {}
+
+        async def spy_run_replay(*args, **kwargs):
+            captured["irc_url"] = kwargs.get("irc_url")
+            captured["irc_channels"] = kwargs.get("irc_channels")
+
+        monkeypatch.setattr(replay_mod, "run_replay", spy_run_replay)
+
+        from chat_to_cop.replay import main
+
+        main()
+        assert captured["irc_url"] == "ws://127.0.0.1:9999"
+        assert captured["irc_channels"] == ["#alpha", "#bravo"]
