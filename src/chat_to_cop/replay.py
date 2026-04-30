@@ -438,14 +438,19 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if not args.irc_url and not args.path:
-        parser.error("either path or --irc-url is required")
-    if args.path and not args.irc_url and not args.path.exists():
+    # Load config from env vars, then apply CLI overrides
+    config = PipelineConfig()
+
+    # IRC settings: CLI overrides env var (config.irc_url / config.irc_channels)
+    effective_irc_url = args.irc_url or config.irc_url
+    effective_irc_channels_str = args.irc_channels  # raw CLI string, may be None
+
+    if not effective_irc_url and not args.path:
+        parser.error("either path or --irc-url (or CHAT_TO_COP_IRC_URL env var) is required")
+    if args.path and not effective_irc_url and not args.path.exists():
         logger.error(f"Path not found: {args.path}")
         sys.exit(1)
 
-    # Load config from env vars, then apply CLI overrides
-    config = PipelineConfig()
     if args.url:
         config.llm.llm_url = args.url
     if args.model:
@@ -487,7 +492,13 @@ def main() -> None:
             sys.exit(1)
         config.llm.llm_model = asksage_config["model"]
 
-    irc_channels = args.irc_channels.split(",") if args.irc_channels else None
+    # Parse IRC channels: CLI string > env var string > None (use defaults in run_replay)
+    if effective_irc_channels_str:
+        irc_channels = effective_irc_channels_str.split(",")
+    elif config.irc_channels:
+        irc_channels = config.irc_channels.split(",")
+    else:
+        irc_channels = None
 
     asyncio.run(
         run_replay(
@@ -497,7 +508,7 @@ def main() -> None:
             bedrock_config=bedrock_config,
             anthropic_config=anthropic_config,
             asksage_config=asksage_config,
-            irc_url=args.irc_url,
+            irc_url=effective_irc_url,
             irc_channels=irc_channels,
         )
     )
