@@ -40,6 +40,9 @@ GPU_MEMORY_UTIL="${GPU_MEMORY_UTIL:-0.90}"
 LOG_FILE="/tmp/vllm-chat2cop.log"
 PID_FILE="/tmp/vllm-chat2cop.pid"
 
+# T4-specific flags, populated by detect_gpu()
+T4_EXTRA_ARGS=""
+
 # ── GPU detection ─────────────────────────────────────────────────────
 
 detect_gpu() {
@@ -53,13 +56,14 @@ detect_gpu() {
     gpu_name=$(nvidia-smi --query-gpu=gpu_name --format=csv,noheader 2>/dev/null | head -1)
     local gpu_mem
     gpu_mem=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+    GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -v "^$" | wc -l)
 
     if [ -z "$gpu_name" ]; then
         echo "ERROR: nvidia-smi found no GPU. Check driver status." >&2
         exit 1
     fi
 
-    echo "GPU detected: ${gpu_name} (${gpu_mem} MiB)"
+    echo "GPU detected: ${gpu_name} (${gpu_mem} MiB), count: ${GPU_COUNT}"
 
     # Estimate VRAM usage for the model
     case "$MODEL_NAME" in
@@ -78,8 +82,15 @@ detect_gpu() {
             ;;
     esac
 
-    # Warn if T4 with non-quantized large model
+    # T4-specific tuning (compute capability 7.5)
+    # From Jennifer Carlet's benchmarks: --dtype float16 required for T4,
+    # --max-num-seqs 16 reduces memory pressure. Triton shared memory
+    # exhaustion is a known issue on CC <8.0 GPUs.
+    # Ref: gitlab.dle.afrl.af.mil/analytics-gateway/llms-on-ag
     if echo "$gpu_name" | grep -qi "T4"; then
+        echo "  T4 detected (CC 7.5) -- applying T4-specific flags"
+        T4_EXTRA_ARGS="--dtype float16 --max-num-seqs 16"
+
         case "$MODEL_NAME" in
             *14B*|*14b*)
                 if ! echo "$MODEL_NAME" | grep -qiE "AWQ|GPTQ|bnb|4bit"; then
@@ -136,19 +147,31 @@ launch_docker() {
     # Remove any stopped container with the same name from a previous run
     docker rm vllm-chat2cop 2>/dev/null || true
 
+    # Scale shared memory for multi-GPU setups
+    local shm_size="4g"
+    local tp_args=""
+    if [ "${GPU_COUNT:-1}" -gt 1 ]; then
+        shm_size="$((GPU_COUNT * 3))g"
+        tp_args="--tensor-parallel-size ${GPU_COUNT}"
+        echo "  Multi-GPU: tensor-parallel-size=${GPU_COUNT}, shm=${shm_size}"
+    fi
+
     docker run -d \
         --name vllm-chat2cop \
         --gpus all \
-        --shm-size 4g \
+        --shm-size "${shm_size}" \
         -p "${VLLM_PORT}:8000" \
         -v "${HF_CACHE_DIR}:/root/.cache/huggingface" \
         -e "HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}" \
+        -e "VLLM_WORKER_MULTIPROC_METHOD=spawn" \
+        -e "VLLM_NO_USAGE_STATS=1" \
         "${VLLM_IMAGE}" \
         --model "${MODEL_NAME}" \
         --max-model-len "${MAX_MODEL_LEN}" \
         --gpu-memory-utilization "${GPU_MEMORY_UTIL}" \
-        --dtype auto \
-        ${trust_flag}
+        ${T4_EXTRA_ARGS:---dtype auto} \
+        ${trust_flag} \
+        ${tp_args}
 
     echo ""
     echo "Container started: vllm-chat2cop"
@@ -188,14 +211,24 @@ launch_native() {
         trust_flag="--trust-remote-code"
     fi
 
+    local tp_args=""
+    if [ "${GPU_COUNT:-1}" -gt 1 ]; then
+        tp_args="--tensor-parallel-size ${GPU_COUNT}"
+        echo "  Multi-GPU: tensor-parallel-size=${GPU_COUNT}"
+    fi
+
+    export VLLM_WORKER_MULTIPROC_METHOD=spawn
+    export VLLM_NO_USAGE_STATS=1
+
     nohup python3 -m vllm.entrypoints.openai.api_server \
         --model "${MODEL_NAME}" \
         --max-model-len "${MAX_MODEL_LEN}" \
         --host "${VLLM_HOST}" \
         --port "${VLLM_PORT}" \
         --gpu-memory-utilization "${GPU_MEMORY_UTIL}" \
-        --dtype auto \
+        ${T4_EXTRA_ARGS:---dtype auto} \
         ${trust_flag} \
+        ${tp_args} \
         > "${LOG_FILE}" 2>&1 &
 
     VLLM_PID=$!
