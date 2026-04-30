@@ -263,6 +263,16 @@ class PipelineConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="CHAT_TO_COP_")
 
+    # IRC live mode
+    irc_url: str | None = Field(
+        default=None,
+        description="IRC WebSocket URL for live mode (e.g. ws://10.5.185.72:8097). None = file replay.",
+    )
+    irc_channels: str | None = Field(
+        default=None,
+        description="Comma-separated IRC channels to join (e.g. '#c2_coord,#fires'). None = DASH 3 defaults.",
+    )
+
     # Store
     db_path: str = Field(
         default="data/world_state.db",
