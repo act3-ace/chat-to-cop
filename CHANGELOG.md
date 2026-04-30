@@ -10,6 +10,17 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+### Changed
+
+- deploy/ag/launch-vllm-chat2cop.sh (#51): Added T4-specific vLLM flags
+  (--dtype float16, --max-num-seqs 16) auto-detected from GPU hardware,
+  multi-GPU tensor parallelism support, and vLLM env vars
+  (VLLM_WORKER_MULTIPROC_METHOD, VLLM_NO_USAGE_STATS). Based on Jennifer
+  Carlet's production benchmarks from analytics-gateway/llms-on-ag.
+- docs/ANALYTICS_GATEWAY_DEPLOYMENT.md (#51): Added T4-specific notes section,
+  Jennifer Carlet's vLLM benchmark table (Qwen3.5 models on g4dn T4), Triton
+  patch reference for CC <8.0 GPUs, updated Docker/native examples with T4 flags.
+
 ### Added
 
 - CoP schema adapter layer (#70): `PassthroughAdapter` (default, preserves
