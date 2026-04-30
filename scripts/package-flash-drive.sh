@@ -160,7 +160,7 @@ log "Copying deployment files..."
 cp "$REPO_ROOT/deploy/portable/docker-compose.yml" "$OUTPUT_DIR/docker-compose.yml"
 cp "$REPO_ROOT/deploy/portable/start.sh"           "$OUTPUT_DIR/start.sh"
 cp "$REPO_ROOT/deploy/portable/start.bat"          "$OUTPUT_DIR/start.bat"
-cp "$REPO_ROOT/deploy/portable/README.txt"         "$OUTPUT_DIR/README.txt"
+cp "$REPO_ROOT/deploy/portable/README"              "$OUTPUT_DIR/README.txt"
 chmod +x "$OUTPUT_DIR/start.sh"
 
 # Create .env with the tag
