@@ -30,6 +30,19 @@ Chat-to-cop is an AI staff officer that runs **in the background** on a single w
 
 Complete these steps at your desk before traveling. The event network may have surprises; eliminate all software/model issues beforehand.
 
+**Windows users:** This guide shows bash syntax for environment variables
+(`export FOO=bar`). On Windows, use the equivalent for your shell:
+
+| Bash | PowerShell | CMD |
+|------|------------|-----|
+| `export FOO="bar"` | `$env:FOO = "bar"` | `set FOO=bar` |
+| `command &` (background) | Open a second terminal | Open a second terminal |
+| `$FOO` (use variable) | `$env:FOO` | `%FOO%` |
+
+Alternatively, copy `.env.example` to `.env` and edit it -- Docker Compose
+and pydantic-settings both read `.env` files automatically, avoiding shell
+variable syntax entirely.
+
 ### 2.1 Clone and install
 
 ```bash
@@ -46,29 +59,24 @@ python -c "from chat_to_cop.models.cop_update import CoPUpdate; print('OK')"
 
 ### 2.2 Pull models (if using local GPU)
 
-```bash
-# Install Ollama: https://ollama.com/download
-ollama pull qwen2.5:7b
+Install Ollama from https://ollama.com/download, then pull the model:
 
-# Create a model with 8K context (required -- default truncates our prompts)
-cat > /tmp/Modelfile <<EOF
-FROM qwen2.5:7b
-PARAMETER num_ctx 8192
-EOF
-ollama create qwen2.5:7b-8k -f /tmp/Modelfile
+```bash
+ollama pull qwen2.5:7b
 ```
 
-On Windows, replace `/tmp/Modelfile` with a path like `%TEMP%\Modelfile`.
+Create a model with 8K context (required -- the default 2K truncates our prompts).
+A Modelfile is included in the repo:
+
+```bash
+ollama create qwen2.5:7b-8k -f deploy/ollama/Modelfile.7b
+```
 
 For better quality with 24GB+ VRAM (RTX 4090/5090):
 
 ```bash
 ollama pull qwen3:30b-a3b
-cat > /tmp/Modelfile30b <<EOF
-FROM qwen3:30b-a3b
-PARAMETER num_ctx 8192
-EOF
-ollama create qwen3:30b-a3b-8k -f /tmp/Modelfile30b
+ollama create qwen3:30b-a3b-8k -f deploy/ollama/Modelfile.30b
 ```
 
 ### 2.3 Verify API keys (if using cloud)
@@ -90,15 +98,9 @@ export ASKSAGE_EMAIL="your.email@mail.mil"
 export ASKSAGE_API_KEY="your-key-here"
 ```
 
-### 2.4 Run smoke test against DASH 3 data
+### 2.4 Run smoke test
 
-Download DASH 3 chat data if you don't have it:
-
-```bash
-python scripts/explore_and_download_chat.py download --output data/chat
-```
-
-Run the smoke test:
+The smoke test uses hardcoded DASH 3 messages -- no data download needed:
 
 ```bash
 # Local Ollama
@@ -111,11 +113,11 @@ python scripts/quick_test.py --bedrock
 python scripts/quick_test.py --asksage --asksage-email $ASKSAGE_EMAIL --asksage-key $ASKSAGE_API_KEY
 ```
 
-Run the full pipeline against a small slice:
+Run the full pipeline against the bundled DASH 3 sample (included in the repo):
 
 ```bash
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip \
-    --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --db /tmp/pre_event_test.db
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip \
+    --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --db data/pre_event_test.db
 ```
 
 If you see `Updates extracted: N` where N > 0 in the summary, the pipeline works. Run tests to confirm nothing is broken:
@@ -124,7 +126,21 @@ If you see `Updates extracted: N` where N > 0 in the summary, the pipeline works
 ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -q
 ```
 
-### 2.5 Pack list
+### 2.5 (Optional) Download full DASH exercise data
+
+To replay complete DASH exercises (multiple days, all teams), download from
+Pydio. This requires a Pydio PAT (separate from your DLE GitLab PAT -- file
+a DLE support ticket if you need one). **This is not required for setup
+verification or MASH deployment.**
+
+```bash
+python scripts/explore_and_download_chat.py download --output data/chat
+```
+
+If you don't have Pydio access, ask a teammate who does to share the
+`data/chat/` directory (it's ~50MB).
+
+### 2.6 Pack list
 
 Bring to H2O:
 
@@ -132,7 +148,7 @@ Bring to H2O:
 - [ ] GPU (if using local inference) -- RTX 4090/5090 or equivalent
 - [ ] Ollama installed with models already pulled
 - [ ] Power adapter, ethernet cable, ethernet-to-USB adapter if needed
-- [ ] DASH 3 chat data (for on-site testing before exercise starts)
+- [ ] DASH 3 chat data (optional -- bundled sample is enough for smoke testing)
 - [ ] This document (printed or offline copy)
 - [ ] AWS credentials configured (if using Bedrock)
 - [ ] CAC reader + VPN software (if using Ask Sage)
@@ -151,7 +167,8 @@ Self-contained. No internet required once models are pulled. Best for air-gapped
 
 ### Step-by-step
 
-1. Start Ollama (if not running as a service):
+1. Start Ollama (if not running as a service). On Windows, Ollama runs as a
+   system tray app -- launch it from the Start menu. On Linux/Mac:
 
 ```bash
 ollama serve &
@@ -173,7 +190,8 @@ python -m chat_to_cop.replay /path/to/live/feed \
     --db data/mash_live.db
 ```
 
-For live IRC (not replay), use the IRC client directly:
+For live IRC (not replay), set env vars and run. You can either set them in
+your shell (see the translation table in section 2) or edit `.env`:
 
 ```bash
 export CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
@@ -182,10 +200,10 @@ export CHAT_TO_COP_DB_PATH=data/mash_live.db
 python -m chat_to_cop.replay --irc-url ws://IRC_SERVER_IP:8097
 ```
 
-4. Start the dashboard:
+4. Start the dashboard (in a second terminal on Windows):
 
 ```bash
-uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 ```
 
 5. Open `http://localhost:8000/dashboard` in a browser to verify updates are flowing.
@@ -236,7 +254,7 @@ python -m chat_to_cop.replay /path/to/live/feed \
 3. Start the dashboard:
 
 ```bash
-uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 ```
 
 ### Verified performance (DASH 3 replay, 935 messages)
@@ -284,7 +302,7 @@ python -m chat_to_cop.replay /path/to/live/feed \
 3. Start the dashboard:
 
 ```bash
-uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 ```
 
 **Note:** Ask Sage has rate limits. For high message volume, consider pairing with a local fallback (see Option E).
@@ -323,8 +341,8 @@ docker compose exec ollama ollama pull qwen2.5:7b
 Create the 8K context variant:
 
 ```bash
-docker compose exec ollama sh -c 'echo "FROM qwen2.5:7b
-PARAMETER num_ctx 8192" | ollama create qwen2.5:7b-8k -f -'
+docker compose cp deploy/ollama/Modelfile.7b ollama:/tmp/Modelfile.7b
+docker compose exec ollama ollama create qwen2.5:7b-8k -f /tmp/Modelfile.7b
 ```
 
 Run a replay:
@@ -339,7 +357,7 @@ The FastAPI server runs automatically on port 8000. Dashboard: `http://localhost
 
 ```bash
 docker run -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... -e AWS_DEFAULT_REGION=us-gov-west-1 \
-    -v $(pwd)/data:/app/data -p 8000:8000 \
+    -v ./data:/app/data -p 8000:8000 \
     chat-to-cop python -m chat_to_cop.replay /app/data/chat.zip --bedrock
 ```
 
@@ -351,12 +369,9 @@ Cloud primary (Bedrock or Ask Sage) with local Ollama as automatic fallback. The
 
 ### Step-by-step
 
-1. Start Ollama with a local model:
-
-```bash
-ollama serve &
-# Model should already be pulled from pre-event setup
-```
+1. Start Ollama with a local model (on Windows, launch from the Start menu;
+   on Linux/Mac, run `ollama serve` in a separate terminal). The model should
+   already be pulled from pre-event setup.
 
 2. Set environment variables for hybrid mode:
 
@@ -446,7 +461,7 @@ export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
 export CHAT_TO_COP_LLM_MODEL=claude-sonnet
 
 python -m chat_to_cop.replay /path/to/live/feed --db data/mash_ag.db
-uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 ```
 
 ### Hybrid config with local Ollama fallback
@@ -804,10 +819,14 @@ curl http://localhost:8000/entities > mash_entities.json
 
 ### Collect logs
 
-Pipeline logs are written to stderr by loguru. If you started with output redirection:
+Pipeline logs are written to stderr by loguru. Capture them to a file:
 
 ```bash
+# Linux/Mac
 python -m chat_to_cop.replay ... 2>&1 | tee mash_pipeline.log
+
+# Windows (PowerShell)
+python -m chat_to_cop.replay ... 2>&1 | Tee-Object mash_pipeline.log
 ```
 
 ---
@@ -818,25 +837,19 @@ python -m chat_to_cop.replay ... 2>&1 | tee mash_pipeline.log
 
 Ollama is not running.
 
-```bash
-# Linux
-systemctl start ollama
-# Or manually:
-ollama serve &
-
-# Windows
-# Start Ollama from the system tray, or run:
-ollama serve
-```
+- **Windows:** Launch Ollama from the Start menu (it runs as a system tray app).
+  If it's not installed, download from https://ollama.com/download.
+- **Linux:** `systemctl start ollama` or run `ollama serve` in a separate terminal.
+- **Mac:** Launch Ollama.app from Applications.
 
 ### "Model not found" (404)
 
 The model was not pulled or the custom Modelfile variant was not created.
 
 ```bash
-ollama list                          # See what's available
-ollama pull qwen2.5:7b               # Pull if missing
-# Recreate the 8K context variant (see section 2.2)
+ollama list                                             # See what's available
+ollama pull qwen2.5:7b                                  # Pull if missing
+ollama create qwen2.5:7b-8k -f deploy/ollama/Modelfile.7b  # Recreate 8K variant
 ```
 
 ### localhost vs 127.0.0.1
@@ -845,17 +858,20 @@ Some systems resolve `localhost` to IPv6 (`::1`), but Ollama only listens on IPv
 
 ### Noisy [GIN] log lines from Ollama
 
-Ollama logs every HTTP request with `[GIN]` prefixes. Harmless but noisy. Suppress:
+Ollama logs every HTTP request with `[GIN]` prefixes. Harmless but noisy.
 
-```bash
-ollama serve 2>/dev/null &
-# Or filter:
-ollama serve 2>&1 | grep -v '^\[GIN\]' &
-```
+- **Windows:** Run Ollama as a system tray app (default) -- logs go to a file, not your terminal.
+- **Linux/Mac:** Redirect output: `ollama serve 2>/dev/null` in a separate terminal.
 
 ### num_ctx / context window truncation
 
-If you see `truncating input prompt` warnings, the context window is too small. Always use a Modelfile-derived model with `num_ctx 8192` baked in (see section 2.2). The pipeline also passes `num_ctx` via the API, but baking it into the model is more reliable.
+If you see `truncating input prompt` warnings, the context window is too small. Recreate the model with 8K context:
+
+```bash
+ollama create qwen2.5:7b-8k -f deploy/ollama/Modelfile.7b
+```
+
+The pipeline also passes `num_ctx` via the API, but baking it into the model is more reliable.
 
 ### Rate limiting on cloud APIs
 
@@ -870,7 +886,8 @@ export CHAT_TO_COP_CIRCUIT_COOLDOWN=60
 ### Slow inference (>15s per message on GPU)
 
 1. Check GPU is being used: `nvidia-smi` should show the Ollama process with GPU memory allocated.
-2. If GPU shows 0% utilization, NVIDIA drivers may not be loaded: `sudo modprobe nvidia`.
+2. If GPU shows 0% utilization, drivers may not be loaded. On Windows, reinstall
+   NVIDIA drivers from https://www.nvidia.com/drivers. On Linux: `sudo modprobe nvidia`.
 3. Try a smaller model: `qwen2.5:3b` instead of `7b`.
 4. Cold start: the first message after model load takes 30-90s. Subsequent messages should be 6-10s.
 
@@ -1015,13 +1032,13 @@ DEPLOY TO AG (one command):
   bash deploy/ag/deploy-to-ag.sh --status     # check what's running
 
 START PIPELINE (local GPU):
-  ollama serve &
+  # Start Ollama first (Windows: launch from Start menu)
   python -m chat_to_cop.replay <data> --url http://127.0.0.1:11434/v1 --model qwen2.5:7b-8k --db data/mash.db
-  uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+  uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 
 START PIPELINE (Bedrock):
   python -m chat_to_cop.replay <data> --bedrock --db data/mash.db
-  uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000 &
+  uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 
 MONITOR:
   http://localhost:8000/dashboard

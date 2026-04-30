@@ -52,7 +52,13 @@ ollama pull qwen2.5:7b
 Verify Ollama is running:
 
 ```bash
+# Linux/macOS
 curl http://127.0.0.1:11434/v1/models
+
+# Windows (PowerShell)
+Invoke-RestMethod http://127.0.0.1:11434/v1/models
+
+# Or open http://127.0.0.1:11434/v1/models in a browser (any OS)
 ```
 
 You should see JSON listing the pulled model(s).
@@ -98,22 +104,21 @@ If you see `type=` lines with extracted entities, it works. Move on.
 
 ## Step 4: Run a DASH Replay
 
-Replay real DASH 3 chat logs through the full pipeline (supervisor + fusion + store):
+Replay real DASH 3 chat logs through the full pipeline (supervisor + fusion + store).
+A sample chat.zip is included in the repo:
 
 ```bash
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip
 ```
 
-If you don't have the DASH data yet, download it first:
-
-```bash
-python scripts/explore_and_download_chat.py download --output data/chat
-```
+For the full DASH dataset (multiple days/teams), ask a teammate for the
+`data/chat/` directory or download from Pydio if you have a PAT
+(see `docs/DATA_SOURCES.md`).
 
 Override the model or endpoint:
 
 ```bash
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip \
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip \
     --url http://127.0.0.1:11434/v1 \
     --model qwen2.5:7b
 ```
@@ -134,7 +139,7 @@ python -m chat_to_cop.replay path/to/chat.zip --speed 2.0
 Output goes to `data/world_state.db` (SQLite) by default. Override with `--db`:
 
 ```bash
-python -m chat_to_cop.replay path/to/chat.zip --db /tmp/test_run.db
+python -m chat_to_cop.replay path/to/chat.zip --db data/test_run.db
 ```
 
 ## Step 5: View Results
@@ -228,7 +233,7 @@ python scripts/replay_test.py --count 30
 python scripts/replay_test.py --count 50 --model qwen2.5:7b
 ```
 
-This requires DASH 3 data to be downloaded (see Step 4).
+This uses the bundled DASH 3 sample data included in the repo.
 
 ## Step 7: Run Tests
 
@@ -269,7 +274,7 @@ docker compose up
 This builds the container, starts the FastAPI server on port 8000, and uses Ollama on the host. For replay:
 
 ```bash
-docker run -v /path/to/data:/app/data chat-to-cop \
+docker run -v ./data:/app/data chat-to-cop \
     python -m chat_to_cop.replay /app/data/chat.zip
 ```
 
@@ -309,15 +314,11 @@ ollama list
 
 By default, Ollama models use a 2048-token context window, which is too small for our system prompt (~2000 tokens) plus conversation history. The pipeline sets `num_ctx=8192` via the OpenAI SDK's `extra_body` parameter, and this is forwarded through instructor to Ollama's `/v1/chat/completions` endpoint.
 
-If you need to guarantee the context window (e.g., for production deployments), create a derived model with a Modelfile:
+If you need to guarantee the context window (e.g., for production deployments), create a derived model using the Modelfile in the repo:
 
 ```bash
-# Create a model with 8192-token context baked in
-echo 'FROM qwen2.5:7b
-PARAMETER num_ctx 8192' | ollama create qwen2.5-7b-8k -f -
-
-# Use it
-python -m chat_to_cop.replay path/to/chat.zip --model qwen2.5-7b-8k
+ollama create qwen2.5:7b-8k -f deploy/ollama/Modelfile.7b
+python -m chat_to_cop.replay path/to/chat.zip --model qwen2.5:7b-8k
 ```
 
 Both approaches work. The `extra_body` passthrough is simpler (no custom model needed), while the Modelfile approach is more explicit and doesn't depend on client-side configuration.
@@ -367,13 +368,10 @@ pip install -e ".[dev]"
 
 ### DASH data not found
 
-Download from Pydio:
-
-```bash
-python scripts/explore_and_download_chat.py download --output data/chat
-```
-
-This requires a Pydio PAT. See [docs/DATA_SOURCES.md](DATA_SOURCES.md) for access instructions.
+A sample chat.zip is bundled in the repo at `data/dash3/23Sep_usaf_chat.zip`.
+If you need the full dataset (multiple days/teams), ask a teammate for the
+`data/chat/` directory or download from Pydio if you have a PAT
+(see [docs/DATA_SOURCES.md](DATA_SOURCES.md)).
 
 ## Next Steps
 
