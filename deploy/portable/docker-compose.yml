@@ -1,0 +1,92 @@
+# chat-to-cop portable deployment
+#
+# Self-contained compose file for air-gapped (flash drive) distribution.
+# All images are pre-loaded from tarballs -- no internet required.
+#
+# Three services:
+#   ollama       - LLM inference with pre-baked model weights
+#   mock-irc     - Canned exercise messages for demo mode
+#   pipeline     - The chat-to-cop extraction pipeline
+#   api          - REST API and dashboard
+#
+# Quick start:
+#   bash start.sh              # loads images and starts everything
+#   bash start.sh --no-gpu     # CPU-only mode (slower, works anywhere)
+#   bash start.sh --stop       # shut down
+#
+# To connect to a real IRC server instead of the demo:
+#   1. Remove or comment out the mock-irc service below
+#   2. Set CHAT_TO_COP_IRC_URL to your IRC WebSocket URL, e.g.:
+#        CHAT_TO_COP_IRC_URL=ws://10.5.185.72:8097
+#   3. Remove the mock-irc depends_on from the pipeline service
+#   4. Run: docker compose up
+
+services:
+  # LLM inference -- model weights are baked into this image.
+  # For public registry use, replace with ollama/ollama:latest and
+  # pull the model manually: docker compose exec ollama ollama pull qwen2.5:7b
+  ollama:
+    image: chat-to-cop/ollama-with-model:latest
+    ports:
+      - "11434:11434"
+    # GPU acceleration. Remove the entire deploy block for CPU-only mode,
+    # or use: bash start.sh --no-gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Demo IRC server with canned DASH exercise messages.
+  # Remove this service when connecting to a real IRC server.
+  mock-irc:
+    image: chat-to-cop:latest
+    command: ["python", "scripts/mock_irc_server.py", "--canned", "--host", "0.0.0.0", "--port", "8097"]
+    ports:
+      - "8097:8097"
+    restart: unless-stopped
+
+  # The chat-to-cop extraction pipeline.
+  # Connects to IRC (mock or real), extracts world-state updates via LLM,
+  # writes structured output to SQLite.
+  pipeline:
+    image: chat-to-cop:latest
+    command: ["python", "-m", "chat_to_cop.replay"]
+    environment:
+      CHAT_TO_COP_IRC_URL: ws://mock-irc:8097
+      CHAT_TO_COP_IRC_CHANNELS: "${CHAT_TO_COP_IRC_CHANNELS:-#c2_coord,#fires,#isr_reports,#jprc,#stt_hydroBMA,#stt_crusherBMA}"
+      CHAT_TO_COP_LLM_URL: http://ollama:11434/v1
+      CHAT_TO_COP_LLM_MODEL: "${CHAT_TO_COP_LLM_MODEL:-qwen2.5:7b}"
+      CHAT_TO_COP_DB_PATH: /app/data/world_state.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+      mock-irc:
+        condition: service_started
+    restart: unless-stopped
+
+  # REST API for querying extracted world state.
+  # Browse http://localhost:8001/docs for the interactive API docs.
+  api:
+    image: chat-to-cop:latest
+    environment:
+      CHAT_TO_COP_DB_PATH: /app/data/world_state.db
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      pipeline:
+        condition: service_started
+    restart: unless-stopped
