@@ -147,6 +147,7 @@ build-flash-drive:
   variables:
     AG_NODE_TYPE: "m7i.4xlarge"
     AG_WALLTIME: "1:00:00"
+    AG_DISK_GB: "50"
     FLASH_DRIVE_MODEL: "qwen2.5:7b"
   before_script:
     - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
