@@ -1,0 +1,2 @@
+FROM model-b:30b-a3b
+PARAMETER num_ctx 8192

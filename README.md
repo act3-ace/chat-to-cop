@@ -107,11 +107,11 @@ Voice STT is already piped into IRC as `#stt_*` channels — one connection poin
 # 1. Install dependencies
 pip install -e ".[dev]"
 
-# 2. Download chat data from Pydio (requires PAT)
-python scripts/explore_and_download_chat.py download --output data/chat
+# 2. Run smoke test (no data download needed)
+python scripts/quick_test.py
 
-# 3. Replay DASH chat logs through the agent pipeline
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat/
+# 3. Replay bundled DASH 3 sample through the agent pipeline
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip
 
 # 4. Connect to live IRC for real-time processing
 python -m chat_to_cop.replay --irc-url ws://10.5.185.72:8097
