@@ -56,8 +56,8 @@ INSTANCE_NAME="chat-to-cop-${SLURM_JOB_ID:-$$}"
 # Chat data — default to DASH 3 GBC if not specified
 CHAT_DATA="${CHAT_DATA:-$WORK_DIR/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip}"
 
-# Model override (empty = use container default: qwen2.5:14b)
-# V100 32GB budget: 14B uses ~9GB VRAM, leaving ~23GB free
+# Model override (empty = use container default: qwen2.5:7b)
+# V100 32GB budget: 7B uses ~5GB VRAM, leaving ~27GB free. 14B available if needed.
 MODEL="${MODEL:-}"
 
 # Output database
@@ -104,7 +104,7 @@ echo "GPUs:       ${CUDA_VISIBLE_DEVICES:-not set}"
 echo "Container:  $CONTAINER"
 echo "Chat data:  $CHAT_DATA"
 echo "Output DB:  $DB_PATH"
-echo "Model:      ${MODEL:-container default (qwen2.5:14b)}"
+echo "Model:      ${MODEL:-container default (qwen2.5:7b)}"
 echo "Num ctx:    $NUM_CTX"
 echo "=============================================================================="
 

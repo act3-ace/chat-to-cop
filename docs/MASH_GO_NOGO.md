@@ -17,10 +17,10 @@ process described below. Environment variable names map to `config.py`
 | Setting | Value | Env var | Rationale |
 |---------|-------|---------|-----------|
 | Speaker models | OFF | `CHAT_TO_COP_USE_SPEAKER_MODELS=false` | RQ1 N=100 sweep: speakers hurt Type Exact on all four model sizes (p<0.0001) |
-| Primary model | `qwen2.5:14b` (pinned) | `CHAT_TO_COP_LLM_MODEL=qwen2.5:14b` | Best accuracy/compute tradeoff; 14B-to-32B adds only +1.3pp Type Exact |
+| Primary model | `qwen2.5:7b` (pinned) | `CHAT_TO_COP_LLM_MODEL=qwen2.5:7b` | Fastest viable model; latency is #1 priority. 14B available as upgrade if GPU headroom allows |
 | Context window | 8192 | `CHAT_TO_COP_LLM_NUM_CTX=8192` | Minimum required for full system prompt + conversation window |
 | Fallback model | `qwen2.5:3b` | `CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:3b` | Lightweight fallback when primary circuit breaker opens |
-| Auto-write threshold | 0.95 | `CHAT_TO_COP_COP_AUTO_THRESHOLD=0.95` | Calibration finding: 7B says 0.95 but is correct 65% of the time (ECE=0.67); 14B similarly overconfident |
+| Auto-write threshold | 0.95 | `CHAT_TO_COP_COP_AUTO_THRESHOLD=0.95` | Calibration finding: 7B says 0.95 but is correct 65% of the time (ECE=0.67) |
 | Flag threshold | 0.50 | `CHAT_TO_COP_COP_FLAG_THRESHOLD=0.5` | Below this -> HUMAN review; mid-range confidence bucket is essentially empty on Qwen2.5 |
 | High-risk types | weapons, csar, fire_mission, cyber_ew | `CHAT_TO_COP_COP_HIGH_RISK_TYPES` | Always routed to human review regardless of confidence |
 | CoP writer mode | dry-run | `CHAT_TO_COP_COP_API_URL=""` | No external writes until Sarah Bowman confirms schema; flip to real endpoint on-site |
@@ -31,7 +31,7 @@ process described below. Environment variable names map to `config.py`
 
 ```bash
 CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
-CHAT_TO_COP_LLM_MODEL=qwen2.5:14b
+CHAT_TO_COP_LLM_MODEL=qwen2.5:7b
 CHAT_TO_COP_LLM_NUM_CTX=8192
 CHAT_TO_COP_USE_SPEAKER_MODELS=false
 CHAT_TO_COP_DB_PATH=data/mash_live.db
@@ -57,8 +57,8 @@ for any production run at MASH.
 1. **Non-inferior Type Exact.** The proposed speaker approach must produce
    Type Exact accuracy that is not statistically worse than the speakers-OFF
    baseline for the same model, at alpha=0.05 (one-sided non-inferiority
-   test). The current 14B baseline is 46.7% Type Exact (95% CI [46.4, 46.9],
-   N=200 pooled across temperature).
+   test). The current 7B baseline is the reference (see
+   `docs/SPEAKER_MODEL_RESULTS.md` for exact values).
 
 2. **Reduced false positives on none/noise messages.** The proposed approach
    must show a measurable reduction in false positive extractions on messages
@@ -78,7 +78,7 @@ for any production run at MASH.
 
 5. **Compute budget.** The proposed approach must not increase per-message
    latency by more than 50% relative to the speakers-OFF baseline on the
-   same hardware. The current 14B speakers-OFF mean latency is the reference.
+   same hardware. The current 7B speakers-OFF mean latency is the reference.
 
 ### What counts as a "redesigned approach"
 
@@ -99,13 +99,15 @@ larger model does not count as a redesign.
 
 ## Model flip criteria
 
-The default model is `qwen2.5:14b`. To change the production model:
+The default model is `qwen2.5:7b`. To change the production model:
 
 1. Run the full eval sweep (`scripts/eval_speaker_sweep.py`) on the
    candidate model with N>=50 replications, speakers OFF.
-2. The candidate must meet or exceed the 14B baseline on Type Exact
-   (46.7%) with non-overlapping 95% CIs, or demonstrate a compelling
+2. The candidate must meet or exceed the 7B baseline on Type Exact
+   with non-overlapping 95% CIs, or demonstrate a compelling
    latency improvement (>2x faster) with no more than 2pp Type Exact loss.
+   14B is available as an upgrade where GPU headroom allows, but the 7B
+   default prioritizes latency per the design philosophy ("70% is great").
 3. Document the results in `docs/SPEAKER_MODEL_RESULTS.md` or a new
    benchmark report, and update this section with the new baseline.
 
