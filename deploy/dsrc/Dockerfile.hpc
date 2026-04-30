@@ -5,7 +5,7 @@
 # This image includes everything needed to run offline on DSRC compute nodes:
 #   - CUDA 12.1 runtime (V100/A100 GPU support)
 #   - Ollama server (local LLM serving)
-#   - Qwen 2.5 14B + 7B models (pre-downloaded, no internet needed)
+#   - Qwen 2.5 7B (primary) + 14B (optional upgrade) models (pre-downloaded, no internet needed)
 #   - Full chat-to-cop Python package
 #
 # Built by GitLab CI, converted to .sif for Apptainer on Narwhal.
@@ -44,7 +44,7 @@ RUN ollama serve & \
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 LABEL maintainer="ACT3 C2ES <c2es1@afrl.af.mil>"
-LABEL description="Chat-to-CoP HPC: Ollama + Qwen2.5-14B for DSRC V100 nodes"
+LABEL description="Chat-to-CoP HPC: Ollama + Qwen2.5-7B for DSRC V100 nodes"
 
 # System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -85,8 +85,8 @@ RUN mkdir -p /app/data
 ENV OLLAMA_MODELS=/opt/ollama-models \
     OLLAMA_HOST=127.0.0.1:11434 \
     CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1 \
-    CHAT_TO_COP_LLM_MODEL=qwen2.5:14b \
-    CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:7b \
+    CHAT_TO_COP_LLM_MODEL=qwen2.5:7b \
+    CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:3b \
     CHAT_TO_COP_LLM_NUM_CTX=8192 \
     CHAT_TO_COP_LLM_TIMEOUT=120 \
     CHAT_TO_COP_METRICS=true \

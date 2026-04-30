@@ -159,16 +159,16 @@ echo "8. Baked models"
 TAGS=$(apptainer exec instance://"$INSTANCE_NAME" \
     curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null || echo "{}")
 
-if echo "$TAGS" | grep -q "qwen2.5:14b"; then
-    pass "Primary model available: qwen2.5:14b"
+if echo "$TAGS" | grep -q "qwen2.5:7b"; then
+    pass "Primary model available: qwen2.5:7b"
 else
-    fail "Primary model qwen2.5:14b not found — CI build may have failed"
+    fail "Primary model qwen2.5:7b not found — CI build may have failed"
 fi
 
-if echo "$TAGS" | grep -q "qwen2.5:7b"; then
-    pass "Fallback model available: qwen2.5:7b"
+if echo "$TAGS" | grep -q "qwen2.5:14b"; then
+    pass "Upgrade model available: qwen2.5:14b"
 else
-    skip "Fallback model qwen2.5:7b not found (optional)"
+    skip "Upgrade model qwen2.5:14b not found (optional)"
 fi
 
 # ── 9. LLM inference (GPU) ──────────────────────────────────────────
@@ -177,7 +177,7 @@ RESPONSE=$(apptainer exec instance://"$INSTANCE_NAME" \
     curl -sf --max-time 120 http://127.0.0.1:11434/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-        "model": "qwen2.5:14b",
+        "model": "qwen2.5:7b",
         "messages": [{"role": "user", "content": "Reply with exactly: SMOKE TEST OK"}],
         "max_tokens": 20
     }' 2>/dev/null || echo "TIMEOUT")
@@ -202,7 +202,7 @@ from datetime import datetime
 async def test():
     backend = OpenAICompatBackend(
         base_url='http://127.0.0.1:11434/v1',
-        model='qwen2.5:14b',
+        model='qwen2.5:7b',
         api_key='not-needed',
     )
     msg = IRCMessage(
