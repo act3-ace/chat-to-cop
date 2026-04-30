@@ -1,0 +1,89 @@
+# chat-to-cop public deployment
+#
+# For internet-connected users pulling images from public registries.
+# No flash drive or pre-loaded images needed.
+#
+# Quick start:
+#   1. docker compose up -d
+#   2. docker compose exec ollama ollama pull qwen2.5:7b
+#   3. Open http://localhost:8001/docs
+#
+# The pipeline starts automatically after ollama is healthy. The mock IRC
+# server provides canned demo messages. See below for connecting to a real
+# IRC server.
+
+services:
+  # LLM inference via Ollama.
+  # After starting, pull a model:
+  #   docker compose exec ollama ollama pull qwen2.5:7b
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # GPU acceleration. Remove the deploy block for CPU-only.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Demo IRC server with canned exercise messages.
+  # Remove this service when connecting to a real IRC server.
+  mock-irc:
+    image: ghcr.io/act3-ace/chat-to-cop:latest
+    command: ["python", "scripts/mock_irc_server.py", "--canned", "--host", "0.0.0.0", "--port", "8097"]
+    ports:
+      - "8097:8097"
+    restart: unless-stopped
+
+  # The extraction pipeline.
+  # To connect to a real IRC server, change CHAT_TO_COP_IRC_URL:
+  #   CHAT_TO_COP_IRC_URL: ws://10.5.185.72:8097
+  # and remove the mock-irc depends_on.
+  pipeline:
+    image: ghcr.io/act3-ace/chat-to-cop:latest
+    command: ["python", "-m", "chat_to_cop.replay"]
+    environment:
+      CHAT_TO_COP_IRC_URL: ws://mock-irc:8097
+      CHAT_TO_COP_IRC_CHANNELS: "${CHAT_TO_COP_IRC_CHANNELS:-#c2_coord,#fires,#isr_reports,#jprc,#stt_hydroBMA,#stt_crusherBMA}"
+      CHAT_TO_COP_LLM_URL: http://ollama:11434/v1
+      CHAT_TO_COP_LLM_MODEL: "${CHAT_TO_COP_LLM_MODEL:-qwen2.5:7b}"
+      CHAT_TO_COP_DB_PATH: /app/data/world_state.db
+    volumes:
+      - pipeline_data:/app/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+      mock-irc:
+        condition: service_started
+    restart: unless-stopped
+
+  # REST API for querying extracted world state.
+  # http://localhost:8001/docs
+  api:
+    image: ghcr.io/act3-ace/chat-to-cop:latest
+    environment:
+      CHAT_TO_COP_DB_PATH: /app/data/world_state.db
+    ports:
+      - "8001:8000"
+    volumes:
+      - pipeline_data:/app/data
+    depends_on:
+      pipeline:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  pipeline_data:
