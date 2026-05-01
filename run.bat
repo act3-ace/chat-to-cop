@@ -112,6 +112,13 @@ REM -------------------------------------------------------------------
 
 echo [2/4] Checking chat-to-cop installation...
 
+REM Ensure pip is available (some Python installs omit it)
+python -m pip --version >nul 2>&1
+if errorlevel 1 (
+    echo   pip not found. Bootstrapping pip...
+    python -m ensurepip --upgrade
+)
+
 python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
     echo   Installing package (first run only, may take 2-5 minutes)...
@@ -135,30 +142,32 @@ REM -------------------------------------------------------------------
 REM Pull and configure Ollama model
 REM -------------------------------------------------------------------
 
-if "%OLLAMA_OK%"=="1" (
-    echo.
-    echo [chat-to-cop] Checking Ollama model...
+if "%OLLAMA_OK%" neq "1" goto :skip_ollama_setup
 
-    REM Check if Ollama is serving
-    curl -s http://127.0.0.1:11434/v1/models >nul 2>&1
-    if errorlevel 1 (
-        echo   Ollama is installed but not running.
-        echo   Starting Ollama...
-        start "" ollama serve
-        timeout /t 5 /nobreak >nul
-    )
+echo.
+echo [chat-to-cop] Checking Ollama model...
 
-    REM Check if the 8K model exists
-    ollama list 2>nul | findstr /c:"qwen2.5:7b-8k" >nul 2>&1
-    if errorlevel 1 (
-        echo   Pulling qwen2.5:7b (this may take a few minutes on first run)...
-        ollama pull qwen2.5:7b
-        echo   Creating 8K context variant...
-        ollama create qwen2.5:7b-8k -f deploy\ollama\Modelfile.7b
-    ) else (
-        echo   Model qwen2.5:7b-8k: ready
-    )
+REM Check if Ollama is serving; start it if not, with retry
+curl -s http://127.0.0.1:11434/v1/models >nul 2>&1
+if errorlevel 1 (
+    echo   Ollama is installed but not running.
+    echo   Starting Ollama...
+    start "" ollama serve
+    call :wait_for_ollama
 )
+
+REM Check if the 8K model exists
+ollama list 2>nul | findstr /c:"qwen2.5:7b-8k" >nul 2>&1
+if errorlevel 1 (
+    echo   Pulling qwen2.5:7b (this may take a few minutes on first run)...
+    ollama pull qwen2.5:7b
+    echo   Creating 8K context variant...
+    ollama create qwen2.5:7b-8k -f deploy\ollama\Modelfile.7b
+) else (
+    echo   Model qwen2.5:7b-8k: ready
+)
+
+:skip_ollama_setup
 
 REM -------------------------------------------------------------------
 REM Route to the requested mode
@@ -171,6 +180,23 @@ if "%1"=="--live" goto :live
 REM Default: smoke test + replay + dashboard
 
 :smoke
+
+REM Quick connectivity check before committing to the smoke test.
+REM Without this, 5 LLM calls x 120s timeout = 10 minutes of apparent freeze.
+if "%OLLAMA_OK%"=="1" (
+    curl -s --max-time 5 http://127.0.0.1:11434/v1/models >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo   WARNING: Ollama is not responding at http://127.0.0.1:11434
+        echo   The smoke test will likely fail or hang.
+        echo   Try starting Ollama manually: open Start menu, search "Ollama", click it.
+        echo   Then re-run this script.
+        echo.
+        set /p SKIP_SMOKE="Continue anyway? [y/N] "
+        if /i "!SKIP_SMOKE!" neq "y" exit /b 1
+    )
+)
+
 echo.
 echo ============================================
 echo   Running smoke test (5 messages)
@@ -235,6 +261,29 @@ set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
 set CHAT_TO_COP_LLM_MODEL=qwen2.5:7b-8k
 set CHAT_TO_COP_DB_PATH=data\mash_live.db
 python -m chat_to_cop.replay
+goto :eof
+
+REM -------------------------------------------------------------------
+REM Subroutines
+REM -------------------------------------------------------------------
+
+:wait_for_ollama
+REM Wait up to 30 seconds for Ollama to start responding.
+set /a _OLLAMA_TRIES=0
+:ollama_retry
+set /a _OLLAMA_TRIES+=1
+if !_OLLAMA_TRIES! GTR 6 (
+    echo   Ollama did not respond after 30 seconds.
+    echo   Try starting it manually: open Start menu, search "Ollama", click it.
+    goto :eof
+)
+timeout /t 5 /nobreak >nul
+curl -s --max-time 3 http://127.0.0.1:11434/v1/models >nul 2>&1
+if errorlevel 1 (
+    echo   Waiting for Ollama to start... (!_OLLAMA_TRIES!/6)
+    goto :ollama_retry
+)
+echo   Ollama is running.
 goto :eof
 
 REM -------------------------------------------------------------------

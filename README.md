@@ -91,22 +91,27 @@ Two fundamental problems are embedded in this architecture:
 1. **Online user modeling** — How does a software agent personalize/learn a model of the user *during* operations? Each agent builds speaker models that grow over the session.
 2. **Ontology-free team adaptation** — How can a heterogeneous team of teams adapt without predefined ontology or comms protocol? The LLM serves as a universal translator between team vocabularies.
 
-## Quick Start
+## Quick Start (Windows)
+
+1. On the repo page, click **Code > Download zip** and extract it
+2. Double-click **`setup.bat`** -- installs Python, Git, and Ollama if missing
+3. Double-click **`run.bat`** -- installs the package, runs the smoke test, replays demo data, and opens the dashboard
+
+That's it. `setup.bat` checks what you already have and only installs what's missing.
+`run.bat` handles everything else and walks you through each step.
+
+If Windows shows a "Windows protected your PC" SmartScreen warning, click
+**More info** then **Run anyway** -- this is normal for scripts downloaded as a zip.
+
+## Quick Start (Linux / macOS / CLI)
 
 ```bash
-# Clone and install
 git clone https://github.com/act3-ace/chat-to-cop.git
 cd chat-to-cop
 pip install -e ".[dev]"
-
-# Run smoke test (no data download needed)
 python scripts/quick_test.py
-
-# Replay bundled DASH 3 sample through the agent pipeline
 python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip
 ```
-
-On Windows, double-click `setup.bat` to install prerequisites, then `run.bat` for guided setup.
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full instructions including
 Ollama setup, eval harness, Docker, and troubleshooting.
