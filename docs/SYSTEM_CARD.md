@@ -70,7 +70,7 @@ The system is model-agnostic by design. All LLM calls go through an OpenAI-compa
 
 ### Why Qwen
 
-Qwen models produce 0% schema errors on structured JSON extraction tasks compared to 12-22% for Llama-family models at equivalent sizes. For a system that requires every LLM output to conform to a Pydantic schema, this is the dominant selection criterion. See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for detailed comparisons.
+Qwen models produce 0% schema errors on structured JSON extraction tasks compared to 12-22% for Llama-family models at equivalent sizes. For a system that requires every LLM output to conform to a Pydantic schema, this is the dominant selection criterion. See [BENCHMARK_RESULTS.md](research/BENCHMARK_RESULTS.md) for detailed comparisons.
 
 ### Model Licensing
 
@@ -85,7 +85,7 @@ When deploying with Ollama, we create custom model variants using Ollama Modelfi
 
 **Important for provenance:** The `-8k` suffix indicates a deployment configuration override, NOT a different model. The underlying model weights are identical to the base model (`qwen2.5:7b`). The Modelfile only changes Ollama runtime parameters (context window, temperature, etc.). The provenance `model_name` field will report the Ollama model name including the suffix (e.g., `qwen2.5:7b-8k`) because that is the name Ollama returns in API responses. When interpreting provenance records, treat `qwen2.5:7b-8k` and `qwen2.5:7b` as the same model weights with different context configurations.
 
-See [ANALYTICS_GATEWAY_DEPLOYMENT.md](ANALYTICS_GATEWAY_DEPLOYMENT.md) for the Modelfile creation commands.
+See [internal/ANALYTICS_GATEWAY_DEPLOYMENT.md](internal/ANALYTICS_GATEWAY_DEPLOYMENT.md) for the Modelfile creation commands.
 
 ## Architecture
 
@@ -158,7 +158,7 @@ Every LLM output is validated against Pydantic models via `instructor`. Outputs 
 
 ## Evaluation Results
 
-Detailed results are in [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md). Summary:
+Detailed results are in [BENCHMARK_RESULTS.md](research/BENCHMARK_RESULTS.md). Summary:
 
 ### Extraction Quality (Synthetic Data)
 
@@ -304,7 +304,7 @@ Additional provenance captured at the system level (implementation in progress, 
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) -- Full system architecture
 - [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) -- Equifinality, antifragility, FACS principles
-- [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) -- Detailed evaluation results
+- [BENCHMARK_RESULTS.md](research/BENCHMARK_RESULTS.md) -- Detailed evaluation results
 - [DATA_SOURCES.md](DATA_SOURCES.md) -- Data access and inventory
 - [SCHEMAS.md](SCHEMAS.md) -- CoP database schema reference
 - [datasets/DASH3_GBC.md](datasets/DASH3_GBC.md) -- Primary dataset card
