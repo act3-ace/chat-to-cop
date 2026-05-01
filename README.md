@@ -91,47 +91,39 @@ Two fundamental problems are embedded in this architecture:
 1. **Online user modeling** — How does a software agent personalize/learn a model of the user *during* operations? Each agent builds speaker models that grow over the session.
 2. **Ontology-free team adaptation** — How can a heterogeneous team of teams adapt without predefined ontology or comms protocol? The LLM serves as a universal translator between team vocabularies.
 
-## Event Infrastructure (from DASH 3)
-
-| System | Protocol | Address | Content |
-|--------|----------|---------|---------|
-| IRC/Chat | WebSocket | `ws://10.5.185.72:8097` | All chat + voice STT channels |
-| GenMSG | TCP | `10.5.185.9:5001` | Track updates (Link 16) |
-| GenMSG | UDP multicast | `224.9.8.63:5003` | Track updates (multicast) |
-
-Voice STT is already piped into IRC as `#stt_*` channels — one connection point for everything.
-
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
+# Clone and install
+git clone https://github.com/act3-ace/chat-to-cop.git
+cd chat-to-cop
 pip install -e ".[dev]"
 
-# 2. Run smoke test (no data download needed)
+# Run smoke test (no data download needed)
 python scripts/quick_test.py
 
-# 3. Replay bundled DASH 3 sample through the agent pipeline
+# Replay bundled DASH 3 sample through the agent pipeline
 python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip
-
-# 4. Connect to live IRC for real-time processing
-python -m chat_to_cop.replay --irc-url ws://10.5.185.72:8097
 ```
+
+On Windows, double-click `run.bat` for guided setup.
+
+See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full instructions including
+Ollama setup, eval harness, Docker, and troubleshooting.
 
 ## Key Documents
 
 | Document | Description |
 |----------|-------------|
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | Setup guide (all platforms) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Agent architecture, degradation strategy, component design |
 | [docs/DESIGN_PHILOSOPHY.md](docs/DESIGN_PHILOSOPHY.md) | Equifinality, antifragility, FACS connection |
-| [docs/CHAT_DATA_ANALYSIS.md](docs/CHAT_DATA_ANALYSIS.md) | Taxonomy of 13 world-state update types with real DASH examples |
-| [docs/LLM_BENCHMARKS.md](docs/LLM_BENCHMARKS.md) | March 2026 LLM speed/capability research |
-| [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | Pydio access, DASH data inventory |
 | [docs/SCHEMAS.md](docs/SCHEMAS.md) | BattleEffectSchemaV2, GenMSG fields, CoP database model |
-| [docs/PRIOR_ART.md](docs/PRIOR_ART.md) | Vendor chat-parsing lessons from DASH events |
-| [docs/MASH_GO_NO_GO.md](docs/MASH_GO_NO_GO.md) | **MASH event deployment decision tree** — pre-event checklist, decision matrix, recovery procedures, hard rules |
-| [docs/MASH_GO_NOGO.md](docs/MASH_GO_NOGO.md) | **MASH production config and flip criteria** — default settings, speaker model flip gate, sign-off chain |
-| [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) | External-presentation demo runbook (5-message smoke test) |
-| [docs/COMPARISON_DELTRON_2026-04-09.md](docs/COMPARISON_DELTRON_2026-04-09.md) | DELTRON (HLT) vs chat-to-cop comparison + Cadre of Critics review |
+| [docs/MASH_DEPLOYMENT.md](docs/MASH_DEPLOYMENT.md) | Full deployment guide for MASH (7 backend options) |
+| [docs/GO_NOGO.md](docs/GO_NOGO.md) | MASH decision tree, config defaults, recovery procedures |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Demo and development procedures |
+| [docs/SYSTEM_CARD.md](docs/SYSTEM_CARD.md) | RAI system card |
+| [docs/research/](docs/research/) | Benchmarks, speaker model results, adversarial robustness |
 
 ## Team
 
@@ -145,7 +137,7 @@ python -m chat_to_cop.replay --irc-url ws://10.5.185.72:8097
 
 ## Related Projects
 
-- **[equifinality](https://gitlab.dle.afrl.af.mil/COLIN.LEONG/equifinality)** — DASH data analysis (kill webs, BattleCOAs, entity catalogs, alias resolution). Direct dependency.
+- **equifinality** — DASH data analysis (kill webs, BattleCOAs, entity catalogs, alias resolution). Direct dependency.
 - **FACS-NCA** — Family of Autonomous Combat Systems. This pipeline validates FACS principles at chat-parsing scale.
 
 ## Classification
