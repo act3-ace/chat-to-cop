@@ -10,6 +10,22 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+### Added
+
+- Push-button Windows setup for MASH participants (!142):
+  - `scripts/bootstrap.ps1`: PowerShell one-liner (`irm url | iex`) that
+    installs Python, Git, Ollama via winget, clones the repo, and runs a
+    smoke test. Handles Win11 PS 5.1, MS Store Python alias, execution
+    policy restrictions. Safe to re-run.
+  - `setup.bat`: In-repo prerequisite checker/installer with `--check` and
+    `--help` modes. Uses `:do_install` subroutine to work around batch
+    errorlevel-in-compound-block bug. Falls back to manual URLs if winget
+    unavailable.
+  - `run.bat`: Updated to point at `setup.bat` for missing prereqs, uses
+    `python -m pip` instead of bare `pip`, improved Ollama skip UX.
+  - `docs/QUICKSTART.md`: Added "Windows One-Click Setup" section with
+    both options (one-liner and setup.bat).
+
 ### Changed
 
 - deploy/ag/launch-vllm-chat2cop.sh (#51): Added T4-specific vLLM flags

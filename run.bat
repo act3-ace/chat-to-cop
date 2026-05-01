@@ -84,7 +84,6 @@ if errorlevel 1 (
     echo.
     set /p SKIP_OLLAMA="Continue without Ollama? (advanced -- only if you have a cloud LLM) [y/N] "
     if /i "!SKIP_OLLAMA!" neq "y" (
-        pause
         exit /b 1
     )
     set OLLAMA_OK=0
