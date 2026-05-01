@@ -180,4 +180,4 @@ The replay should:
 - Mean latency under 15 seconds per message
 - Total runtime under 3 hours
 
-Compare results against the benchmark table in `docs/BENCHMARK_RESULTS.md`.
+Compare results against the benchmark table in `docs/research/BENCHMARK_RESULTS.md`.

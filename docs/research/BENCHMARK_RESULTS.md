@@ -642,7 +642,7 @@ A/B comparison of extraction quality with vs without speaker models, evaluated a
 
 **Next steps:** Test on larger models (14B, 32B, cloud APIs) to confirm capacity hypothesis (#52). If larger models benefit from speaker context, the RQ1 finding is: "speaker personalization requires sufficient model capacity (≥14B parameters)."
 
-Full report: `docs/SPEAKER_MODEL_RESULTS.md`
+Full report: `docs/research/SPEAKER_MODEL_RESULTS.md`
 
 ## Reproduction
 

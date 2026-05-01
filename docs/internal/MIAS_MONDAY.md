@@ -84,7 +84,7 @@ The **LLM is the ontology** — no predefined schema for military jargon. Differ
 
 ## Open Questions for You
 
-1. **Are the 13 update types right?** See `docs/CHAT_DATA_ANALYSIS.md`. Anything missing?
+1. **Are the 13 update types right?** See `docs/research/CHAT_DATA_ANALYSIS.md`. Anything missing?
 2. **Is the SDAC mapping useful?** Speaker models track Sensing/Deciding/Acting/Collaborating. Does this match what operators actually do?
 3. **What should the confidence threshold be for auto-writing to the CoP?** Currently 0.7. Too aggressive? Too conservative?
 4. **What does a battle manager need to see in the dashboard?** Current version shows a table of updates + entities. What's missing?
