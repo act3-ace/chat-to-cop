@@ -1,8 +1,8 @@
 # bootstrap.ps1 -- One-liner bootstrap for chat-to-cop on Windows.
 #
-# Invoke with (downloads to temp file, then executes as a proper script):
+# Paste into PowerShell:
 #
-#   $f="$env:TEMP\chat-to-cop-bootstrap.ps1"; irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 -OutFile $f; & $f; Remove-Item $f -ErrorAction SilentlyContinue
+#   irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 -OutFile ~\c2c.ps1; & ~\c2c.ps1
 #
 # This script:
 #   1. Checks for Python, Git, Ollama (does NOT reinstall existing tools)
@@ -54,6 +54,7 @@ function Install-WithWinget {
     }
 
     Write-Host "  Installing $Name via winget..."
+    Write-Host "  (A permissions prompt may appear -- please approve it.)" -ForegroundColor DarkGray
     $result = Start-Process -FilePath "winget" `
         -ArgumentList "install $PackageId --accept-source-agreements --accept-package-agreements" `
         -Wait -PassThru -NoNewWindow
@@ -177,7 +178,7 @@ if (Test-Path (Join-Path $targetDir ".git")) {
     Write-Host "  Repo already cloned at $targetDir"
     Write-Host "  Pulling latest..."
     Push-Location $targetDir
-    git pull --ff-only 2>&1 | ForEach-Object { Write-Host "  $_" }
+    git pull --ff-only
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Pull failed (local changes or diverged branch)." -ForegroundColor Yellow
         Write-Host "  Your local copy may be out of date. Continuing anyway." -ForegroundColor Yellow
@@ -187,13 +188,16 @@ if (Test-Path (Join-Path $targetDir ".git")) {
     # Directory exists but is not a git repo (e.g., unzipped release)
     Write-Host "  $targetDir exists but is not a git clone." -ForegroundColor Yellow
     Write-Host "  Renaming to ${targetDir}.bak and cloning fresh..." -ForegroundColor Yellow
+    if (Test-Path "${targetDir}.bak") {
+        Remove-Item "${targetDir}.bak" -Recurse -Force
+    }
     Rename-Item $targetDir "${targetDir}.bak"
     if (-not (Test-Command "git")) {
         Write-Host "  Git is not on PATH yet. Close this terminal, reopen, and re-run." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         exit 1
     }
-    git clone $repoUrl $targetDir 2>&1 | ForEach-Object { Write-Host "  $_" }
+    git clone --quiet $repoUrl $targetDir
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Clone failed. Check your internet connection and try again." -ForegroundColor Red
         Read-Host "Press Enter to exit"
@@ -207,7 +211,7 @@ if (Test-Path (Join-Path $targetDir ".git")) {
         exit 1
     }
     Write-Host "  Cloning to $targetDir..."
-    git clone $repoUrl $targetDir 2>&1 | ForEach-Object { Write-Host "  $_" }
+    git clone --quiet $repoUrl $targetDir
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Clone failed. Check your internet connection and try again." -ForegroundColor Red
         Read-Host "Press Enter to exit"
@@ -226,8 +230,20 @@ Write-Host "  Running run.bat --smoke-only to verify installation..."
 Write-Host ""
 
 cmd /c "run.bat --smoke-only"
+$smokeResult = $LASTEXITCODE
 
 Pop-Location
+
+if ($smokeResult -ne 0 -and $installed -gt 0) {
+    Write-Host ""
+    Write-Host "  Smoke test did not pass. This is common after a fresh install." -ForegroundColor Yellow
+    Write-Host "  Close this terminal, open a new one, then run:" -ForegroundColor Yellow
+    Write-Host "    cd $targetDir" -ForegroundColor Yellow
+    Write-Host "    run.bat --smoke-only" -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Press Enter to exit"
+    exit 1
+}
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Green
