@@ -12,12 +12,15 @@ Get the chat-to-cop pipeline running and see results in 15 minutes.
 ## Step 1: Clone and Install
 
 ```bash
-git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+git clone https://github.com/act3-ace/chat-to-cop.git
 cd chat-to-cop
 pip install -e ".[dev]"
 ```
 
-Verify installation:
+On Windows, if `pip` is not found, re-run the Python installer and check
+"Add python.exe to PATH".
+
+Verify:
 
 ```bash
 python -c "from chat_to_cop.models.cop_update import CoPUpdate; print('OK')"
@@ -25,122 +28,66 @@ python -c "from chat_to_cop.models.cop_update import CoPUpdate; print('OK')"
 
 ## Step 2: Install Ollama and Pull a Model
 
-### Linux / macOS
+**Linux / macOS:**
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-### Windows
+**Windows:** Download from [ollama.com/download](https://ollama.com/download) and run the installer.
 
-Download from [ollama.com/download](https://ollama.com/download) and run the installer.
-
-### Pull a model
-
-Start small. The 3B model runs on CPU and is fast enough for development:
+**Pull a model** (3B runs on CPU, fast enough for development):
 
 ```bash
 ollama pull qwen2.5:3b
-```
-
-For better extraction quality (needs 6+ GB VRAM):
-
-```bash
+# For better quality (needs 6+ GB VRAM):
 ollama pull qwen2.5:7b
 ```
 
-Verify Ollama is running:
+**Verify** Ollama is running:
 
 ```bash
 # Linux/macOS
 curl http://127.0.0.1:11434/v1/models
-
 # Windows (PowerShell)
 Invoke-RestMethod http://127.0.0.1:11434/v1/models
-
-# Or open http://127.0.0.1:11434/v1/models in a browser (any OS)
+# Or open http://127.0.0.1:11434/v1/models in a browser
 ```
-
-You should see JSON listing the pulled model(s).
 
 ## Step 3: Run the Smoke Test
 
-The smoke test sends 5 real DASH 3 messages through the extraction pipeline:
+Sends 5 real DASH 3 messages through the extraction pipeline:
 
 ```bash
 python scripts/quick_test.py
-```
-
-Use a different model:
-
-```bash
-python scripts/quick_test.py --model qwen2.5:7b
-```
-
-Point at a remote Ollama instance:
-
-```bash
-python scripts/quick_test.py --url http://192.168.1.100:11434/v1
+python scripts/quick_test.py --model qwen2.5:7b                    # different model
+python scripts/quick_test.py --url http://192.168.1.100:11434/v1   # remote Ollama
 ```
 
 Expected output (varies by model):
 
 ```
-============================================================
-SMOKE TEST: qwen2.5:3b @ http://127.0.0.1:11434/v1
-============================================================
-
-INPUT:  [#c2_coord] HYDRO_SL: SITREP / AIR: ZEUS 12,13,14 shot down by TTG; YAMA11 flight shot down by TTG
+INPUT:  [#c2_coord] HYDRO_SL: SITREP / AIR: ZEUS 12,13,14 shot down by TTG
 OUTPUT: type=sitrep, confidence=0.85, method=llm
         entity: {'callsign': 'ZEUS12', 'operational_status': 'DESTROYED'}
-        entity: {'callsign': 'ZEUS13', 'operational_status': 'DESTROYED'}
         ...
-
-INPUT:  [#c2_coord] VEGAS_ABM2: .
-OUTPUT: [filtered -- no world-state change detected]
 ```
 
 If you see `type=` lines with extracted entities, it works. Move on.
 
 ## Step 4: Run a DASH Replay
 
-Replay real DASH 3 chat logs through the full pipeline (supervisor + fusion + store).
-A sample chat.zip is included in the repo:
+Replay real DASH 3 chat logs through the full pipeline. A sample chat.zip is included:
 
 ```bash
 python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip --model qwen2.5:7b  # override model
+python -m chat_to_cop.replay path/to/chat.zip --speed 1.0   # real-time (0=instant, 2.0=2x)
+python -m chat_to_cop.replay path/to/chat.zip --db data/test_run.db  # custom output DB
 ```
 
-For the full DASH dataset (multiple days/teams), ask a teammate for the
-`data/chat/` directory or download from Pydio if you have a PAT
-(see `docs/DATA_SOURCES.md`).
-
-Override the model or endpoint:
-
-```bash
-python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip \
-    --url http://127.0.0.1:11434/v1 \
-    --model qwen2.5:7b
-```
-
-Control playback speed:
-
-```bash
-# Instant (default) -- processes as fast as the model allows
-python -m chat_to_cop.replay path/to/chat.zip --speed 0
-
-# Real-time -- simulates live message rate
-python -m chat_to_cop.replay path/to/chat.zip --speed 1.0
-
-# 2x speed
-python -m chat_to_cop.replay path/to/chat.zip --speed 2.0
-```
-
-Output goes to `data/world_state.db` (SQLite) by default. Override with `--db`:
-
-```bash
-python -m chat_to_cop.replay path/to/chat.zip --db data/test_run.db
-```
+Output goes to `data/world_state.db` (SQLite) by default. For the full DASH
+dataset, ask a teammate or download from Pydio (see `docs/DATA_SOURCES.md`).
 
 ## Step 5: View Results
 
@@ -149,8 +96,6 @@ Start the FastAPI server to browse extracted world state:
 ```bash
 uvicorn chat_to_cop.api:app --reload
 ```
-
-Then open your browser or use curl:
 
 | Endpoint | What it shows |
 |----------|---------------|
@@ -163,15 +108,9 @@ Then open your browser or use curl:
 | http://localhost:8000/stats | Extraction metrics |
 | http://localhost:8000/docs | Interactive Swagger UI |
 
-Example:
-
-```bash
-curl http://localhost:8000/updates?limit=3 | python -m json.tool
-```
-
 ## Step 6: Run the Eval Harness
 
-The eval harness measures extraction quality (precision, recall, F1) using synthetic labeled data. It works with any OpenAI-compatible endpoint.
+Measures extraction quality (precision, recall, F1) against synthetic labeled data.
 
 ### With Groq (free, fast, no GPU needed)
 
@@ -181,70 +120,43 @@ The eval harness measures extraction quality (precision, recall, F1) using synth
 ```bash
 # Linux/macOS
 export GROQ_API_KEY=gsk_your_key_here
-
 # Windows (PowerShell)
 $env:GROQ_API_KEY = "gsk_your_key_here"
 ```
 
-3. Run a single model eval:
+3. Run evals:
 
 ```bash
+# Single model
 python scripts/eval_models.py \
-    --url https://api.groq.com/openai/v1 \
-    --model qwen/qwen3-32b \
-    --count 50 \
-    --verbose
-```
+    --url https://api.groq.com/openai/v1 --model qwen/qwen3-32b --count 50 --verbose
 
-Note: Groq's free tier has rate limits. Use `--rate-delay 18` if you get 429 errors:
-
-```bash
-python scripts/eval_models.py \
-    --url https://api.groq.com/openai/v1 \
-    --model qwen/qwen3-32b \
-    --count 50 \
-    --rate-delay 18
-```
-
-4. Compare multiple models:
-
-```bash
+# Compare all configured models (qwen3-32b, llama-3.3-70b, llama-4-scout, llama-3.1-8b)
 python scripts/eval_models.py --compare --count 50 --rate-delay 18
 ```
 
-This runs all configured Groq models (qwen3-32b, llama-3.3-70b, llama-4-scout, llama-3.1-8b) and prints a comparison table.
+Use `--rate-delay 18` if you hit Groq's free-tier rate limit (429 errors).
 
 ### With local Ollama
 
 ```bash
-python scripts/eval_models.py \
-    --url http://127.0.0.1:11434/v1 \
-    --model qwen2.5:3b \
-    --count 30 \
-    --verbose
+python scripts/eval_models.py --url http://127.0.0.1:11434/v1 --model qwen2.5:3b --count 30 --verbose
 ```
 
 ### Replay test (real DASH data)
-
-The replay test runs N real DASH 3 messages through the pipeline and reports latency and update type distribution:
 
 ```bash
 python scripts/replay_test.py --count 30
 python scripts/replay_test.py --count 50 --model qwen2.5:7b
 ```
 
-This uses the bundled DASH 3 sample data included in the repo.
-
 ## Step 7: Run Tests
 
-Before making any code changes, confirm all tests pass:
-
 ```bash
-# Lint + format check + unit tests (same as CI)
 ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "not integration" -v
 ```
 
-Current test count: 588 passing (549 unit + 15 integration + worktree tests).
+Current test count: 1145 passing.
 
 ## Configuration
 
@@ -256,27 +168,58 @@ All settings can be overridden with environment variables using the `CHAT_TO_COP
 | `CHAT_TO_COP_LLM_MODEL` | `qwen2.5:7b` | Primary model |
 | `CHAT_TO_COP_FALLBACK_MODEL` | `qwen2.5:3b` | Smaller fallback model |
 | `CHAT_TO_COP_LLM_API_KEY` | `not-needed` | API key (set for Groq/OpenAI) |
-| `CHAT_TO_COP_LLM_TIMEOUT` | `120.0` | Seconds per LLM call (generous for cold starts) |
+| `CHAT_TO_COP_LLM_TIMEOUT` | `120.0` | Seconds per LLM call |
 | `CHAT_TO_COP_LLM_NUM_CTX` | `8192` | Context window size for Ollama |
 | `CHAT_TO_COP_DB_PATH` | `data/world_state.db` | SQLite database path |
 | `CHAT_TO_COP_METRICS` | `true` | Enable instrumentation |
-| `CHAT_TO_COP_COP_API_URL` | `` (empty=dry-run) | CoP REST API URL |
+| `CHAT_TO_COP_COP_API_URL` | (empty=dry-run) | CoP REST API URL |
 | `CHAT_TO_COP_COP_AUTO_THRESHOLD` | `0.7` | Confidence for auto-write to CoP |
 
 ## Docker (alternative)
 
-If you prefer not to install Python locally:
+### Linux / macOS
 
 ```bash
 docker compose up
 ```
 
-This builds the container, starts the FastAPI server on port 8000, and uses Ollama on the host. For replay:
+Builds the container, starts FastAPI on port 8000, uses Ollama on the host.
 
 ```bash
-docker run -v ./data:/app/data chat-to-cop \
-    python -m chat_to_cop.replay /app/data/chat.zip
+docker run -v ./data:/app/data chat-to-cop python -m chat_to_cop.replay /app/data/chat.zip
 ```
+
+### Windows (Docker Desktop)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   with the WSL 2 backend enabled.
+2. For GPU support, install the
+   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+   Requires NVIDIA drivers on Windows (not inside WSL). Verify with `nvidia-smi`.
+3. Restart Windows if prompted, then verify:
+
+```bash
+docker --version && docker compose version
+```
+
+### Start the stack (all platforms)
+
+```bash
+docker compose up -d                      # with GPU (RTX 3060+)
+docker compose --profile cpu up -d        # CPU-only (slower)
+docker compose exec ollama ollama pull qwen2.5:7b   # pull a model
+docker compose exec chat-to-cop python -m chat_to_cop.replay /app/data/chat.zip
+docker compose down                       # stop
+```
+
+## What You Need from the Team
+
+| Item | Who to ask | Why |
+|------|-----------|-----|
+| DASH 3 chat.zip test data | Scott | Test replays before MASH |
+| AWS GovCloud creds (optional) | Jared | Bedrock cloud inference |
+| IRC server IP at MASH | White cell / exercise staff | Live mode at the event |
+| CoP database endpoint (optional) | Sarah Bowman | Write to the actual CoP |
 
 ## Troubleshooting
 
@@ -285,98 +228,78 @@ docker run -v ./data:/app/data chat-to-cop \
 Ollama is not running. Start it:
 
 ```bash
-# Linux
-systemctl start ollama
-
-# macOS
-# Ollama starts automatically. Check Activity Monitor for "ollama".
-
-# Windows
-# Start the Ollama app from the Start menu, or run:
-ollama serve
+systemctl start ollama           # Linux
+# macOS: starts automatically -- check Activity Monitor for "ollama"
+ollama serve                     # Windows: or start from the Start menu
 ```
 
 ### "Model not found" errors
 
-Pull the model first:
-
 ```bash
-ollama pull qwen2.5:3b
-```
-
-List available models:
-
-```bash
-ollama list
+ollama pull qwen2.5:3b   # pull the model
+ollama list               # check what's available
 ```
 
 ### Ollama context window (num_ctx)
 
-By default, Ollama models use a 2048-token context window, which is too small for our system prompt (~2000 tokens) plus conversation history. The pipeline sets `num_ctx=8192` via the OpenAI SDK's `extra_body` parameter, and this is forwarded through instructor to Ollama's `/v1/chat/completions` endpoint.
+Ollama defaults to a 2048-token context window, too small for our system
+prompt plus conversation history. The pipeline sets `num_ctx=8192` via the
+OpenAI SDK's `extra_body` parameter automatically.
 
-If you need to guarantee the context window (e.g., for production deployments), create a derived model using the Modelfile in the repo:
+For production deployments where you want this guaranteed, create a derived
+model:
 
 ```bash
 ollama create qwen2.5:7b-8k -f deploy/ollama/Modelfile.7b
 python -m chat_to_cop.replay path/to/chat.zip --model qwen2.5:7b-8k
 ```
 
-Both approaches work. The `extra_body` passthrough is simpler (no custom model needed), while the Modelfile approach is more explicit and doesn't depend on client-side configuration.
-
 ### Slow performance (>5s per message)
 
 - Use a smaller model: `qwen2.5:3b` instead of `7b`
 - Check GPU utilization: `nvidia-smi` (Linux) or Task Manager (Windows)
-- Ollama falls back to CPU if no GPU is detected. This is 5-10x slower.
+- Ollama falls back to CPU if no GPU is detected -- 5-10x slower
 
-### Import errors after `pip install`
-
-Make sure you installed in dev mode:
+### Import errors / "No module named chat_to_cop"
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # must be in dev mode
+cd chat-to-cop            # run from project root, not inside src/
 ```
 
 If using a virtual environment, make sure it is activated.
 
-### "No module named chat_to_cop" when running scripts
-
-Run from the project root directory, not from inside `src/`:
-
-```bash
-cd chat-to-cop
-python scripts/quick_test.py
-```
-
 ### Groq rate limit errors (429)
-
-Groq's free tier allows ~6000 tokens/min. Use the rate delay flag:
 
 ```bash
 python scripts/eval_models.py --rate-delay 18 --count 30
 ```
 
-This waits 18 seconds between LLM calls. A 50-message eval takes ~10 minutes.
+Waits 18 seconds between LLM calls. A 50-message eval takes ~10 minutes.
 
-### Tests fail with "pytest-asyncio" errors
+### Docker won't start (Windows)
 
-Install dev dependencies:
+Enable virtualization in BIOS (VT-x / AMD-V). WSL 2 requires it.
 
-```bash
-pip install -e ".[dev]"
-```
+### Pipeline produces all "passthrough" results
+
+LLM not responding. Check Ollama is running (`ollama list`) and the model is
+loaded. The pipeline still works via regex fallback, but quality is lower.
+
+### Ollama model pull hangs
+
+Large downloads are 4-8 GB. On slow connections, use `qwen2.5:3b` (2 GB).
 
 ### DASH data not found
 
-A sample chat.zip is bundled in the repo at `data/dash3/23Sep_usaf_chat.zip`.
-If you need the full dataset (multiple days/teams), ask a teammate for the
-`data/chat/` directory or download from Pydio if you have a PAT
-(see [docs/DATA_SOURCES.md](DATA_SOURCES.md)).
+A sample is bundled at `data/dash3/23Sep_usaf_chat.zip`. For the full dataset,
+ask a teammate or download from Pydio (see [DATA_SOURCES.md](DATA_SOURCES.md)).
 
 ## Next Steps
 
-- Read [ARCHITECTURE.md](ARCHITECTURE.md) to understand the agent pipeline
-- Read [CHAT_DATA_ANALYSIS.md](CHAT_DATA_ANALYSIS.md) to see all 13 update types
-- Read [LABELING_GUIDE.md](LABELING_GUIDE.md) to start labeling ground truth data
-- Read [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) for equifinality and anti-ontology principles
+- [ARCHITECTURE.md](ARCHITECTURE.md) -- agent pipeline design
+- [research/CHAT_DATA_ANALYSIS.md](research/CHAT_DATA_ANALYSIS.md) -- all 13 update types
+- [research/BENCHMARK_RESULTS.md](research/BENCHMARK_RESULTS.md) -- model evaluation results
+- [LABELING_GUIDE.md](LABELING_GUIDE.md) -- ground truth labeling
+- [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) -- equifinality and anti-ontology principles
 - Check GitLab issues for current sprint work

@@ -249,7 +249,7 @@ These records are also pushed to the CoP REST API, where vendor visualization to
 
 ### What 13 types of information it extracts
 
-The system recognizes 13 categories of world-state updates from chat data (see [CHAT_DATA_ANALYSIS.md](CHAT_DATA_ANALYSIS.md) for real examples):
+The system recognizes 13 categories of world-state updates from chat data (see [CHAT_DATA_ANALYSIS.md](research/CHAT_DATA_ANALYSIS.md) for real examples):
 
 | # | Update Type | % of Messages | Example |
 |---|------------|---------------|---------|
@@ -473,7 +473,7 @@ For comparison, the earlier laptop CPU run achieved only 100 LLM extractions out
 - **Status change: 71%.** Brevity codes like "gadget bent" (radar failure) and "winchester" (weapons depleted) need to be in the prompt's few-shot examples or the regex pattern set.
 - **Bullseye notation.** The system cannot convert bullseye bearing/range ("270/40") to geographic coordinates without the scenario's reference point.
 - **STT noise.** Voice channels are ~60% noise. The fusion agent helps, but noisy STT reports still produce low-confidence updates.
-- ~~No ground truth labels.~~ **RESOLVED:** Opus silver labels now cover all 935 DASH 3 messages (Claude Opus 4.6 via Ask Sage, NIPRNet IL5). See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for the full analysis. Remaining: calibrate confidence (#30) and run speaker model A/B evaluation (#35) against these labels.
+- ~~No ground truth labels.~~ **RESOLVED:** Opus silver labels now cover all 935 DASH 3 messages (Claude Opus 4.6 via Ask Sage, NIPRNet IL5). See [BENCHMARK_RESULTS.md](research/BENCHMARK_RESULTS.md) for the full analysis. Remaining: calibrate confidence (#30) and run speaker model A/B evaluation (#35) against these labels.
 
 ---
 
@@ -490,7 +490,7 @@ Chat-to-cop is not analogous to a FACS (Family of Autonomous Combat Systems) -- 
 | **Configurable** | Swap models, adjust timeouts, add/remove agents without restart | Force recomposition vs. agent pool recomposition |
 | **Trustworthy** | Every output has confidence, source, method, provenance chain | Sensor fusion trust vs. extraction trust |
 
-Everything ACT3 wants to study at the FACS scale can be studied first at the chat-to-cop scale, with faster iteration cycles and cheaper failures. See [RTA_FACS_FRAMING.md](RTA_FACS_FRAMING.md) for the full mapping to Run-Time Assurance mechanisms.
+Everything ACT3 wants to study at the FACS scale can be studied first at the chat-to-cop scale, with faster iteration cycles and cheaper failures. See [RTA_FACS_FRAMING.md](research/RTA_FACS_FRAMING.md) for the full mapping to Run-Time Assurance mechanisms.
 
 ### Two research questions
 
@@ -629,11 +629,11 @@ ruff check src/ tests/ && ruff format --check src/ tests/ && pytest tests/ -k "n
 ## Related Documents
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) -- Full system architecture with component details
-- [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) -- Detailed performance and quality benchmarks
+- [BENCHMARK_RESULTS.md](research/BENCHMARK_RESULTS.md) -- Detailed performance and quality benchmarks
 - [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) -- Equifinality, antifragility, FACS principles
-- [RTA_FACS_FRAMING.md](RTA_FACS_FRAMING.md) -- Run-Time Assurance mapping and FACS connection
+- [RTA_FACS_FRAMING.md](research/RTA_FACS_FRAMING.md) -- Run-Time Assurance mapping and FACS connection
 - [SYSTEM_CARD.md](SYSTEM_CARD.md) -- DoD AI system card (pre-deployment)
-- [CHAT_DATA_ANALYSIS.md](CHAT_DATA_ANALYSIS.md) -- All 13 update types with real examples
+- [CHAT_DATA_ANALYSIS.md](research/CHAT_DATA_ANALYSIS.md) -- All 13 update types with real examples
 - [LABELING_GUIDE.md](LABELING_GUIDE.md) -- Ground truth labeling protocol
 - [QUICKSTART.md](QUICKSTART.md) -- 15-minute setup guide
 - [C2ES Google Drive](https://drive.google.com/drive/u/0/folders/1po6MGtfA5GF8QRub3X5LVpA_spJ9E7zz) -- Meeting notes, DASH event data, reference library
