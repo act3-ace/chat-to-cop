@@ -11,12 +11,12 @@ Get the chat-to-cop pipeline running and see results in 15 minutes.
 
 ## Windows One-Click Setup
 
-If you're on Windows 11 and want the fastest path to a working setup:
+If you're on Windows 10+ and want the fastest path to a working setup:
 
 **Option A -- PowerShell one-liner** (clones the repo and installs everything):
 
 ```powershell
-irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 | iex
+$f="$env:TEMP\chat-to-cop-bootstrap.ps1"; irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 -OutFile $f; & $f; Remove-Item $f -ErrorAction SilentlyContinue
 ```
 
 **Option B -- Already have the repo?** Double-click `setup.bat` in the repo root.

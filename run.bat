@@ -79,15 +79,11 @@ ollama --version >nul 2>&1
 if errorlevel 1 (
     echo   Ollama: NOT FOUND
     echo.
-    echo   Ollama runs the local AI model. Run "setup.bat" to install it,
-    echo   or download from https://ollama.com/download
+    echo   Ollama runs the local AI model.
+    echo   Install: run "setup.bat" or download from https://ollama.com/download
     echo.
-    echo   (You can skip Ollama if you plan to use a cloud backend
-    echo    like AWS Bedrock or Ask Sage instead.)
-    echo.
-    set /p SKIP_OLLAMA="Continue without Ollama? [y/N] "
+    set /p SKIP_OLLAMA="Skip Ollama and use a cloud backend instead? [y/N] "
     if /i "!SKIP_OLLAMA!" neq "y" (
-        pause
         exit /b 1
     )
     set OLLAMA_OK=0
