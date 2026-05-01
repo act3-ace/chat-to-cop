@@ -45,14 +45,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Verify setup.bat --check detects prerequisites
+      - name: Verify setup.bat --check detects missing Ollama
         shell: cmd
         run: |
-          setup.bat --check
+          echo. | setup.bat --check
           if errorlevel 1 (
-            echo setup.bat --check reported missing prerequisites
-            echo This is expected if Ollama is not yet installed.
+            echo setup.bat correctly detected missing prerequisites.
+          ) else (
+            echo ERROR: setup.bat --check should have reported missing Ollama
+            exit /b 1
           )
+          exit /b 0
 
       - name: Install package
         shell: cmd
@@ -69,21 +72,31 @@ jobs:
           Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "$env:TEMP\OllamaSetup.exe"
           Write-Host "Installing Ollama (silent)..."
           Start-Process -FilePath "$env:TEMP\OllamaSetup.exe" -ArgumentList "/VERYSILENT /NORESTART" -Wait
-          # Add Ollama to PATH for this session
-          $ollamaPath = "$env:LOCALAPPDATA\Programs\Ollama"
-          if (Test-Path $ollamaPath) {
-            $env:Path += ";$ollamaPath"
-            Write-Host "Ollama installed at $ollamaPath"
-          } else {
-            # Try common alternative paths
-            $altPath = "C:\Program Files\Ollama"
-            if (Test-Path $altPath) {
-              $env:Path += ";$altPath"
-              Write-Host "Ollama installed at $altPath"
+          # Find where Ollama installed and persist to PATH for all subsequent steps
+          $found = $false
+          foreach ($candidate in @(
+            "$env:LOCALAPPDATA\Programs\Ollama",
+            "C:\Program Files\Ollama",
+            "$env:USERPROFILE\AppData\Local\Programs\Ollama"
+          )) {
+            if (Test-Path "$candidate\ollama.exe") {
+              Write-Host "Ollama installed at $candidate"
+              $candidate | Out-File -FilePath $env:GITHUB_PATH -Append
+              $env:Path += ";$candidate"
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Host "Searching for ollama.exe..."
+            $exe = Get-ChildItem -Path "C:\","$env:LOCALAPPDATA" -Recurse -Filter "ollama.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($exe) {
+              Write-Host "Found at $($exe.DirectoryName)"
+              $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append
+              $env:Path += ";$($exe.DirectoryName)"
             } else {
-              Write-Host "WARNING: Ollama binary not found at expected paths"
-              Get-ChildItem "$env:LOCALAPPDATA\Programs\" -ErrorAction SilentlyContinue
-              Get-ChildItem "C:\Program Files\" -Filter "Ollama*" -ErrorAction SilentlyContinue
+              Write-Host "ERROR: ollama.exe not found anywhere"
+              exit 1
             }
           }
           ollama --version
@@ -116,7 +129,7 @@ jobs:
       - name: Verify setup.bat --check with all tools present
         shell: cmd
         run: |
-          setup.bat --check
+          echo. | setup.bat --check
           if errorlevel 1 (
             echo ERROR: setup.bat --check failed even with all tools installed
             exit /b 1
