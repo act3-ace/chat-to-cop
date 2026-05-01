@@ -106,7 +106,7 @@ python scripts/quick_test.py
 python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip
 ```
 
-On Windows, double-click `run.bat` for guided setup.
+On Windows, double-click `setup.bat` to install prerequisites, then `run.bat` for guided setup.
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full instructions including
 Ollama setup, eval harness, Docker, and troubleshooting.

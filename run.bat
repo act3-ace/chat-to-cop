@@ -42,18 +42,9 @@ python --version >nul 2>&1
 if errorlevel 1 (
     echo   Python: NOT FOUND
     echo.
-    echo   Python 3.10+ is required. To install:
-    echo.
-    echo   1. Open your browser to:
-    echo      https://www.python.org/downloads/
-    echo.
-    echo   2. Click "Download Python 3.12.x" (the big yellow button)
-    echo.
-    echo   3. Run the installer. IMPORTANT: on the first screen,
-    echo      check the box that says "Add Python to PATH"
-    echo      before clicking "Install Now".
-    echo.
-    echo   4. Close and reopen this terminal, then run this script again.
+    echo   Run "setup.bat" to install prerequisites automatically,
+    echo   or install Python 3.12 manually from https://www.python.org/downloads/
+    echo   (check "Add Python to PATH" during install).
     echo.
     pause
     exit /b 1
@@ -70,15 +61,8 @@ git --version >nul 2>&1
 if errorlevel 1 (
     echo   Git: NOT FOUND
     echo.
-    echo   Git is required. To install:
-    echo.
-    echo   1. Open your browser to:
-    echo      https://git-scm.com/downloads/win
-    echo.
-    echo   2. Download and run the installer.
-    echo      Accept all defaults (click "Next" through each screen).
-    echo.
-    echo   3. Close and reopen this terminal, then run this script again.
+    echo   Run "setup.bat" to install prerequisites automatically,
+    echo   or install Git manually from https://git-scm.com/downloads/win
     echo.
     pause
     exit /b 1
@@ -95,22 +79,10 @@ ollama --version >nul 2>&1
 if errorlevel 1 (
     echo   Ollama: NOT FOUND
     echo.
-    echo   Ollama runs the local AI model. To install:
+    echo   Ollama runs the local AI model and is needed for the demo.
+    echo   To install: run "setup.bat" or download from https://ollama.com/download
     echo.
-    echo   1. Open your browser to:
-    echo      https://ollama.com/download
-    echo.
-    echo   2. Click "Download for Windows" and run the installer.
-    echo.
-    echo   3. Ollama will appear in your system tray (bottom-right).
-    echo      It starts automatically after installation.
-    echo.
-    echo   4. Run this script again after installing.
-    echo.
-    echo   (You can skip Ollama if you plan to use a cloud backend
-    echo    like AWS Bedrock or Ask Sage instead.)
-    echo.
-    set /p SKIP_OLLAMA="Continue without Ollama? [y/N] "
+    set /p SKIP_OLLAMA="Continue without Ollama? (advanced -- only if you have a cloud LLM) [y/N] "
     if /i "!SKIP_OLLAMA!" neq "y" (
         pause
         exit /b 1
@@ -143,12 +115,12 @@ echo [2/4] Checking chat-to-cop installation...
 
 python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
-    echo   Installing package (first run only, may take a minute)...
-    pip install -e ".[dev]"
+    echo   Installing package (first run only, may take 2-5 minutes)...
+    python -m pip install -e ".[dev]"
     if errorlevel 1 (
         echo.
         echo ERROR: Installation failed. Try running manually:
-        echo   pip install -e ".[dev]"
+        echo   python -m pip install -e ".[dev]"
         echo.
         echo If you see "Microsoft Visual C++ required", you may need to install
         echo the Visual Studio Build Tools. But this should not normally happen.
