@@ -27,13 +27,34 @@ REM Preflight checks
 REM -------------------------------------------------------------------
 
 echo.
-echo [chat-to-cop] Checking prerequisites...
+echo ============================================
+echo   chat-to-cop setup
+echo ============================================
 echo.
+echo [1/4] Checking prerequisites...
+echo.
+
+REM -------------------------------------------------------------------
+REM Check Python
+REM -------------------------------------------------------------------
 
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python not found. Install Python 3.10+ from https://www.python.org/downloads/
-    echo Make sure to check "Add Python to PATH" during installation.
+    echo   Python: NOT FOUND
+    echo.
+    echo   Python 3.10+ is required. To install:
+    echo.
+    echo   1. Open your browser to:
+    echo      https://www.python.org/downloads/
+    echo.
+    echo   2. Click "Download Python 3.12.x" (the big yellow button)
+    echo.
+    echo   3. Run the installer. IMPORTANT: on the first screen,
+    echo      check the box that says "Add Python to PATH"
+    echo      before clicking "Install Now".
+    echo.
+    echo   4. Close and reopen this terminal, then run this script again.
+    echo.
     pause
     exit /b 1
 )
@@ -41,14 +62,59 @@ if errorlevel 1 (
 for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do set PYVER=%%v
 echo   Python: %PYVER%
 
+REM -------------------------------------------------------------------
+REM Check Git
+REM -------------------------------------------------------------------
+
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo   Git: NOT FOUND
+    echo.
+    echo   Git is required. To install:
+    echo.
+    echo   1. Open your browser to:
+    echo      https://git-scm.com/downloads/win
+    echo.
+    echo   2. Download and run the installer.
+    echo      Accept all defaults (click "Next" through each screen).
+    echo.
+    echo   3. Close and reopen this terminal, then run this script again.
+    echo.
+    pause
+    exit /b 1
+)
+
+for /f "tokens=3 delims= " %%v in ('git --version 2^>^&1') do set GITVER=%%v
+echo   Git: %GITVER%
+
+REM -------------------------------------------------------------------
+REM Check Ollama
+REM -------------------------------------------------------------------
+
 ollama --version >nul 2>&1
 if errorlevel 1 (
+    echo   Ollama: NOT FOUND
     echo.
-    echo WARNING: Ollama not found. Install from https://ollama.com/download
-    echo After installing, restart this script.
+    echo   Ollama runs the local AI model. To install:
     echo.
-    echo Continuing anyway -- you can use a cloud backend instead.
+    echo   1. Open your browser to:
+    echo      https://ollama.com/download
     echo.
+    echo   2. Click "Download for Windows" and run the installer.
+    echo.
+    echo   3. Ollama will appear in your system tray (bottom-right).
+    echo      It starts automatically after installation.
+    echo.
+    echo   4. Run this script again after installing.
+    echo.
+    echo   (You can skip Ollama if you plan to use a cloud backend
+    echo    like AWS Bedrock or Ask Sage instead.)
+    echo.
+    set /p SKIP_OLLAMA="Continue without Ollama? [y/N] "
+    if /i "!SKIP_OLLAMA!" neq "y" (
+        pause
+        exit /b 1
+    )
     set OLLAMA_OK=0
 ) else (
     echo   Ollama: found
@@ -56,16 +122,36 @@ if errorlevel 1 (
 )
 
 REM -------------------------------------------------------------------
+REM Check Docker (optional, for containerized deployment)
+REM -------------------------------------------------------------------
+
+docker --version >nul 2>&1
+if errorlevel 1 (
+    echo   Docker: not found (optional -- needed only for containerized deployment)
+) else (
+    for /f "tokens=3 delims= " %%v in ('docker --version 2^>^&1') do set DOCKVER=%%v
+    echo   Docker: !DOCKVER!
+)
+
+echo.
+
+REM -------------------------------------------------------------------
 REM Install package if needed
 REM -------------------------------------------------------------------
 
+echo [2/4] Checking chat-to-cop installation...
+
 python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
-    echo.
-    echo [chat-to-cop] Installing package...
-    pip install -e ".[dev]" >nul 2>&1
+    echo   Installing package (first run only, may take a minute)...
+    pip install -e ".[dev]"
     if errorlevel 1 (
-        echo ERROR: pip install failed. Run manually: pip install -e ".[dev]"
+        echo.
+        echo ERROR: Installation failed. Try running manually:
+        echo   pip install -e ".[dev]"
+        echo.
+        echo If you see "Microsoft Visual C++ required", you may need to install
+        echo the Visual Studio Build Tools. But this should not normally happen.
         pause
         exit /b 1
     )

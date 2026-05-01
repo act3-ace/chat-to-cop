@@ -22,12 +22,17 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+# ── Configuration ────────────────────────────────────────────────────────────
+# Set these via environment variables or a .env file:
+#   PYDIO_USER   - your DLE email (e.g. first.last.N@us.af.mil)
+#   PYDIO_PAT    - Pydio personal access token (NOT your GitLab PAT)
+#   PYDIO_PAT_FILE - path to a file containing the PAT (alternative to PYDIO_PAT)
+import os
+
 import requests
 
-# ── Configuration ────────────────────────────────────────────────────────────
-
-DLE_USER = "hamilton.clouse.1@us.af.mil"
-PAT_FILE = Path(r"C:\Users\hsclouse\GoogleDrive\keys\DLE_Pydio_HamiltonClouse_PAT.txt")
+DLE_USER = os.environ.get("PYDIO_USER", "")
+PAT_FILE = Path(os.environ.get("PYDIO_PAT_FILE", "")) if os.environ.get("PYDIO_PAT_FILE") else None
 BASE_URL = "https://pydio.dle.afrl.af.mil"
 
 # Chat-related filename patterns (case-insensitive)
@@ -37,7 +42,15 @@ CHAT_PATTERNS = re.compile(r"(chat|irc|mirc|log\.txt|speech.to.text)", re.IGNORE
 
 
 def get_auth():
-    pat = PAT_FILE.read_text().strip()
+    pat = os.environ.get("PYDIO_PAT", "")
+    if not pat and PAT_FILE and PAT_FILE.exists():
+        pat = PAT_FILE.read_text().strip()
+    if not DLE_USER or not pat:
+        print("ERROR: Pydio credentials not configured.", file=sys.stderr)
+        print("Set PYDIO_USER and PYDIO_PAT environment variables, or", file=sys.stderr)
+        print("set PYDIO_PAT_FILE to the path of a file containing your PAT.", file=sys.stderr)
+        print("See docs/DATA_SOURCES.md for details.", file=sys.stderr)
+        sys.exit(1)
     return (DLE_USER, pat)
 
 
