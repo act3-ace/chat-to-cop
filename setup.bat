@@ -197,14 +197,19 @@ if !INSTALL_FAILED! GTR 0 (
 
 if !INSTALL_COUNT! GTR 0 (
     echo.
-    echo   IMPORTANT: Close and reopen this terminal so that newly installed
-    echo   programs are on your PATH, then run "run.bat" to start the pipeline.
+    echo   Newly installed programs need a fresh terminal to appear on PATH.
+    echo   Press any key to close, then open a new terminal and run "run.bat".
 ) else if !INSTALL_FAILED! EQU 0 (
     echo   Everything was already installed. Run "run.bat" to start.
 )
 
 echo.
-pause
+if !INSTALL_COUNT! GTR 0 (
+    pause
+    exit
+) else (
+    pause
+)
 endlocal
 exit /b 0
 

@@ -115,11 +115,11 @@ echo [2/4] Checking chat-to-cop installation...
 python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
     echo   Installing package (first run only, may take a minute)...
-    pip install -e ".[dev]"
+    python -m pip install -e ".[dev]"
     if errorlevel 1 (
         echo.
         echo ERROR: Installation failed. Try running manually:
-        echo   pip install -e ".[dev]"
+        echo   python -m pip install -e ".[dev]"
         echo.
         echo If you see "Microsoft Visual C++ required", you may need to install
         echo the Visual Studio Build Tools. But this should not normally happen.
