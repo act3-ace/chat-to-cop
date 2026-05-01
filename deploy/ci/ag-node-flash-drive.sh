@@ -17,6 +17,13 @@ BUILD_DIR="/tmp/chat-to-cop-build"
 OUTPUT_DIR="/tmp/chat-to-cop-portable"
 CA_BUNDLE="$HOME/.local/share/dod-ca-bundle.pem"
 
+echo "=== [node] Disk check ==="
+df -h /tmp
+AVAIL_GB=$(df --output=avail /tmp 2>/dev/null | tail -1 | awk '{printf "%.0f", $1/1048576}')
+if [ -n "$AVAIL_GB" ] && [ "$AVAIL_GB" -lt 40 ]; then
+    echo "WARNING: Only ${AVAIL_GB}GB available on /tmp. Need ~40GB for images + model + tarballs."
+fi
+
 echo "=== [node] Step 1: DoD CA bundle ==="
 if [ ! -f "$CA_BUNDLE" ]; then
     echo "Installing DoD CA bundle..."
@@ -89,10 +96,15 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/images"
 
 docker save "chat-to-cop:${IMAGE_TAG}" -o "$OUTPUT_DIR/images/chat-to-cop.tar"
-echo "Saved chat-to-cop.tar"
+echo "Saved chat-to-cop.tar ($(stat -c%s "$OUTPUT_DIR/images/chat-to-cop.tar" 2>/dev/null || echo '?') bytes)"
+
+# Free build cache before saving the large ollama image
+docker builder prune -f 2>/dev/null || true
+docker system prune -f 2>/dev/null || true
+df -h /tmp || true
 
 docker save "chat-to-cop/ollama-with-model:${IMAGE_TAG}" -o "$OUTPUT_DIR/images/ollama-with-model.tar"
-echo "Saved ollama-with-model.tar"
+echo "Saved ollama-with-model.tar ($(stat -c%s "$OUTPUT_DIR/images/ollama-with-model.tar" 2>/dev/null || echo '?') bytes)"
 
 echo "=== [node] Step 6: Copy deployment files ==="
 cp "$BUILD_DIR/deploy/portable/docker-compose.yml" "$OUTPUT_DIR/docker-compose.yml"
