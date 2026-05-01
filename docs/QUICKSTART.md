@@ -9,6 +9,26 @@ Get the chat-to-cop pipeline running and see results in 15 minutes.
 - 8 GB RAM minimum (16 GB recommended for larger models)
 - Optional: GPU with 6+ GB VRAM for faster inference
 
+## Windows One-Click Setup
+
+If you're on Windows 11 and want the fastest path to a working setup:
+
+**Option A -- PowerShell one-liner** (clones the repo and installs everything):
+
+```powershell
+irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 | iex
+```
+
+**Option B -- Already have the repo?** Double-click `setup.bat` in the repo root.
+It checks what's installed and uses `winget` to install anything missing. Then
+run `run.bat` for the full demo.
+
+Both options check for existing installations first and will not reinstall or
+reconfigure tools you already have.
+
+If either option fails (enterprise-locked winget, no admin rights), fall back to
+the manual steps below.
+
 ## Step 1: Clone and Install
 
 ```bash
