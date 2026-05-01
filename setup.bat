@@ -221,6 +221,7 @@ REM ===================================================================
 REM %1 = winget package ID, %~2 = display name, %~3 = manual URL
 echo --------------------------------------------
 echo   Installing %~2...
+echo   (A permissions prompt may appear -- please approve it.)
 echo --------------------------------------------
 echo.
 winget install %1 --accept-source-agreements --accept-package-agreements
