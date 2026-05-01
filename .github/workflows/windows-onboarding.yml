@@ -34,7 +34,7 @@ on:
 jobs:
   windows-smoke:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -68,37 +68,15 @@ jobs:
       - name: Install Ollama
         shell: pwsh
         run: |
-          Write-Host "Downloading Ollama..."
-          Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "$env:TEMP\OllamaSetup.exe"
-          Write-Host "Installing Ollama (silent)..."
-          Start-Process -FilePath "$env:TEMP\OllamaSetup.exe" -ArgumentList "/VERYSILENT /NORESTART" -Wait
-          # Find where Ollama installed and persist to PATH for all subsequent steps
-          $found = $false
-          foreach ($candidate in @(
-            "$env:LOCALAPPDATA\Programs\Ollama",
-            "C:\Program Files\Ollama",
-            "$env:USERPROFILE\AppData\Local\Programs\Ollama"
-          )) {
-            if (Test-Path "$candidate\ollama.exe") {
-              Write-Host "Ollama installed at $candidate"
-              $candidate | Out-File -FilePath $env:GITHUB_PATH -Append
-              $env:Path += ";$candidate"
-              $found = $true
-              break
-            }
-          }
-          if (-not $found) {
-            Write-Host "Searching for ollama.exe..."
-            $exe = Get-ChildItem -Path "C:\","$env:LOCALAPPDATA" -Recurse -Filter "ollama.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($exe) {
-              Write-Host "Found at $($exe.DirectoryName)"
-              $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append
-              $env:Path += ";$($exe.DirectoryName)"
-            } else {
-              Write-Host "ERROR: ollama.exe not found anywhere"
-              exit 1
-            }
-          }
+          $ollamaDir = "$env:RUNNER_TEMP\ollama"
+          New-Item -ItemType Directory -Path $ollamaDir -Force | Out-Null
+          Write-Host "Downloading Ollama Windows binary..."
+          Invoke-WebRequest -Uri "https://ollama.com/download/ollama-windows-amd64.zip" -OutFile "$env:RUNNER_TEMP\ollama.zip"
+          Write-Host "Extracting..."
+          Expand-Archive -Path "$env:RUNNER_TEMP\ollama.zip" -DestinationPath $ollamaDir -Force
+          # Persist to PATH for all subsequent steps
+          $ollamaDir | Out-File -FilePath $env:GITHUB_PATH -Append
+          $env:Path += ";$ollamaDir"
           ollama --version
 
       - name: Start Ollama and pull model
