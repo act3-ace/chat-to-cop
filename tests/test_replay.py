@@ -271,9 +271,7 @@ class TestReplayMessages:
 
     def test_replay_with_real_dash_data(self):
         """Integration test with actual DASH data if available."""
-        dash3_zip = Path(
-            "c:/Users/hsclouse/GitProjects/act3/equifinality/docs/DASH/downloaded/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip"
-        )
+        dash3_zip = Path("data/dash3/23Sep_usaf_chat.zip")
         if not dash3_zip.exists():
             pytest.skip("DASH 3 data not available")
 

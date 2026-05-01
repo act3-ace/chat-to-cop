@@ -20,9 +20,7 @@ from chat_to_cop.ingestion.replay import parse_path
 # Only typed chat channels — skip STT and vegas_internal for this test
 TYPED_CHANNELS = {"#c2_coord", "#isr_reports", "#fires", "#jprc"}
 
-DASH3_PATH = Path(
-    "c:/Users/hsclouse/GitProjects/act3/equifinality/docs/DASH/downloaded/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip"
-)
+DASH3_PATH = Path("data/dash3/23Sep_usaf_chat.zip")
 
 
 async def run_replay_test(count: int, url: str, model: str):

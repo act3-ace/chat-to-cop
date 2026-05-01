@@ -23,8 +23,8 @@
 #   2. Container built by CI — download the HPC .sif from GitLab release:
 #        https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/releases
 #   3. Transfer to Narwhal:
-#        scp chat-to-cop-hpc_<tag>.sif hsclouse@narwhal.hpc.mil:$WORKDIR/
-#        scp -r data/chat/ hsclouse@narwhal.hpc.mil:$WORKDIR/chat/
+#        scp chat-to-cop-hpc_<tag>.sif $USER@narwhal.hpc.mil:$WORKDIR/
+#        scp -r data/chat/ $USER@narwhal.hpc.mil:$WORKDIR/chat/
 #
 # Usage:
 #   1. Edit <your_account> with your Narwhal allocation

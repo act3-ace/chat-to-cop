@@ -42,7 +42,7 @@ set -euo pipefail
 # Configuration
 # =============================================================================
 
-WORK="${WORKDIR:-/p/work1/hsclouse}"
+WORK="${WORKDIR:-/p/work1/$USER}"
 OLLAMA_BIN="$WORK/ollama/bin/ollama"
 OLLAMA_PORT=11434
 CONDA_ENV="$WORK/envs/chat-to-cop"
@@ -93,7 +93,7 @@ fi
 
 if [ ! -f "$CHAT_DATA" ]; then
     echo "ERROR: Chat data not found at $CHAT_DATA"
-    echo "Transfer from local: scp -r data/chat/ hsclouse@narwhal.navydsrc.hpc.mil:\$WORKDIR/chat/"
+    echo "Transfer from local: scp -r data/chat/ $USER@narwhal.navydsrc.hpc.mil:\$WORKDIR/chat/"
     exit 1
 fi
 
