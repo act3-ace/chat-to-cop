@@ -27,7 +27,7 @@
 
 set -euo pipefail
 
-WORK="${WORKDIR:-/p/work1/hsclouse}"
+WORK="${WORKDIR:-/p/work1/$USER}"
 OLLAMA_BIN="$WORK/bin/ollama"
 OLLAMA_PORT=11434
 CONDA_ENV="$WORK/envs/chat-to-cop"

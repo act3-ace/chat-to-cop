@@ -18,7 +18,7 @@ Usage:
 
     # Or point to the Narwhal output directly:
     python scripts/eval_speaker_sweep.py \\
-        --sweep-dir /p/work1/hsclouse/output/sweep \\
+        --sweep-dir /p/work1/$USER/output/sweep \\
         --labels data/labels/dash3_silver_labels_opus.jsonl
 """
 

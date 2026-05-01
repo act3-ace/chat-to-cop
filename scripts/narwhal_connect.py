@@ -7,10 +7,10 @@ credential cache, and PuTTY 0.76 hangs on kex with OpenSSH 10.2.
 
 Prerequisites:
     pip install paramiko gssapi
-    Active Kerberos ticket: kinit hsclouse@HPCMP.HPC.MIL (via iLauncher)
+    Active Kerberos ticket: kinit YOUR_USERNAME@HPCMP.HPC.MIL (via iLauncher)
 
 Usage:
-    python scripts/narwhal_connect.py "squeue -u hsclouse"
+    python scripts/narwhal_connect.py "squeue -u $USER"
     python scripts/narwhal_connect.py "sbatch \\$WORKDIR/scripts/narwhal_30b_test.sh"
     python scripts/narwhal_connect.py "cat \\$WORKDIR/output/c2c-30b_12345.out"
 """
@@ -32,13 +32,13 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # Point to HPCMP Kerberos config
-KRB5_CONFIG = os.environ.get("KRB5_CONFIG", r"C:\Users\hsclouse\bin\HPCMP_KfW_20250509\krb5.ini")
+KRB5_CONFIG = os.environ.get("KRB5_CONFIG", "")
 os.environ["KRB5_CONFIG"] = KRB5_CONFIG
 
 import paramiko  # noqa: E402
 
 NARWHAL_HOST = os.environ.get("NARWHAL_HOST", "narwhal.navydsrc.hpc.mil")
-NARWHAL_USER = os.environ.get("NARWHAL_USER", "hsclouse")
+NARWHAL_USER = os.environ.get("NARWHAL_USER", os.environ.get("USER", os.environ.get("USERNAME", "")))
 
 
 def ssh_exec(command: str, *, timeout: int = 600) -> int:
@@ -77,7 +77,7 @@ def main() -> None:
         print(f"Usage: python {sys.argv[0]} <command>", file=sys.stderr)
         print("", file=sys.stderr)
         print("Examples:", file=sys.stderr)
-        print(f'  python {sys.argv[0]} "squeue -u hsclouse"', file=sys.stderr)
+        print(f'  python {sys.argv[0]} "squeue -u $USER"', file=sys.stderr)
         print(f'  python {sys.argv[0]} "sbatch $WORKDIR/scripts/narwhal_30b_test.sh"', file=sys.stderr)
         print(f'  python {sys.argv[0]} "tail -50 $WORKDIR/output/c2c-30b_12345.out"', file=sys.stderr)
         sys.exit(1)

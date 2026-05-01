@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-WORK="${WORKDIR:-/p/work1/hsclouse}"
+WORK="${WORKDIR:-/p/work1/$USER}"
 OLLAMA_BIN="$WORK/bin/ollama"
 CONDA_ENV="$WORK/envs/chat-to-cop"
 CHAT_DATA="$WORK/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip"
