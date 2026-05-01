@@ -1,116 +1,107 @@
-# Session Notes -- 2026-05-01 (Bootstrap Scripts for MASH Participants)
+# Session Notes -- 2026-05-01 (Bootstrap Scripts + Onboarding CI)
 
 ## Current State
 
-MR !142 open on `bootstrap-scripts` branch (4 commits). Ready for
-review/merge. Four low-severity follow-up issues filed (#83-#86).
+MRs !142-!145 all merged to main. Issues #83-#86 closed. GitHub mirror
+synced. Windows onboarding CI green on GitHub Actions.
 
 | What | Status |
 |------|--------|
-| MR !142 | Open, pushed to DLE GitLab |
-| Code review | 4 rounds, all blockers/high/medium fixed |
-| Follow-up issues | #83, #84, #85, #86 (all low severity) |
-| Tests | 1145 passing (no new tests -- scripts only) |
+| MR !142 (bootstrap scripts) | Merged |
+| MR !143 (4 low-severity fixes) | Merged |
+| MR !144 (Mia onboarding hardening) | Merged |
+| MR !145 (GitHub Actions Windows CI) | Merged |
+| Issues #83-#86 | All closed (fixed in !143) |
+| GitHub mirror | Synced |
+| GitHub repo visibility | Still PRIVATE |
+| Tests | 1145 passing (no new tests -- scripts + CI only) |
 
 ## What Changed This Session
 
-### New files
+### MR !142: Push-button Windows setup (4 commits)
 
-- `scripts/bootstrap.ps1` -- PowerShell one-liner bootstrap for fresh Win11.
-  Installs Python/Git/Ollama via winget, clones repo, runs smoke test.
-  Key design decisions:
-  - `irm | iex` (not download-then-execute) to bypass PS 5.1 execution policy
-  - `return` instead of `exit` so `iex` doesn't close the terminal window
-  - Function params + return values (not `$script:` vars) because shared
-    mutable state is null under `iex` pipe
-  - Regex validation of `python --version` to detect Win11 MS Store alias
-  - `Start-Process -NoNewWindow` for winget (UAC prompt may hide)
+- `scripts/bootstrap.ps1`: PowerShell one-liner (`irm url | iex`)
+- `setup.bat`: In-repo prereq checker/installer
+- `run.bat`: Points to setup.bat, `python -m pip`
+- `docs/QUICKSTART.md`: Windows One-Click Setup section
 
-- `setup.bat` -- In-repo prereq checker/installer
-  - `:do_install` subroutine avoids batch errorlevel-in-compound-block bug
-  - `!errorlevel!` captured immediately after winget (delayed expansion)
-  - `--check` mode for dry-run, `--help` mode
-  - Falls back to manual URLs if winget unavailable
+### MR !143: Low-severity bootstrap fixes (1 commit)
 
-### Modified files
+Fixed all 4 issues from !142 code review round 4:
+- #83: Yellow warning block for smoke test failure (not green banner)
+- #84: Removed redundant `pause` on Ollama decline
+- #85: Added cmd.exe fallback note in QUICKSTART.md
+- #86: Added irm|iex one-liner to "re-run" message
 
-- `run.bat` -- Points to `setup.bat` for missing prereqs, `python -m pip`
-  instead of bare `pip`, improved Ollama skip UX
-- `docs/QUICKSTART.md` -- "Windows One-Click Setup" section added
-- `README.md` -- One-line update pointing to `setup.bat` + `run.bat`
+### MR !144: Mia onboarding hardening (2 commits)
 
-### Commits on bootstrap-scripts
+- `run.bat`: pip bootstrap (`ensurepip`), Ollama startup retry loop
+  (30s, 6 tries), pre-smoke connectivity check (avoids 10-min hang)
+- `README.md`: Zero-CLI Windows quick start (download zip, setup.bat,
+  run.bat) now first section, before CLI instructions. SmartScreen note.
 
-1. `feat: add bootstrap scripts for push-button Windows setup`
-2. `fix: address all code review findings in bootstrap scripts`
-3. `fix: second review pass -- UX and edge case hardening`
-4. `fix: harden bootstrap for fresh Windows 11 with PowerShell 5.1`
+### MR !145: GitHub Actions Windows CI (3 commits)
 
-## Code Review Findings (4 rounds)
+`.github/workflows/windows-onboarding.yml`:
+- Tests full onboarding on fresh `windows-latest` (Server 2025)
+- Steps: setup.bat --check, pip install, Ollama zip install, model pull
+  (model-b:0.5b), smoke test (5 DASH messages), unit tests (1145)
+- 3 iterations to get working:
+  1. setup.bat `pause` blocks in CI -- piped `echo.`
+  2. Ollama GUI installer hangs on Server runners -- switched to zip binary
+  3. Green in 6m31s
+- Triggers on push to main touching scripts/source/pyproject.toml
 
-### Round 1 (Blocker + High + Medium)
-- `$script:` scope null under `iex` pipe -- switched to function params
-- `errorlevel` unreliable in compound `if` blocks -- moved to subroutine
-- Missing `:help` label in setup.bat
+## Issues Created and Closed
 
-### Round 2
-- `.bak` rename collision on re-run -- clean stale .bak first
-- One-liner too long (148 chars) -- shortened to 91 chars
-
-### Round 3 (Blocker)
-- Execution policy blocks `& ~/c2c.ps1` on default Win11 PS 5.1 --
-  switched back to `irm | iex` + replaced all `exit` with `return`
-- MS Store Python alias passes `Get-Command` but isn't real Python --
-  added regex validation
-- `git clone --quiet` appears frozen on slow connections -- removed
-- `pip` not on PATH after fresh install -- use `python -m pip`
-
-### Round 4 (Final -- 7 observations, 4 actionable)
-
-All low severity, filed as issues:
-
-| # | Issue | What |
-|---|-------|------|
-| 3 | #83 | Green banner on smoke test failure when no tools installed |
-| 5 | #84 | Double-prompt on Ollama decline |
-| 6 | #85 | Enterprise Win11 may default to cmd.exe in Terminal |
-| 7 | #86 | "re-run this script" lacks the one-liner |
-
-Items 1, 2, 4 were reviewed and confirmed working correctly.
+| # | Title | Fixed in |
+|---|-------|----------|
+| #83 | bootstrap.ps1: green banner on smoke test failure | !143 |
+| #84 | run.bat: double-prompt on Ollama decline | !143 |
+| #85 | QUICKSTART.md: enterprise Win11 cmd.exe default | !143 |
+| #86 | bootstrap.ps1: "re-run" lacks one-liner | !143 |
 
 ## Lessons Learned
 
-- **`irm | iex` vs download-then-execute**: Initially used `irm | iex`,
-  switched to download-then-execute to fix `$script:` scoping, then
-  switched back after eliminating shared mutable state AND discovering
-  execution policy blocks the download approach on default Win11. The
-  correct pattern: `irm | iex` with function-local state only.
+- **Ollama GUI installer hangs on Windows Server**: `OllamaSetup.exe
+  /VERYSILENT` blocks indefinitely on Server 2025 (GitHub Actions runner).
+  The standalone zip binary (`ollama-windows-amd64.zip`) works perfectly
+  and is faster. Use the zip for CI, the installer for desktop users.
 
-- **Batch errorlevel is unreliable in compound blocks**: `winget install`
-  followed by `if !errorlevel!` inside `if ... ( ... )` does not capture
-  the winget exit code. The subroutine pattern (`:do_install`, capture
-  errorlevel immediately, `goto :eof`) is the reliable fix.
+- **Batch `pause` blocks CI**: Any batch script with `pause` will hang
+  in non-interactive CI. Pipe `echo.` to satisfy it: `echo. | setup.bat`.
 
-- **Win11 MS Store Python alias**: `python.exe` exists at
-  `%LOCALAPPDATA%\Microsoft\WindowsApps\` on fresh Win11 and passes
-  `Get-Command`/`where python` but either opens the Store or returns
-  garbage. Must validate `python --version` output, not just existence.
+- **GitHub Actions PATH persistence**: `$env:Path += ";dir"` only lasts
+  for the current step. Use `$dir | Out-File -FilePath $env:GITHUB_PATH
+  -Append` to persist across steps.
 
-- **Four code reviews found progressively subtler issues**: The first
-  review caught real blockers (scope, errorlevel). By round 4, only
-  cosmetic UX issues remained. Iterative review with increasing
-  specificity (user's exact platform + persona) is effective.
+- **GitHub PR merge creates divergent history**: Merging the same branch
+  on both DLE GitLab and GitHub creates two different merge commits. For
+  the future: only merge on DLE GitLab, then `git push github main`.
+  Never create PRs on GitHub -- it's a push mirror only.
+
+## Mia's Onboarding Path
+
+1. Open repo on DLE GitLab
+2. README says: Code > Download zip, extract, setup.bat, run.bat
+3. SmartScreen: More info > Run anyway
+4. setup.bat installs Python/Git/Ollama via winget
+5. run.bat does everything else
+
+No terminal, no git, no PowerShell needed.
 
 ## What to Do Next
 
-1. Merge !142 after review
-2. Push to GitHub mirror: `git push github main`
-3. Fix #83-#86 in a follow-up batch (all trivial, could be one commit)
-4. Make GitHub repo public when ready:
+1. Tell Mia the repo is ready (DLE GitLab path)
+2. Make GitHub repo public when ready:
    `gh repo edit act3-ace/chat-to-cop --visibility public --accept-visibility-change-consequences`
+3. Update bootstrap.ps1 clone URL if GitHub stays private
+   (line 180: currently points to GitHub)
 
 ## Previous Sessions
 
+- 2026-05-01 (earlier): Bootstrap scripts, MR !142 code review, issues
+  #83-#86 filed
 - 2026-04-22: Issues #75, #74, #73, #71, #72 (hard timeout, num_ctx
   detection, prompt regression harness, adapt-schema, hot-reload)
 - 2026-04-21: AG CI build pipeline, v0.1.4 release, HPC image build

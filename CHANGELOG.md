@@ -12,7 +12,7 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
-- Push-button Windows setup for MASH participants (!142):
+- Push-button Windows setup for MASH participants (!142, !143, !144):
   - `scripts/bootstrap.ps1`: PowerShell one-liner (`irm url | iex`) that
     installs Python, Git, Ollama via winget, clones the repo, and runs a
     smoke test. Handles Win11 PS 5.1, MS Store Python alias, execution
@@ -22,9 +22,19 @@ The major version will advance to 1.0.0 when the API is considered stable.
     errorlevel-in-compound-block bug. Falls back to manual URLs if winget
     unavailable.
   - `run.bat`: Updated to point at `setup.bat` for missing prereqs, uses
-    `python -m pip` instead of bare `pip`, improved Ollama skip UX.
+    `python -m pip` instead of bare `pip`, improved Ollama skip UX. Adds
+    pip bootstrap (`ensurepip`), Ollama startup retry loop (30s), and
+    pre-smoke connectivity check to prevent 10-minute timeout hangs.
   - `docs/QUICKSTART.md`: Added "Windows One-Click Setup" section with
-    both options (one-liner and setup.bat).
+    both options (one-liner and setup.bat), cmd.exe fallback note.
+  - `README.md`: Zero-CLI Windows quick start (download zip from GitLab,
+    setup.bat, run.bat) now appears before the CLI instructions.
+- GitHub Actions Windows onboarding CI (!145):
+  `.github/workflows/windows-onboarding.yml` tests the full onboarding
+  path on a fresh `windows-latest` runner: setup.bat, pip install, Ollama
+  zip binary install, model pull, 5-message smoke test, and unit tests.
+  Triggers on changes to onboarding scripts, pipeline source, or
+  pyproject.toml.
 
 ### Changed
 
