@@ -159,7 +159,8 @@ if (Test-Command "docker") {
 if ($manualNeeded -gt 0) {
     Write-Host ""
     Write-Host "$manualNeeded tool(s) could not be installed automatically." -ForegroundColor Yellow
-    Write-Host "Install them manually using the links above, then re-run this script." -ForegroundColor Yellow
+    Write-Host "Install them manually using the links above, then re-run:" -ForegroundColor Yellow
+    Write-Host '  irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 | iex' -ForegroundColor Yellow
     Write-Host ""
     Read-Host "Press Enter to continue"
     return
@@ -246,6 +247,23 @@ if ($smokeResult -ne 0 -and $installed -gt 0) {
     Write-Host "  Close this terminal, open a new one, then run:" -ForegroundColor Yellow
     Write-Host "    cd $targetDir" -ForegroundColor Yellow
     Write-Host "    run.bat --smoke-only" -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Press Enter to continue"
+    return
+}
+
+if ($smokeResult -ne 0) {
+    Write-Host ""
+    Write-Host "============================================" -ForegroundColor Yellow
+    Write-Host "  Bootstrap finished with warnings" -ForegroundColor Yellow
+    Write-Host "============================================" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  The repo is at: $targetDir"
+    Write-Host "  Smoke test did not pass -- check the errors above." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  To retry:"
+    Write-Host "    cd $targetDir"
+    Write-Host "    run.bat --smoke-only"
     Write-Host ""
     Read-Host "Press Enter to continue"
     return

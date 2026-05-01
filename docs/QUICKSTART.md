@@ -14,7 +14,8 @@ Get the chat-to-cop pipeline running and see results in 15 minutes.
 If you're on Windows 10+ and want the fastest path to a working setup:
 
 **Option A -- PowerShell one-liner** (clones the repo and installs everything).
-Open PowerShell (right-click the Start button > **Terminal**), paste this, hit Enter:
+Open PowerShell (right-click the Start button > **Terminal** -- if it opens
+cmd.exe instead, type `powershell` first), paste this, hit Enter:
 
 ```powershell
 irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 | iex
