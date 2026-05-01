@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-WORK="${WORKDIR:-/p/work1/hsclouse}"
+WORK="${WORKDIR:-/p/work1/$USER}"
 OLLAMA_BIN="$WORK/bin/ollama"
 OLLAMA_PORT=11434
 CONDA_ENV="$WORK/envs/chat-to-cop"
@@ -77,8 +77,8 @@ done
 
 mkdir -p "$OUTPUT_DIR"
 # $ARCHIVE_HOME is set system-wide on Narwhal but its symlink target
-# (/archive/g/hsclouse) was never provisioned, so the default
-# /archive/home/hsclouse/chat-to-cop isn't writable. Detect and fall back
+# (/archive/g/$USER) was never provisioned, so the default
+# /archive/home/$USER/chat-to-cop isn't writable. Detect and fall back
 # to $HOME/chat-to-cop so the cleanup cp at exit actually works.
 if ! mkdir -p "$ARCHIVE_DIR" 2>/dev/null; then
     echo "WARNING: Cannot create $ARCHIVE_DIR — falling back to \$HOME/chat-to-cop"

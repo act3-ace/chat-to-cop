@@ -99,7 +99,9 @@ def pull_models(models: list[str]) -> None:
     """Ensure all models are pulled on the local Ollama instance."""
     import os
 
-    ollama_bin = os.path.join(os.environ.get("WORKDIR", "/p/work1/hsclouse"), "bin", "ollama")
+    ollama_bin = os.path.join(
+        os.environ.get("WORKDIR", f"/p/work1/{os.environ.get('USER', 'unknown')}"), "bin", "ollama"
+    )
 
     for model in models:
         tag = f"qwen2.5:{model}"
