@@ -79,11 +79,12 @@ ollama --version >nul 2>&1
 if errorlevel 1 (
     echo   Ollama: NOT FOUND
     echo.
-    echo   Ollama runs the local AI model.
-    echo   Install: run "setup.bat" or download from https://ollama.com/download
+    echo   Ollama runs the local AI model and is needed for the demo.
+    echo   To install: run "setup.bat" or download from https://ollama.com/download
     echo.
-    set /p SKIP_OLLAMA="Skip Ollama and use a cloud backend instead? [y/N] "
+    set /p SKIP_OLLAMA="Continue without Ollama? (advanced -- only if you have a cloud LLM) [y/N] "
     if /i "!SKIP_OLLAMA!" neq "y" (
+        pause
         exit /b 1
     )
     set OLLAMA_OK=0
@@ -114,7 +115,7 @@ echo [2/4] Checking chat-to-cop installation...
 
 python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
-    echo   Installing package (first run only, may take a minute)...
+    echo   Installing package (first run only, may take 2-5 minutes)...
     python -m pip install -e ".[dev]"
     if errorlevel 1 (
         echo.

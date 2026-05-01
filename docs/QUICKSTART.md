@@ -13,10 +13,11 @@ Get the chat-to-cop pipeline running and see results in 15 minutes.
 
 If you're on Windows 10+ and want the fastest path to a working setup:
 
-**Option A -- PowerShell one-liner** (clones the repo and installs everything):
+**Option A -- PowerShell one-liner** (clones the repo and installs everything).
+Open PowerShell (right-click the Start button > **Terminal**), paste this, hit Enter:
 
 ```powershell
-irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 -OutFile ~\c2c.ps1; & ~\c2c.ps1
+irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 | iex
 ```
 
 **Option B -- Already have the repo?** Double-click `setup.bat` in the repo root.
@@ -34,10 +35,10 @@ the manual steps below.
 ```bash
 git clone https://github.com/act3-ace/chat-to-cop.git
 cd chat-to-cop
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
-On Windows, if `pip` is not found, re-run the Python installer and check
+On Windows, if `python` is not found, re-run the Python installer and check
 "Add python.exe to PATH".
 
 Verify:

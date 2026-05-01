@@ -1,8 +1,8 @@
 # bootstrap.ps1 -- One-liner bootstrap for chat-to-cop on Windows.
 #
-# Paste into PowerShell:
+# Paste this into PowerShell (right-click Start > Terminal):
 #
-#   irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 -OutFile ~\c2c.ps1; & ~\c2c.ps1
+#   irm https://raw.githubusercontent.com/act3-ace/chat-to-cop/main/scripts/bootstrap.ps1 | iex
 #
 # This script:
 #   1. Checks for Python, Git, Ollama (does NOT reinstall existing tools)
@@ -12,8 +12,9 @@
 #
 # Safe to re-run: it skips anything already installed or cloned.
 #
-# NOTE: If you saved this file and get an execution policy error when
-# running it directly, use:
+# NOTE: Uses "return" instead of "exit" so it works safely via irm|iex
+# (exit would close your PowerShell window). If running as a saved file
+# and you get an execution policy error, use:
 #   powershell -ExecutionPolicy Bypass -File bootstrap.ps1
 
 $ErrorActionPreference = "Continue"
@@ -95,12 +96,17 @@ Write-Step "1/3" "Checking prerequisites..."
 # -- Python --
 $needPython = $false
 if (Test-Command "python") {
-    $pyVer = (python --version 2>&1) -replace "Python ", ""
-    Write-Host "  Python: $pyVer (already installed)"
-
-    $parts = $pyVer.Split(".")
-    if ([int]$parts[0] -lt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -lt 10)) {
-        Write-Host "  WARNING: Python 3.10+ required, you have $pyVer" -ForegroundColor Yellow
+    $pyVerOutput = python --version 2>&1 | Out-String
+    if ($pyVerOutput -match "Python (\d+\.\d+\.\d+)") {
+        $pyVer = $Matches[1]
+        Write-Host "  Python: $pyVer (already installed)"
+        $parts = $pyVer.Split(".")
+        if ([int]$parts[0] -lt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -lt 10)) {
+            Write-Host "  WARNING: Python 3.10+ required, you have $pyVer" -ForegroundColor Yellow
+            $needPython = $true
+        }
+    } else {
+        Write-Host "  Python: found but not working (may be a Microsoft Store alias)" -ForegroundColor Yellow
         $needPython = $true
     }
 } else {
@@ -155,8 +161,8 @@ if ($manualNeeded -gt 0) {
     Write-Host "$manualNeeded tool(s) could not be installed automatically." -ForegroundColor Yellow
     Write-Host "Install them manually using the links above, then re-run this script." -ForegroundColor Yellow
     Write-Host ""
-    Read-Host "Press Enter to exit"
-    exit 1
+    Read-Host "Press Enter to continue"
+    return
 }
 
 # If we installed things, refresh PATH one more time before continuing
@@ -194,28 +200,28 @@ if (Test-Path (Join-Path $targetDir ".git")) {
     Rename-Item $targetDir "${targetDir}.bak"
     if (-not (Test-Command "git")) {
         Write-Host "  Git is not on PATH yet. Close this terminal, reopen, and re-run." -ForegroundColor Yellow
-        Read-Host "Press Enter to exit"
-        exit 1
+        Read-Host "Press Enter to continue"
+        return
     }
-    git clone --quiet $repoUrl $targetDir
+    git clone $repoUrl $targetDir
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Clone failed. Check your internet connection and try again." -ForegroundColor Red
-        Read-Host "Press Enter to exit"
-        exit 1
+        Read-Host "Press Enter to continue"
+        return
     }
 } else {
     # Fresh clone
     if (-not (Test-Command "git")) {
         Write-Host "  Git is not on PATH yet. Close this terminal, reopen, and re-run." -ForegroundColor Yellow
-        Read-Host "Press Enter to exit"
-        exit 1
+        Read-Host "Press Enter to continue"
+        return
     }
     Write-Host "  Cloning to $targetDir..."
-    git clone --quiet $repoUrl $targetDir
+    git clone $repoUrl $targetDir
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Clone failed. Check your internet connection and try again." -ForegroundColor Red
-        Read-Host "Press Enter to exit"
-        exit 1
+        Read-Host "Press Enter to continue"
+        return
     }
 }
 
@@ -241,8 +247,8 @@ if ($smokeResult -ne 0 -and $installed -gt 0) {
     Write-Host "    cd $targetDir" -ForegroundColor Yellow
     Write-Host "    run.bat --smoke-only" -ForegroundColor Yellow
     Write-Host ""
-    Read-Host "Press Enter to exit"
-    exit 1
+    Read-Host "Press Enter to continue"
+    return
 }
 
 Write-Host ""
