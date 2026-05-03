@@ -36,6 +36,10 @@ The major version will advance to 1.0.0 when the API is considered stable.
   Triggers on changes to onboarding scripts, pipeline source, or
   pyproject.toml.
 
+- `deploy/ag/start-backend-for-mia.sh`: One-command AG backend launcher.
+  Starts a GPU node, launches vLLM and/or LiteLLM, prints copy-paste
+  instructions to send to a teammate. Supports `--vllm`, `--bedrock`,
+  `--both`, `--status`, `--stop`.
 - run.bat rewrite with cloud mode, GPU detection, and logging (!146):
   `run.bat --cloud URL` skips Ollama and points at a remote LLM backend
   (AG vLLM, Bedrock via LiteLLM). nvidia-smi GPU detection auto-selects

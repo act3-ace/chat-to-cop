@@ -343,3 +343,52 @@ The file `deploy/ag/vllm_chat2cop_plugin.json` defines chat-to-cop's vLLM setup 
 Including driver install and model pull: budget ~2 hours (184 credits) for a complete test session on g4dn.
 
 For a multi-day event, prefer g4dn.xlarge with 14B-AWQ over p3.2xlarge with 14B full. The quality difference is negligible but the credit cost is 5.5x lower.
+
+## Remote Backend for Teammates
+
+If a teammate (e.g., Mia) can't run inference locally, you can start an AG
+backend and have them point `run.bat --cloud` at it.
+
+### Quick Start (one command)
+
+```bash
+# From your laptop, in the chat-to-cop repo:
+bash deploy/ag/start-backend-for-mia.sh              # vLLM (VendorB 14B)
+bash deploy/ag/start-backend-for-mia.sh --bedrock     # Bedrock Sonnet
+bash deploy/ag/start-backend-for-mia.sh --both        # both backends
+```
+
+The script starts an AG GPU node, launches the backend(s), and prints the
+exact text to send to the teammate. When they're done:
+
+```bash
+bash deploy/ag/start-backend-for-mia.sh --stop
+```
+
+### What the teammate runs
+
+```
+run.bat --cloud http://NODE_IP:8000/v1
+```
+
+The `--cloud` flag skips local Ollama, auto-detects the model name from the
+server, and runs the full pipeline against the remote backend.
+
+### Backend options
+
+| Backend | Port | Model | Startup | Notes |
+|---------|------|-------|---------|-------|
+| vLLM | 8000 | model-b-14b-awq | ~20s (cached) | Faster inference, free |
+| LiteLLM | 4000 | Bedrock Sonnet 4.5 | ~30s (install) | Richer extraction, pay-per-token |
+
+Both backends are validated (5/5 smoke test, 0.90-0.95 confidence).
+
+### Prerequisites on AG
+
+- NVIDIA Container Toolkit: needed for vLLM Docker. The launcher installs it
+  automatically if missing.
+- Model weights: cached in `~/.cache/huggingface` (NFS). First vLLM run
+  downloads ~8 GB; subsequent runs load in ~20s.
+- LiteLLM: installed to `/tmp/litellm-venv` (ephemeral, avoids NFS quota).
+  Needs re-install on each new node.
+- AG home quota: 30 GB. Model cache uses ~9.4 GB.

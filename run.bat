@@ -132,6 +132,9 @@ if errorlevel 1 (
     echo   Ollama runs the local AI model and is needed for the demo.
     echo   To install: run "setup.bat" or download from https://ollama.com/download
     echo.
+    echo   If you can't install Ollama, ask Scott for a remote server URL
+    echo   and re-run as:  run.bat --cloud http://SERVER_IP:PORT/v1
+    echo.
     set /p SKIP_OLLAMA="Continue without Ollama? (advanced -- only if you have a cloud LLM) [y/N] "
     if /i "!SKIP_OLLAMA!" neq "y" (
         exit /b 1
@@ -319,8 +322,16 @@ if errorlevel 1 (
 
 echo   Remote backend: %CLOUD_URL%
 set CHAT_TO_COP_LLM_URL=%CLOUD_URL%
-REM For cloud backends, use default model unless overridden
-if not defined CHAT_TO_COP_LLM_MODEL set CHAT_TO_COP_LLM_MODEL=model-b:7b
+
+REM Auto-detect model from remote backend
+if not defined CHAT_TO_COP_LLM_MODEL (
+    echo   Detecting available models...
+    for /f "usebackq delims=" %%m in (`python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('%CLOUD_URL%/models')); print(d['data'][0]['id'])" 2^>nul`) do (
+        set CHAT_TO_COP_LLM_MODEL=%%m
+    )
+    if not defined CHAT_TO_COP_LLM_MODEL set CHAT_TO_COP_LLM_MODEL=model-b:7b
+    echo   Detected model: !CHAT_TO_COP_LLM_MODEL!
+)
 echo   [BACKEND] Cloud: %CLOUD_URL%, model: !CHAT_TO_COP_LLM_MODEL! >> "%LOGFILE%"
 
 :skip_cloud_setup
@@ -362,7 +373,27 @@ echo.
 python scripts/quick_test.py --url "!CHAT_TO_COP_LLM_URL!" --model "!CHAT_TO_COP_LLM_MODEL!"
 if errorlevel 1 (
     echo.
-    echo Smoke test failed. Check the errors above.
+    echo ============================================
+    echo   Smoke test failed
+    echo ============================================
+    echo.
+    if "%USE_CLOUD%"=="0" (
+        echo   Your local LLM backend did not respond correctly.
+        echo   Common fixes:
+        echo     1. Make sure Ollama is running (open Start menu, search "Ollama")
+        echo     2. Try a smaller model:  ollama pull model-b:3b
+        echo     3. Use a remote server instead:
+        echo.
+        echo        run.bat --cloud http://SERVER_IP:PORT/v1
+        echo.
+        echo   Ask Scott for a remote server URL if you need one.
+    ) else (
+        echo   The remote backend at !CLOUD_URL! did not respond correctly.
+        echo   Check that the URL is correct and the server is running.
+        echo   Ask Scott if the server needs to be restarted.
+    )
+    echo.
+    echo   Full log saved to: %CD%\%LOGFILE%
     echo   [FAIL] Smoke test failed >> "%LOGFILE%"
     if "%1"=="--smoke-only" goto :health_summary
 )
@@ -491,9 +522,11 @@ echo     10+ GB VRAM  -^>  model-b:14b (best quality)
 echo      6+ GB VRAM  -^>  model-b:7b  (good quality)
 echo      No GPU       -^>  model-b:3b  (CPU fallback, slow)
 echo.
-echo Cloud Backend:
-echo   run.bat --cloud http://REMOTE_IP:PORT/v1
+echo Cloud Backend (remote server):
+echo   run.bat --cloud http://SERVER_IP:PORT/v1
 echo   Skips Ollama entirely. Uses a remote LLM server for all inference.
+echo   The model name is auto-detected from the server.
+echo   Ask Scott for the server URL if your local setup is not working.
 echo.
 echo Prerequisites:
 echo   - Python 3.10+  (https://www.python.org/downloads/)
@@ -504,7 +537,11 @@ echo Subsequent runs start in seconds.
 echo.
 echo Troubleshooting:
 echo   All runs are logged to data\run.log. Send this file to the team
-echo   if you run into problems.
+echo   if you run into problems. Common issues:
+echo     - "Connection error" -- Ollama is not running. Start it from the
+echo       Start menu, or use --cloud with a remote server.
+echo     - Slow inference -- Your GPU may be too small. Try --cloud.
+echo     - pip install fails -- Run "python -m pip install -e ." manually.
 echo.
 pause
 goto :eof

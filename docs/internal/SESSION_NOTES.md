@@ -10,8 +10,10 @@ GitHub mirror synced. NVIDIA Container Toolkit installed on AG nodes.
 | MR !142 (bootstrap scripts) | Merged |
 | MR !146 (run.bat cloud mode + AG cache) | Merged |
 | AG vLLM (model-b-14b-awq on T4) | Validated, model cached in NFS |
-| AG home directory | 19 GB / 20 GB (increased from 11 GB) |
-| AG job 1329 | Released (no credits burning) |
+| AG Bedrock (Sonnet via LiteLLM) | Validated, IAM role provides creds |
+| AG home directory | 19 GB / 30 GB quota |
+| AG jobs 1329-1331 | All released (no credits burning) |
+| start-backend-for-mia.sh | Created (MR !147) |
 | MR !143 (4 low-severity fixes) | Merged |
 | MR !144 (Mia onboarding hardening) | Merged |
 | MR !145 (GitHub Actions Windows CI) | Merged |
