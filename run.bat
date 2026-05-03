@@ -3,24 +3,62 @@ REM run.bat -- One-click launcher for chat-to-cop on Windows.
 REM
 REM Double-click this file or run it from a terminal. It will:
 REM   1. Check that Python and Ollama are available
-REM   2. Install the package if needed
-REM   3. Pull and configure the LLM model
-REM   4. Run the smoke test
-REM   5. Replay the bundled DASH 3 sample
-REM   6. Start the dashboard and open it in your browser
+REM   2. Detect your GPU and pick the best model
+REM   3. Install the package if needed
+REM   4. Pull and configure the LLM model
+REM   5. Run the smoke test
+REM   6. Replay the bundled DASH 3 sample
+REM   7. Start the dashboard and open it in your browser
 REM
 REM Usage:
 REM   run.bat                 - Full setup + demo replay
 REM   run.bat --smoke-only    - Just run the smoke test
 REM   run.bat --dashboard     - Start the dashboard only
 REM   run.bat --live URL      - Connect to a live IRC server
+REM   run.bat --cloud URL     - Use a remote LLM backend (skip local Ollama)
 
 setlocal enabledelayedexpansion
 
 cd /d "%~dp0"
 
+if not exist data mkdir data
+
+REM -------------------------------------------------------------------
+REM Logging -- write key diagnostics to data\run.log
+REM -------------------------------------------------------------------
+
+set LOGFILE=data\run.log
+echo. >> "%LOGFILE%"
+echo ================================================================ >> "%LOGFILE%"
+echo   run.bat started: %DATE% %TIME% >> "%LOGFILE%"
+echo   Arguments: %* >> "%LOGFILE%"
+echo   User: %USERNAME% >> "%LOGFILE%"
+echo   Machine: %COMPUTERNAME% >> "%LOGFILE%"
+echo ================================================================ >> "%LOGFILE%"
+
 if "%1"=="--help" goto :help
 if "%1"=="-h" goto :help
+
+REM -------------------------------------------------------------------
+REM Parse --cloud argument
+REM -------------------------------------------------------------------
+
+set CLOUD_URL=
+set USE_CLOUD=0
+if "%1"=="--cloud" (
+    if "%2"=="" (
+        echo ERROR: --cloud requires a URL.
+        echo Usage: run.bat --cloud http://REMOTE_IP:PORT/v1
+        pause
+        exit /b 1
+    )
+    set CLOUD_URL=%2
+    set USE_CLOUD=1
+    echo   Using remote LLM backend: %2
+    echo   [cloud] URL=%2 >> "%LOGFILE%"
+    shift
+    shift
+)
 
 REM -------------------------------------------------------------------
 REM Preflight checks
@@ -31,7 +69,7 @@ echo ============================================
 echo   chat-to-cop setup
 echo ============================================
 echo.
-echo [1/4] Checking prerequisites...
+echo [1/5] Checking prerequisites...
 echo.
 
 REM -------------------------------------------------------------------
@@ -41,6 +79,7 @@ REM -------------------------------------------------------------------
 python --version >nul 2>&1
 if errorlevel 1 (
     echo   Python: NOT FOUND
+    echo   [FAIL] Python not found >> "%LOGFILE%"
     echo.
     echo   Run "setup.bat" to install prerequisites automatically,
     echo   or install Python 3.12 manually from https://www.python.org/downloads/
@@ -52,6 +91,7 @@ if errorlevel 1 (
 
 for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do set PYVER=%%v
 echo   Python: %PYVER%
+echo   [OK] Python %PYVER% >> "%LOGFILE%"
 
 REM -------------------------------------------------------------------
 REM Check Git
@@ -60,6 +100,7 @@ REM -------------------------------------------------------------------
 git --version >nul 2>&1
 if errorlevel 1 (
     echo   Git: NOT FOUND
+    echo   [FAIL] Git not found >> "%LOGFILE%"
     echo.
     echo   Run "setup.bat" to install prerequisites automatically,
     echo   or install Git manually from https://git-scm.com/downloads/win
@@ -70,14 +111,23 @@ if errorlevel 1 (
 
 for /f "tokens=3 delims= " %%v in ('git --version 2^>^&1') do set GITVER=%%v
 echo   Git: %GITVER%
+echo   [OK] Git %GITVER% >> "%LOGFILE%"
 
 REM -------------------------------------------------------------------
-REM Check Ollama
+REM Check Ollama (skip if using cloud backend)
 REM -------------------------------------------------------------------
+
+set OLLAMA_OK=0
+if "%USE_CLOUD%"=="1" (
+    echo   Ollama: skipped (using remote backend)
+    echo   [SKIP] Ollama -- cloud mode >> "%LOGFILE%"
+    goto :skip_ollama_check
+)
 
 ollama --version >nul 2>&1
 if errorlevel 1 (
     echo   Ollama: NOT FOUND
+    echo   [WARN] Ollama not found >> "%LOGFILE%"
     echo.
     echo   Ollama runs the local AI model and is needed for the demo.
     echo   To install: run "setup.bat" or download from https://ollama.com/download
@@ -86,10 +136,71 @@ if errorlevel 1 (
     if /i "!SKIP_OLLAMA!" neq "y" (
         exit /b 1
     )
-    set OLLAMA_OK=0
 ) else (
     echo   Ollama: found
+    echo   [OK] Ollama found >> "%LOGFILE%"
     set OLLAMA_OK=1
+)
+
+:skip_ollama_check
+
+REM -------------------------------------------------------------------
+REM GPU detection -- pick the best model for this hardware
+REM -------------------------------------------------------------------
+
+echo.
+echo [2/5] Detecting GPU...
+
+set GPU_NAME=none
+set GPU_VRAM_MB=0
+set RECOMMENDED_MODEL=model-b:7b-8k
+set RECOMMENDED_PULL=model-b:7b
+set MODELFILE=deploy\ollama\Modelfile.7b
+
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits >nul 2>&1
+if errorlevel 1 (
+    echo   GPU: No NVIDIA GPU detected
+    echo   [WARN] No NVIDIA GPU >> "%LOGFILE%"
+    if "%USE_CLOUD%"=="0" (
+        echo.
+        echo   WARNING: Without a GPU, local inference will be very slow (5-30x).
+        echo   Consider using a remote backend instead:
+        echo     run.bat --cloud http://REMOTE_SERVER:PORT/v1
+        echo.
+        echo   Falling back to smallest model (model-b:3b) for CPU...
+        set RECOMMENDED_MODEL=model-b:3b
+        set RECOMMENDED_PULL=model-b:3b
+        set MODELFILE=
+    )
+) else (
+    for /f "tokens=1,2 delims=," %%a in ('nvidia-smi --query-gpu^=name^,memory.total --format^=csv^,noheader^,nounits 2^>nul') do (
+        set GPU_NAME=%%a
+        set GPU_VRAM_MB=%%b
+    )
+    REM Trim whitespace from VRAM
+    for /f "tokens=*" %%x in ("!GPU_VRAM_MB!") do set GPU_VRAM_MB=%%x
+    echo   GPU: !GPU_NAME! (!GPU_VRAM_MB! MB VRAM)
+    echo   [OK] GPU: !GPU_NAME!, !GPU_VRAM_MB! MB VRAM >> "%LOGFILE%"
+
+    REM Pick model based on VRAM
+    REM 14B needs ~10GB (10240 MB), 7B needs ~6GB (6144 MB), 3B needs ~3GB
+    if !GPU_VRAM_MB! GEQ 10240 (
+        echo   Recommended model: model-b:14b (best quality for your GPU)
+        set RECOMMENDED_MODEL=model-b:14b-8k
+        set RECOMMENDED_PULL=model-b:14b
+        set MODELFILE=deploy\ollama\Modelfile.14b
+    ) else if !GPU_VRAM_MB! GEQ 6144 (
+        echo   Recommended model: model-b:7b (good match for your GPU)
+        set RECOMMENDED_MODEL=model-b:7b-8k
+        set RECOMMENDED_PULL=model-b:7b
+        set MODELFILE=deploy\ollama\Modelfile.7b
+    ) else (
+        echo   Recommended model: model-b:3b (your GPU has limited VRAM)
+        set RECOMMENDED_MODEL=model-b:3b
+        set RECOMMENDED_PULL=model-b:3b
+        set MODELFILE=
+    )
+    echo   [MODEL] !RECOMMENDED_MODEL! >> "%LOGFILE%"
 )
 
 REM -------------------------------------------------------------------
@@ -110,19 +221,27 @@ REM -------------------------------------------------------------------
 REM Install package if needed
 REM -------------------------------------------------------------------
 
-echo [2/4] Checking chat-to-cop installation...
+echo [3/5] Checking chat-to-cop installation...
 
 REM Ensure pip is available (some Python installs omit it)
 python -m pip --version >nul 2>&1
 if errorlevel 1 (
     echo   pip not found. Bootstrapping pip...
     python -m ensurepip --upgrade
+    echo   [FIX] Bootstrapped pip via ensurepip >> "%LOGFILE%"
 )
 
 python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
-    echo   Installing package (first run only, may take 2-5 minutes)...
-    python -m pip install -e ".[dev]"
+    REM Check for bundled wheels first (offline install)
+    if exist vendor\*.whl (
+        echo   Installing package from bundled wheels (offline)...
+        python -m pip install --no-index --find-links vendor\ -e ".[dev]"
+        echo   [INSTALL] Used vendor wheels >> "%LOGFILE%"
+    ) else (
+        echo   Installing package (first run only, may take 2-5 minutes)...
+        python -m pip install -e ".[dev]"
+    )
     if errorlevel 1 (
         echo.
         echo ERROR: Installation failed. Try running manually:
@@ -130,22 +249,26 @@ if errorlevel 1 (
         echo.
         echo If you see "Microsoft Visual C++ required", you may need to install
         echo the Visual Studio Build Tools. But this should not normally happen.
+        echo   [FAIL] pip install failed >> "%LOGFILE%"
         pause
         exit /b 1
     )
     echo   Installed successfully.
+    echo   [OK] Package installed >> "%LOGFILE%"
 ) else (
     echo   chat-to-cop: installed
 )
 
 REM -------------------------------------------------------------------
-REM Pull and configure Ollama model
+REM Configure LLM backend
 REM -------------------------------------------------------------------
+
+if "%USE_CLOUD%"=="1" goto :setup_cloud_backend
 
 if "%OLLAMA_OK%" neq "1" goto :skip_ollama_setup
 
 echo.
-echo [chat-to-cop] Checking Ollama model...
+echo [4/5] Checking Ollama model...
 
 REM Check if Ollama is serving; start it if not, with retry
 curl -s http://127.0.0.1:11434/v1/models >nul 2>&1
@@ -156,17 +279,51 @@ if errorlevel 1 (
     call :wait_for_ollama
 )
 
-REM Check if the 8K model exists
-ollama list 2>nul | findstr /c:"model-b:7b-8k" >nul 2>&1
+REM Check if the recommended model exists
+ollama list 2>nul | findstr /c:"!RECOMMENDED_MODEL!" >nul 2>&1
 if errorlevel 1 (
-    echo   Pulling model-b:7b (this may take a few minutes on first run)...
-    ollama pull model-b:7b
-    echo   Creating 8K context variant...
-    ollama create model-b:7b-8k -f deploy\ollama\Modelfile.7b
+    echo   Pulling !RECOMMENDED_PULL! (this may take a few minutes on first run)...
+    ollama pull !RECOMMENDED_PULL!
+    if defined MODELFILE (
+        echo   Creating 8K context variant...
+        ollama create !RECOMMENDED_MODEL! -f !MODELFILE!
+    )
 ) else (
-    echo   Model model-b:7b-8k: ready
+    echo   Model !RECOMMENDED_MODEL!: ready
 )
 
+REM Set env vars for the pipeline
+set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
+set CHAT_TO_COP_LLM_MODEL=!RECOMMENDED_MODEL!
+echo   [BACKEND] Ollama local: !RECOMMENDED_MODEL! >> "%LOGFILE%"
+
+goto :skip_cloud_setup
+
+:setup_cloud_backend
+echo.
+echo [4/5] Checking remote backend...
+
+REM Verify the remote backend is reachable
+curl -s --max-time 10 "%CLOUD_URL%/models" >nul 2>&1
+if errorlevel 1 (
+    curl -s --max-time 10 "%CLOUD_URL%" >nul 2>&1
+    if errorlevel 1 (
+        echo   WARNING: Remote backend at %CLOUD_URL% is not responding.
+        echo   [WARN] Cloud backend unreachable: %CLOUD_URL% >> "%LOGFILE%"
+        echo   The smoke test may fail. Check the URL and try again.
+        echo.
+        set /p CONTINUE_CLOUD="Continue anyway? [y/N] "
+        if /i "!CONTINUE_CLOUD!" neq "y" exit /b 1
+    )
+)
+
+echo   Remote backend: %CLOUD_URL%
+set CHAT_TO_COP_LLM_URL=%CLOUD_URL%
+REM For cloud backends, use default model unless overridden
+if not defined CHAT_TO_COP_LLM_MODEL set CHAT_TO_COP_LLM_MODEL=model-b:7b
+echo   [BACKEND] Cloud: %CLOUD_URL%, model: !CHAT_TO_COP_LLM_MODEL! >> "%LOGFILE%"
+
+:skip_cloud_setup
 :skip_ollama_setup
 
 REM -------------------------------------------------------------------
@@ -183,7 +340,7 @@ REM Default: smoke test + replay + dashboard
 
 REM Quick connectivity check before committing to the smoke test.
 REM Without this, 5 LLM calls x 120s timeout = 10 minutes of apparent freeze.
-if "%OLLAMA_OK%"=="1" (
+if "%USE_CLOUD%"=="0" if "%OLLAMA_OK%"=="1" (
     curl -s --max-time 5 http://127.0.0.1:11434/v1/models >nul 2>&1
     if errorlevel 1 (
         echo.
@@ -202,20 +359,17 @@ echo ============================================
 echo   Running smoke test (5 messages)
 echo ============================================
 echo.
-python scripts/quick_test.py
+python scripts/quick_test.py --url "!CHAT_TO_COP_LLM_URL!" --model "!CHAT_TO_COP_LLM_MODEL!"
 if errorlevel 1 (
     echo.
     echo Smoke test failed. Check the errors above.
-    if "%1"=="--smoke-only" pause
-    if "%1"=="--smoke-only" exit /b 1
+    echo   [FAIL] Smoke test failed >> "%LOGFILE%"
+    if "%1"=="--smoke-only" goto :health_summary
 )
 
-if "%1"=="--smoke-only" (
-    echo.
-    echo Smoke test passed.
-    pause
-    exit /b 0
-)
+echo   [OK] Smoke test passed >> "%LOGFILE%"
+
+if "%1"=="--smoke-only" goto :health_summary
 
 echo.
 echo ============================================
@@ -226,7 +380,7 @@ echo Processing bundled chat messages through the pipeline...
 echo (This takes 2-5 minutes depending on your hardware)
 echo.
 
-python -m chat_to_cop.replay data\dash3\23Sep_usaf_chat.zip --db data\demo_run.db
+python -m chat_to_cop.replay data\dash3\23Sep_usaf_chat.zip --db data\demo_run.db --url "!CHAT_TO_COP_LLM_URL!" --model "!CHAT_TO_COP_LLM_MODEL!"
 
 :dashboard
 echo.
@@ -257,11 +411,40 @@ echo   Connecting to live IRC: %2
 echo ============================================
 echo.
 set CHAT_TO_COP_IRC_URL=%2
-set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
-set CHAT_TO_COP_LLM_MODEL=model-b:7b-8k
+if not defined CHAT_TO_COP_LLM_URL set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
+if not defined CHAT_TO_COP_LLM_MODEL set CHAT_TO_COP_LLM_MODEL=!RECOMMENDED_MODEL!
 set CHAT_TO_COP_DB_PATH=data\mash_live.db
 python -m chat_to_cop.replay
 goto :eof
+
+REM -------------------------------------------------------------------
+REM Health summary
+REM -------------------------------------------------------------------
+
+:health_summary
+echo.
+echo ============================================
+echo   Health Summary
+echo ============================================
+echo.
+echo   Python:    %PYVER%
+echo   GPU:       !GPU_NAME! (!GPU_VRAM_MB! MB)
+echo   Backend:   !CHAT_TO_COP_LLM_URL!
+echo   Model:     !CHAT_TO_COP_LLM_MODEL!
+if "%USE_CLOUD%"=="1" (
+    echo   Mode:      Remote (cloud)
+) else (
+    echo   Mode:      Local (Ollama)
+)
+echo   Log file:  %CD%\%LOGFILE%
+echo.
+echo   [SUMMARY] Python=%PYVER% GPU=!GPU_NAME! Backend=!CHAT_TO_COP_LLM_URL! Model=!CHAT_TO_COP_LLM_MODEL! >> "%LOGFILE%"
+echo   run.bat finished: %DATE% %TIME% >> "%LOGFILE%"
+echo.
+echo If something went wrong, send data\run.log to the team for help.
+echo.
+pause
+exit /b 0
 
 REM -------------------------------------------------------------------
 REM Subroutines
@@ -275,6 +458,7 @@ set /a _OLLAMA_TRIES+=1
 if !_OLLAMA_TRIES! GTR 6 (
     echo   Ollama did not respond after 30 seconds.
     echo   Try starting it manually: open Start menu, search "Ollama", click it.
+    echo   [WARN] Ollama did not start after 30s >> "%LOGFILE%"
     goto :eof
 )
 timeout /t 5 /nobreak >nul
@@ -299,13 +483,28 @@ echo   run.bat                     Full setup: smoke test + demo replay + dashbo
 echo   run.bat --smoke-only        Just verify everything works (30 seconds)
 echo   run.bat --dashboard         Start the REST API dashboard only
 echo   run.bat --live URL          Connect to a live IRC server
+echo   run.bat --cloud URL         Use a remote LLM backend (skip local Ollama)
+echo.
+echo GPU Detection:
+echo   The script detects your NVIDIA GPU and picks the best model:
+echo     10+ GB VRAM  -^>  model-b:14b (best quality)
+echo      6+ GB VRAM  -^>  model-b:7b  (good quality)
+echo      No GPU       -^>  model-b:3b  (CPU fallback, slow)
+echo.
+echo Cloud Backend:
+echo   run.bat --cloud http://REMOTE_IP:PORT/v1
+echo   Skips Ollama entirely. Uses a remote LLM server for all inference.
 echo.
 echo Prerequisites:
 echo   - Python 3.10+  (https://www.python.org/downloads/)
-echo   - Ollama        (https://ollama.com/download) -- optional for cloud backends
+echo   - Ollama        (https://ollama.com/download) -- not needed with --cloud
 echo.
 echo First run will install dependencies and pull the LLM model (~4.7 GB).
 echo Subsequent runs start in seconds.
+echo.
+echo Troubleshooting:
+echo   All runs are logged to data\run.log. Send this file to the team
+echo   if you run into problems.
 echo.
 pause
 goto :eof
