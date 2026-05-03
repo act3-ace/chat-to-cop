@@ -32,7 +32,9 @@ MODEL_NAME="${MODEL_NAME:-org-b/model-b-14b-awq}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 VLLM_HOST="${VLLM_HOST:-0.0.0.0}"
-HF_CACHE_DIR="${HF_CACHE_DIR:-/tmp/huggingface}"
+# Default to NFS home so model persists across AG node sessions.
+# Override with HF_CACHE_DIR=/tmp/huggingface for ephemeral cache.
+HF_CACHE_DIR="${HF_CACHE_DIR:-${HOME}/.cache/huggingface}"
 TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-1}"
 VLLM_IMAGE="${VLLM_IMAGE:-vllm/vllm-openai:v0.19.1-cu130}"
 VLLM_MODE="${VLLM_MODE:-auto}"
