@@ -36,9 +36,20 @@ The major version will advance to 1.0.0 when the API is considered stable.
   Triggers on changes to onboarding scripts, pipeline source, or
   pyproject.toml.
 
+- run.bat rewrite with cloud mode, GPU detection, and logging (!146):
+  `run.bat --cloud URL` skips Ollama and points at a remote LLM backend
+  (AG vLLM, Bedrock via LiteLLM). nvidia-smi GPU detection auto-selects
+  14B/7B/3B model based on VRAM. Logs to `data\run.log` for remote
+  troubleshooting. Health summary prints Python/GPU/backend/model after
+  smoke test. Vendor wheel support (`--no-index --find-links vendor\`).
+- deploy/ollama/Modelfile.14b: model-b:14b with 8K context window.
+
 ### Changed
 
-- deploy/ag/launch-vllm-chat2cop.sh (#51): Added T4-specific vLLM flags
+- deploy/ag/launch-vllm-chat2cop.sh (#51, !146): HuggingFace cache default
+  changed from ephemeral `/tmp/huggingface` to NFS-persistent
+  `${HOME}/.cache/huggingface` so model weights survive AG node restarts.
+  Added T4-specific vLLM flags
   (--dtype float16, --max-num-seqs 16) auto-detected from GPU hardware,
   multi-GPU tensor parallelism support, and vLLM env vars
   (VLLM_WORKER_MULTIPROC_METHOD, VLLM_NO_USAGE_STATS). Based on Jennifer
