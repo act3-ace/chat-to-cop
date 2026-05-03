@@ -69,6 +69,17 @@ echo ============================================
 echo   chat-to-cop setup
 echo ============================================
 echo.
+
+REM -------------------------------------------------------------------
+REM Auto-update: pull latest if git clone, or convert zip to clone
+REM -------------------------------------------------------------------
+
+if exist ".git" (
+    call :auto_update_pull
+) else (
+    call :auto_update_convert
+)
+
 echo [1/5] Checking prerequisites...
 echo.
 
@@ -499,6 +510,51 @@ if errorlevel 1 (
     goto :ollama_retry
 )
 echo   Ollama is running.
+goto :eof
+
+:auto_update_pull
+REM Already a git clone -- pull latest changes.
+git --version >nul 2>&1
+if errorlevel 1 goto :eof
+echo   Checking for updates...
+git pull --ff-only >nul 2>&1
+if errorlevel 1 (
+    echo   Could not auto-update -- running current version.
+    echo   [WARN] git pull failed >> "%LOGFILE%"
+) else (
+    echo   Updated to latest version.
+    echo   [OK] git pull succeeded >> "%LOGFILE%"
+)
+echo.
+goto :eof
+
+:auto_update_convert
+REM Not a git clone -- try to convert extracted zip into a clone
+REM so future runs get auto-updates.
+git --version >nul 2>&1
+if errorlevel 1 goto :eof
+echo   Setting up auto-updates...
+echo   [AUTO-UPDATE] Converting zip to git clone >> "%LOGFILE%"
+git init >nul 2>&1
+if errorlevel 1 goto :convert_failed
+git remote add origin git@gitlab.dle.afrl.af.mil:c2es1/mash/chat-to-cop.git >nul 2>&1
+if errorlevel 1 goto :convert_failed
+echo   Connecting to code server (may take a moment)...
+git fetch --depth 1 origin main >nul 2>&1
+if errorlevel 1 goto :convert_failed
+git checkout -f -B main origin/main >nul 2>&1
+if errorlevel 1 goto :convert_failed
+echo   Auto-updates enabled -- future runs will pull the latest code.
+echo   [OK] Converted zip to git clone >> "%LOGFILE%"
+echo.
+goto :eof
+
+:convert_failed
+if exist ".git" rmdir /s /q .git >nul 2>&1
+echo   Could not connect to code server -- continuing without auto-updates.
+echo   (This is fine. Everything still works, you just won't get automatic updates.)
+echo   [WARN] zip-to-clone conversion failed >> "%LOGFILE%"
+echo.
 goto :eof
 
 REM -------------------------------------------------------------------
