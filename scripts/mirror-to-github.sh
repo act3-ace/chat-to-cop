@@ -68,7 +68,11 @@ echo "Sanitizing internal IPs..."
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's/10\.5\.185\.[0-9]\{1,3\}/10.0.0.1/g' 2>/dev/null || true
 
-echo "Sanitizing DLE GitLab URLs..."
+echo "Sanitizing DLE URLs..."
+find . -name '.git' -prune -o -type f -print0 | \
+    xargs -0 sed -i 's|pydio\.dle\.afrl\.af\.mil|pydio.example.mil|g' 2>/dev/null || true
+find . -name '.git' -prune -o -type f -print0 | \
+    xargs -0 sed -i 's|confluence\.dle\.afrl\.af\.mil|confluence.example.mil|g' 2>/dev/null || true
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's|gitlab\.dle\.afrl\.af\.mil|gitlab.example.mil|g' 2>/dev/null || true
 
@@ -79,8 +83,11 @@ find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's|litellm-bedrock\.act3\.analyticsgateway\.com|litellm.ag.example.mil|g' 2>/dev/null || true
 
 echo "Sanitizing emails and usernames..."
+# Named emails first, then catch remaining first.last.N@us.af.mil patterns
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's/hamilton\.clouse\.1@us\.af\.mil/maintainer@example.mil/g' 2>/dev/null || true
+find . -name '.git' -prune -o -type f -print0 | \
+    xargs -0 sed -i 's/[a-z.]*[0-9]*@us\.af\.mil/team@example.mil/g' 2>/dev/null || true
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's|/home/hsclouse|/home/user|g' 2>/dev/null || true
 find . -name '.git' -prune -o -type f -print0 | \
@@ -97,10 +104,11 @@ find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's/hsclouse@HPCMP\.HPC\.MIL/user@HPCMP.HPC.MIL/g' 2>/dev/null || true
 
 echo "Sanitizing deploy script usernames..."
-# Only in deploy/ and docs/internal/ -- careful not to break code references
 find ./deploy -type f -print0 2>/dev/null | \
     xargs -0 sed -i 's/hsclouse/deployer/g' 2>/dev/null || true
-find ./docs/internal -type f -print0 2>/dev/null | \
+
+echo "Sanitizing remaining usernames in docs..."
+find ./docs -type f -print0 2>/dev/null | \
     xargs -0 sed -i 's/hsclouse/user/g' 2>/dev/null || true
 
 # Remove CLAUDE.md files (contain project-specific instructions, not useful publicly)
