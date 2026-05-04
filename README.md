@@ -66,10 +66,13 @@ The system is deliberately model-agnostic. Every LLM call goes through the OpenA
 | Backend | When |
 |---------|------|
 | Ollama (local) | Air-gapped, development, MASH default |
-| vLLM (local) | GPU cluster, production |
-| Ask Sage API | IL5, `api.genai.army.mil` |
+| vLLM / LM Studio / llama.cpp | GPU cluster, individual analyst, minimal install |
+| Azure OpenAI (Gov) | DoD contractors, CMMC 2.0, FedRAMP High |
 | AWS Bedrock | GovCloud |
+| Ask Sage API | IL5, `api.genai.army.mil` |
 | Any OpenAI-compatible endpoint | Future-proof |
+
+See [docs/BACKENDS.md](docs/BACKENDS.md) for setup instructions for each backend.
 
 ## Graceful Degradation
 

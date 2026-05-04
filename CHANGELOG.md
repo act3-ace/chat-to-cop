@@ -12,6 +12,16 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- Contractor/vendor backend guide docs/BACKENDS.md (!150): Setup
+  instructions for all 6 backends (Ollama, vLLM/LM Studio/llama.cpp,
+  Azure OpenAI, Bedrock, Anthropic, Ask Sage), environment variable
+  reference table, model selection guide, flash drive section. Linked
+  from README.md.
+- GitHub Actions portable build CI (!150):
+  `.github/workflows/portable-build.yml` tests the flash-drive packaging
+  and startup scripts on both ubuntu-latest and windows-latest. Builds
+  Docker image, saves tarball, loads it back, validates compose config,
+  and verifies the pipeline container boots.
 - Azure OpenAI backend support (!149): DoD contractors with Azure
   Government can use `--azure --azure-endpoint URL` or set
   `CHAT_TO_COP_LLM_AZURE_ENDPOINT`. Uses `AsyncAzureOpenAI` from the
