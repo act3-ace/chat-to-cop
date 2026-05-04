@@ -12,6 +12,12 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- run.bat auto-update and zip-to-clone conversion (!148): On launch, if
+  the directory is a git clone, `git pull --ff-only` pulls the latest code.
+  If the directory was extracted from a zip (no `.git`), run.bat silently
+  converts it into a shallow clone from DLE GitLab via SSH, enabling
+  auto-updates on all future runs. Conversion is best-effort -- if SSH
+  fails, the script continues normally without auto-updates.
 - Push-button Windows setup for MASH participants (!142, !143, !144):
   - `scripts/bootstrap.ps1`: PowerShell one-liner (`irm url | iex`) that
     installs Python, Git, Ollama via winget, clones the repo, and runs a
