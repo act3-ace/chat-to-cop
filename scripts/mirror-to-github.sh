@@ -111,8 +111,10 @@ echo "Sanitizing remaining usernames in docs..."
 find ./docs -type f -print0 2>/dev/null | \
     xargs -0 sed -i 's/hsclouse/user/g' 2>/dev/null || true
 
-# Remove CLAUDE.md files (contain project-specific instructions, not useful publicly)
+# Remove files that should not appear in the public mirror
 rm -f CLAUDE.md docs/CLAUDE.md 2>/dev/null || true
+rm -f scripts/mirror-to-github.sh 2>/dev/null || true
+rm -rf docs/internal/ 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Show diff or commit
