@@ -931,7 +931,7 @@ installing DoD CA certs, cloning the repo, and launching the backends.
 
 ### Prerequisites
 
-1. **ag-helpers** sourced in your shell. Ask Scott for the repo, then:
+1. **ag-helpers** sourced in your shell. Ask Hamilton for the repo, then:
 
 ```bash
 source /path/to/ag-helpers/local/profile.sh

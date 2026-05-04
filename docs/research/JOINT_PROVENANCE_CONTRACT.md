@@ -175,7 +175,7 @@ For MASH, even the HTTP latency is acceptable: at 765ms per classification + ~7s
 
 | Step | What | Who | When |
 |---|---|---|---|
-| 1 | Agree on wire format with HLT (HTTP vs bus vs library) | Scott + Jeremy | Next HLT sync |
+| 1 | Agree on wire format with HLT (HTTP vs bus vs library) | Hamilton + Jeremy | Next HLT sync |
 | 2 | Implement `DeltronTierProvider` protocol with mock provider (#45 Phase 1) | chat-to-cop team | This sprint |
 | 3 | Add `fusion_action` field to CoPUpdate (Field 5 above) | chat-to-cop team | This sprint |
 | 4 | Store `deltron_tier` and `deltron_model` in CoPUpdate metadata | chat-to-cop team | With #45 |

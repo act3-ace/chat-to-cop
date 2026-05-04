@@ -107,7 +107,7 @@ If Windows shows a "Windows protected your PC" SmartScreen warning, click
 **More info** then **Run anyway** -- this is normal for scripts downloaded as a zip.
 
 **Trouble with the local AI model?** If Ollama won't install or your GPU is too
-small, ask Scott for a remote server URL and run:
+small, ask Hamilton for a remote server URL and run:
 
 ```
 run.bat --cloud http://SERVER_IP:PORT/v1
@@ -144,11 +144,10 @@ Ollama setup, eval harness, Docker, and troubleshooting.
 
 | Person | Role |
 |--------|------|
-| **Scott Clouse** | ACT3 CAIO — project originator, architecture, integration |
-| **Mia Kollia** | Primary developer — LLM evaluation, pipeline implementation |
+| **Hamilton Clouse** | ACT3 CAIO — primary developer, architecture, integration |
+| **Mia Kollia** | Human-machine teaming expert |
 | **Colin Leong** | DASH domain expert — equifinality repo, entity catalogs |
-| **Jennifer Carlet** | Pipeline engineering — LLM infrastructure, chat ingestion |
-| **Jared Culbertson** | Strategic sponsor — FACS-NCA lead, schema requirements |
+| **Jennifer Carlet** | Expert developer — LLM infrastructure |
 
 ## Related Projects
 

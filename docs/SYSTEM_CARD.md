@@ -4,7 +4,7 @@
 **Date:** 2026-03-29
 **Organization:** ACT3 / C2ES, Air Force Research Laboratory
 **Classification:** IL2 (Unclassified)
-**Contact:** Scott Clouse, ACT3 Chief AI Officer
+**Contact:** Hamilton Clouse, ACT3 Chief AI Officer
 
 ---
 

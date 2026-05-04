@@ -1,6 +1,6 @@
 # Operator View: What the Battle Manager Sees
 
-**Status:** Draft for review by Mia Kollia (Chief of AI Alignment, HCI expert)
+**Status:** Draft for review by Mia Kollia (HMT expert)
 **Issue:** #55 — Operator-facing surface: what the BM actually sees
 **Date:** 2026-04-08
 

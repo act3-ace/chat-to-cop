@@ -238,8 +238,8 @@ docker compose down                       # stop
 
 | Item | Who to ask | Why |
 |------|-----------|-----|
-| DASH 3 chat.zip test data | Scott | Test replays before MASH |
-| AWS GovCloud creds (optional) | Jared | Bedrock cloud inference |
+| DASH 3 chat.zip test data | Hamilton | Test replays before MASH |
+| AWS GovCloud creds (optional) | Hamilton | Bedrock cloud inference |
 | IRC server IP at MASH | White cell / exercise staff | Live mode at the event |
 | CoP database endpoint (optional) | Sarah Bowman | Write to the actual CoP |
 

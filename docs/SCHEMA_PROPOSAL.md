@@ -1,7 +1,7 @@
 # Schema Proposal: What chat-to-cop Writes to the CoP
 
 **For: Sarah Bowman (711 HPW/RHWTE), Elizabeth Frost, Jeremy Gwinnup**
-**From: Scott Clouse (ACT3), Mia Kollia (ACT3)**
+**From: Hamilton Clouse (ACT3), Mia Kollia (ACT3)**
 **Date: 2026-04-10**
 **Classification: UNCLASSIFIED / IL2**
 
@@ -263,7 +263,7 @@ Our `metadata` overflow dict (Pattern B) is designed for exactly this: informati
 
 ## Contact
 
-- **Scott Clouse** — hamilton.clouse.1@us.af.mil, ACT3 Mattermost: `hsclouse`
-- **Mia Kollia** — mia.kollia.1@us.af.mil, ACT3 Mattermost: `mkollia`
+- **Hamilton Clouse** — ACT3 CAIO
+- **Mia Kollia** — ACT3 HMT expert
 - **GitLab repo** — https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop (Internal visibility, your team should now have access)
 - **Confluence docs (Sarah's)** — https://confluence.dle.afrl.af.mil/spaces/JADPACT/pages/548864328/Mash+Documentation

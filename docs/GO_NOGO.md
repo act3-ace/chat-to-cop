@@ -15,7 +15,7 @@ Non-negotiable. The deployer enforces them.
 1. **No new dependencies after Friday before MASH.** Any integration that doesn't work by end of day Friday is shipped *without* for the event. No exceptions.
 2. **DELTRON is treated as a degraded backend, not a hard dependency.** If DELTRON's tier signal is missing, chat-to-cop processes the message anyway with no tier filter. The DELTRON dependency is *additive*, never blocking. (See #45.)
 3. **No code changes in the 24 hours before MASH** unless they fix a critical bug. A "critical bug" is something that would prevent the system from running, not something that would make it slightly better.
-4. **One person is "the deployer" for the duration of the event.** Decisions get made by that person, in real time, with no committee. Default: Scott. Backup: Mia.
+4. **One person is "the deployer" for the duration of the event.** Decisions get made by that person, in real time, with no committee. Default: Hamilton. Backup: Mia.
 5. **The deployer's laptop is the only deployment target.** No remote deploys during the event. Everything runs on the same physical box.
 6. **The kill switch is the first action under any uncertainty.** When in doubt, pause writes (#56), then think.
 
@@ -350,7 +350,7 @@ After MASH ends, the deployer:
 - [ ] Reports total updates produced, by tier, by channel, by speaker
 - [ ] Identifies the messages with the most operator overrides -- these are our worst failures
 - [ ] Reconciles local SQLite to the real CoP (if running in degraded mode)
-- [ ] Drafts a one-page event summary for Jared and Mia
+- [ ] Drafts a one-page event summary for the team
 - [ ] Updates this doc with anything we learned the hard way
 
 ---
@@ -363,7 +363,7 @@ to something other than the documented default.
 
 | Role | Name | Signature | Date |
 |------|------|-----------|------|
-| Project lead | Scott Clouse | _________________ | ____-__-__ |
+| Project lead | Hamilton Clouse | _________________ | ____-__-__ |
 | Reviewer | _________________ | _________________ | ____-__-__ |
 
 The reviewer should be someone who did not build the proposed change.
