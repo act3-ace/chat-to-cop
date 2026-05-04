@@ -126,6 +126,7 @@ if [ "$SHOW_DIFF" = true ]; then
     git diff "$BRANCH" -- . | head -200
     echo ""
     echo "(truncated -- run 'git diff $BRANCH' for full diff)"
+    git checkout "$BRANCH" -- . 2>/dev/null
     git checkout "$BRANCH" 2>/dev/null
     git branch -D "$TEMP_BRANCH" 2>/dev/null || true
     exit 0
@@ -161,7 +162,7 @@ git push --force "$REMOTE" "$TEMP_BRANCH:$BRANCH"
 
 # Clean up
 git checkout "$BRANCH" 2>/dev/null
-git branch -D "$TEMP_BRANCH" 2>/dev/null || true
+git branch -d "$TEMP_BRANCH" 2>/dev/null || true
 
 echo ""
 echo "=== Mirror updated ==="
