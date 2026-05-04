@@ -12,6 +12,11 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- Azure OpenAI backend support (!149): DoD contractors with Azure
+  Government can use `--azure --azure-endpoint URL` or set
+  `CHAT_TO_COP_LLM_AZURE_ENDPOINT`. Uses `AsyncAzureOpenAI` from the
+  openai SDK with instructor. No new dependencies. Default model gpt-4o,
+  default API version 2024-10-21.
 - run.bat auto-update and zip-to-clone conversion (!148): On launch, if
   the directory is a git clone, `git pull --ff-only` pulls the latest code.
   If the directory was extracted from a zip (no `.git`), run.bat silently

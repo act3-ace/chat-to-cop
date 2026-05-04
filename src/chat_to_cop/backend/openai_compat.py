@@ -1,7 +1,8 @@
-"""OpenAI-compatible backend: works with Ollama, vLLM, LiteLLM, cloud APIs.
+"""OpenAI-compatible backend: works with Ollama, vLLM, LiteLLM, Azure, cloud APIs.
 
 This single class covers every model we'd want to use. The only
-configuration difference is the base_url and model name.
+configuration difference is the base_url and model name. For Azure
+OpenAI, pass azure_endpoint + azure_api_version instead of base_url.
 
 Uses `instructor` for structured output with Pydantic validation.
 """
@@ -13,7 +14,7 @@ import hashlib
 
 import instructor
 from loguru import logger
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 from pydantic import BaseModel
 
 from chat_to_cop.metrics import metrics
@@ -49,19 +50,20 @@ class OpenAICompatibleBackend:
         num_ctx: int = 8192,
         hard_timeout: float | None = None,
         is_ollama: bool | None = None,
+        azure_endpoint: str | None = None,
+        azure_api_version: str | None = None,
     ) -> None:
         self.base_url = base_url
         self.model = model
         self.timeout = timeout
         self.num_ctx = num_ctx
-        # Issue #75 — hard wall-clock cap on the full instructor retry chain.
-        # None means "respect only the per-request timeout + instructor's
-        # retries" (pre-#75 behavior). See config.llm.llm_extract_hard_timeout.
         self._hard_timeout = hard_timeout
+        self._is_azure = azure_endpoint is not None
 
-        # Issue #74 — resolve Ollama detection once at init, not per-request.
         if is_ollama is not None:
             self._is_ollama = is_ollama
+        elif self._is_azure:
+            self._is_ollama = False
         else:
             self._is_ollama = _detect_ollama(base_url)
             if num_ctx and not self._is_ollama:
@@ -75,14 +77,21 @@ class OpenAICompatibleBackend:
 
         self._prompt_hash = hashlib.sha256(build_system_prompt(glossary=DEFAULT_GLOSSARY).encode()).hexdigest()
 
-        self._client = instructor.from_openai(
-            AsyncOpenAI(
+        if self._is_azure:
+            raw_client = AsyncAzureOpenAI(
+                azure_endpoint=azure_endpoint,
+                api_key=api_key,
+                api_version=azure_api_version or "2024-10-21",
+                timeout=timeout,
+            )
+        else:
+            raw_client = AsyncOpenAI(
                 base_url=base_url,
                 api_key=api_key,
                 timeout=timeout,
-            ),
-            mode=instructor.Mode.JSON,
-        )
+            )
+
+        self._client = instructor.from_openai(raw_client, mode=instructor.Mode.JSON)
         self._max_retries = max_retries
 
     async def extract(

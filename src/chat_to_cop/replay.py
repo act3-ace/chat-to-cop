@@ -71,6 +71,7 @@ def _make_degrading_backend(
             hard_timeout=config.llm.llm_extract_hard_timeout,
         )
     else:
+        azure_endpoint = config.llm.llm_azure_endpoint or None
         primary = OpenAICompatibleBackend(
             base_url=config.llm.llm_url,
             model=config.llm.llm_model,
@@ -80,6 +81,8 @@ def _make_degrading_backend(
             num_ctx=config.llm.llm_num_ctx,
             hard_timeout=config.llm.llm_extract_hard_timeout,
             is_ollama=config.llm.llm_is_ollama,
+            azure_endpoint=azure_endpoint,
+            azure_api_version=config.llm.llm_azure_api_version if azure_endpoint else None,
         )
     # Only add a separate fallback if it's a different model
     backends = [primary]
@@ -406,6 +409,21 @@ def main() -> None:
         help="Context window size for Ollama models (default: 8192)",
     )
     parser.add_argument(
+        "--azure",
+        action="store_true",
+        help="Use Azure OpenAI (requires CHAT_TO_COP_LLM_AZURE_ENDPOINT or --azure-endpoint)",
+    )
+    parser.add_argument(
+        "--azure-endpoint",
+        default=None,
+        help="Azure OpenAI endpoint (e.g. https://myresource.openai.azure.com)",
+    )
+    parser.add_argument(
+        "--azure-api-version",
+        default=None,
+        help="Azure OpenAI API version (default: 2024-10-21)",
+    )
+    parser.add_argument(
         "--bedrock",
         action="store_true",
         help="Use AWS Bedrock (Claude) instead of OpenAI-compatible endpoint",
@@ -461,6 +479,18 @@ def main() -> None:
         config.llm.llm_timeout = args.timeout
     if args.num_ctx:
         config.llm.llm_num_ctx = args.num_ctx
+
+    # Azure mode: pass through to OpenAICompatibleBackend (same class, Azure client)
+    if args.azure:
+        azure_endpoint = args.azure_endpoint or config.llm.llm_azure_endpoint
+        if not azure_endpoint:
+            logger.error("--azure requires --azure-endpoint or CHAT_TO_COP_LLM_AZURE_ENDPOINT")
+            sys.exit(1)
+        config.llm.llm_azure_endpoint = azure_endpoint
+        if args.azure_api_version:
+            config.llm.llm_azure_api_version = args.azure_api_version
+        if not args.model:
+            config.llm.llm_model = "gpt-4o"
 
     # Bedrock mode: override the backend factory
     bedrock_config = None

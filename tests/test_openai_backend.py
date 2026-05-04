@@ -274,6 +274,98 @@ class TestOpenAICompatibleBackend:
         assert "RR15" in result.summary
 
 
+class TestAzureOpenAIBackend:
+    """Azure OpenAI support — uses AsyncAzureOpenAI client internally."""
+
+    def test_azure_construction(self):
+        backend = OpenAICompatibleBackend(
+            azure_endpoint="https://myresource.openai.azure.com",
+            api_key="test-azure-key",
+            model="gpt-4o",
+        )
+        assert backend._is_azure is True
+        assert backend._is_ollama is False
+        assert backend.model == "gpt-4o"
+
+    def test_azure_custom_api_version(self):
+        backend = OpenAICompatibleBackend(
+            azure_endpoint="https://myresource.openai.azure.com",
+            api_key="test-azure-key",
+            model="gpt-4o",
+            azure_api_version="2025-01-15",
+        )
+        assert backend._is_azure is True
+
+    def test_non_azure_when_endpoint_is_none(self):
+        backend = OpenAICompatibleBackend(
+            base_url="http://localhost:11434/v1",
+            model="model-b:7b",
+        )
+        assert backend._is_azure is False
+
+    def test_azure_disables_ollama_detection(self):
+        backend = OpenAICompatibleBackend(
+            azure_endpoint="https://myresource.openai.azure.com",
+            model="gpt-4o",
+        )
+        assert backend._is_ollama is False
+
+    def test_azure_extract_with_mock(self):
+        backend = OpenAICompatibleBackend(
+            azure_endpoint="https://myresource.openai.azure.com",
+            api_key="test-azure-key",
+            model="gpt-4o",
+        )
+
+        expected = SimpleExtraction(
+            update_type="fuel",
+            confidence=0.85,
+            summary="RR15 fuel state F+40",
+        )
+
+        async def mock_create(**kwargs):
+            return expected
+
+        backend._client.chat.completions.create = mock_create
+
+        result = asyncio.run(
+            backend.extract(
+                messages=[
+                    {"role": "system", "content": "You are a military chat interpreter."},
+                    {"role": "user", "content": "Hydro_Tank: RR15 F+40"},
+                ],
+                schema=SimpleExtraction,
+            )
+        )
+
+        assert result.update_type == "fuel"
+        assert result.confidence == 0.85
+
+    def test_azure_num_ctx_not_sent(self):
+        backend = OpenAICompatibleBackend(
+            azure_endpoint="https://myresource.openai.azure.com",
+            model="gpt-4o",
+            num_ctx=8192,
+        )
+
+        captured_kwargs = {}
+
+        async def mock_create(**kwargs):
+            captured_kwargs.update(kwargs)
+            return SimpleExtraction(update_type="none", confidence=0.0, summary="")
+
+        backend._client.chat.completions.create = mock_create
+
+        asyncio.run(
+            backend.extract(
+                messages=[{"role": "user", "content": "test"}],
+                schema=SimpleExtraction,
+            )
+        )
+
+        assert "extra_body" not in captured_kwargs
+
+
 class TestHardTimeout:
     """Issue #75 — hard wall-clock cap on the full instructor retry chain.
 
