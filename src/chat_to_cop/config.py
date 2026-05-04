@@ -53,6 +53,17 @@ class LLMBackendConfig(BaseSettings):
             "False = never send. None (default) = auto-detect from URL."
         ),
     )
+    llm_azure_endpoint: str = Field(
+        default="",
+        description=(
+            "Azure OpenAI endpoint (e.g. https://myresource.openai.azure.com). "
+            "Non-empty activates Azure mode; llm_url is ignored."
+        ),
+    )
+    llm_azure_api_version: str = Field(
+        default="2024-10-21",
+        description="Azure OpenAI API version.",
+    )
     # Issue #75 — hard wall-clock cap on a single extract() call, wrapping the
     # full instructor retry chain. Without this a pathological message can burn
     # llm_timeout * (llm_max_retries + 1) seconds (up to 12 minutes observed on
