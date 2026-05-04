@@ -22,6 +22,9 @@ lint:
     - pip install ruff
     - ruff check src/ tests/
     - ruff format --check src/ tests/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
 
 # --- Stage: test (every push) ---
 
@@ -31,6 +34,9 @@ test:
   script:
     - pip install -e ".[dev]"
     - pytest tests/ -k "not integration" -v --tb=short
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
 
 # --- Stage: build (main branch only) ---
 # Uses Kaniko instead of Docker-in-Docker — DLE shared runners don't support DinD.
@@ -135,6 +141,35 @@ build-hpc-on-ag:
       when: manual
       allow_failure: true
   timeout: 3h
+
+# Validate the portable (flash drive) deployment files on every push that
+# touches them. Runs on shared runners (no Docker needed): checks that all
+# required files exist, the compose YAML parses correctly, and the Python
+# package imports cleanly. The full Docker build + model bake runs in the
+# build-flash-drive job below (requires AG credentials).
+test-portable:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install -q pyyaml .
+    - python scripts/validate_portable.py
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - .gitlab-ci.yml
+        - Dockerfile
+        - deploy/portable/**
+        - deploy/ci/ag-*flash*
+        - scripts/package-flash-drive.sh
+        - scripts/mock_irc_server.py
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - .gitlab-ci.yml
+        - Dockerfile
+        - deploy/portable/**
+        - deploy/ci/ag-*flash*
+        - scripts/package-flash-drive.sh
+        - scripts/mock_irc_server.py
 
 # Build flash drive package (Docker images + portable deploy files) on an AG
 # compute node. No GPU needed — m7i.4xlarge provides Docker + enough disk/RAM

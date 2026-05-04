@@ -17,11 +17,11 @@ The major version will advance to 1.0.0 when the API is considered stable.
   Azure OpenAI, Bedrock, Anthropic, Ask Sage), environment variable
   reference table, model selection guide, flash drive section. Linked
   from README.md.
-- GitHub Actions portable build CI (!150):
-  `.github/workflows/portable-build.yml` tests the flash-drive packaging
-  and startup scripts on both ubuntu-latest and windows-latest. Builds
-  Docker image, saves tarball, loads it back, validates compose config,
-  and verifies the pipeline container boots.
+- DLE GitLab portable build validation CI: `test-portable` job in
+  `.gitlab-ci.yml` validates flash-drive deployment files (compose YAML
+  parsing, required file checks, package import, start script sanity)
+  on every MR touching portable/Docker files. Replaces the GitHub Actions
+  `portable-build.yml` which violated the GitHub-is-mirror-only rule.
 - Azure OpenAI backend support (!149): DoD contractors with Azure
   Government can use `--azure --azure-endpoint URL` or set
   `CHAT_TO_COP_LLM_AZURE_ENDPOINT`. Uses `AsyncAzureOpenAI` from the
