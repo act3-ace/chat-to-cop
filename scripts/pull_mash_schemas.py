@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from urllib.error import URLError
@@ -36,12 +37,15 @@ SPEC_PATHS = [
     "/swagger.json",
     "/api-docs",
     "/docs/openapi.json",
+    "/v1/swagger.json",
+    "/api/v1/swagger.json",
+    "/api/swagger.json",
 ]
 
 OUTPUT_DIR = os.path.join("data", "mash_schemas")
 
 
-def try_fetch(url: str, timeout: float = 10.0) -> str | None:
+def try_fetch(url: str, timeout: float = 5.0) -> str | None:
     try:
         resp = urlopen(url, timeout=timeout)
         return resp.read().decode("utf-8", errors="replace")
@@ -49,28 +53,80 @@ def try_fetch(url: str, timeout: float = 10.0) -> str | None:
         return None
 
 
+def is_json_spec(body: str | None) -> bool:
+    if not body or not body.strip().startswith("{"):
+        return False
+    try:
+        json.loads(body)
+        return True
+    except json.JSONDecodeError:
+        return False
+
+
+def extract_spec_urls_from_html(html: str) -> list[str]:
+    """Parse Swagger UI HTML to find the actual spec URL."""
+    urls = []
+    for pattern in [
+        r'url\s*[:=]\s*["\']([^"\']+\.json)["\']',
+        r'url\s*[:=]\s*["\']([^"\']+openapi[^"\']*)["\']',
+        r'url\s*[:=]\s*["\']([^"\']+swagger[^"\']*)["\']',
+        r'"url"\s*:\s*"([^"]+)"',
+        r"configUrl\s*[:=]\s*['\"]([^'\"]+)['\"]",
+    ]:
+        urls.extend(re.findall(pattern, html, re.IGNORECASE))
+    return urls
+
+
 def fetch_spec(base_url: str) -> tuple[str | None, str | None]:
     """Try common OpenAPI spec paths. Returns (spec_json, path_that_worked)."""
     for path in SPEC_PATHS:
         url = base_url.rstrip("/") + path
         body = try_fetch(url)
-        if body and body.strip().startswith("{"):
-            try:
-                json.loads(body)
-                return body, path
-            except json.JSONDecodeError:
-                continue
+        if is_json_spec(body):
+            return body, path
     return None, None
 
 
-def fetch_html(base_url: str) -> str | None:
-    """Fetch the Swagger/docs HTML page as fallback."""
-    for suffix in ["/swagger", "/swagger/index.html", "/docs", "/redoc"]:
+def fetch_spec_via_html(base_url: str) -> tuple[str | None, str | None, str | None]:
+    """Fetch Swagger HTML, extract spec URL, fetch spec. Returns (spec, path, html)."""
+    for suffix in ["/swagger", "/swagger/index.html", "/docs", "/redoc", ""]:
         url = base_url.rstrip("/") + suffix
-        body = try_fetch(url)
-        if body and "<html" in body.lower():
-            return body
-    return None
+        html = try_fetch(url)
+        if not html or "<html" not in html.lower():
+            continue
+
+        spec_urls = extract_spec_urls_from_html(html)
+        for spec_url in spec_urls:
+            if spec_url.startswith("/"):
+                full_url = base_url.rstrip("/") + spec_url
+            elif spec_url.startswith("http"):
+                full_url = spec_url
+            else:
+                full_url = base_url.rstrip("/") + "/" + spec_url
+            body = try_fetch(full_url)
+            if is_json_spec(body):
+                return body, spec_url, html
+
+        return None, None, html
+    return None, None, None
+
+
+def save_spec(name: str, spec: str) -> tuple[str, dict]:
+    """Save spec JSON and return (filepath, metadata)."""
+    out_file = os.path.join(OUTPUT_DIR, f"{name}.json")
+    parsed = json.loads(spec)
+    with open(out_file, "w", encoding="utf-8") as f:
+        json.dump(parsed, f, indent=2)
+    schema_count = len(parsed.get("components", {}).get("schemas", {}))
+    path_count = len(parsed.get("paths", {}))
+    title = parsed.get("info", {}).get("title", "?")
+    version = parsed.get("info", {}).get("version", "?")
+    return out_file, {
+        "title": title,
+        "version": version,
+        "endpoints": path_count,
+        "schemas": schema_count,
+    }
 
 
 def main():
@@ -86,44 +142,43 @@ def main():
     for name, base_url, description in SERVICES:
         print(f"  {description} ({base_url}) ...", end=" ", flush=True)
 
+        # Try 1: direct spec paths
         spec, path = fetch_spec(base_url)
         if spec:
-            out_file = os.path.join(OUTPUT_DIR, f"{name}.json")
-            with open(out_file, "w", encoding="utf-8") as f:
-                parsed = json.loads(spec)
-                json.dump(parsed, f, indent=2)
+            out_file, meta = save_spec(name, spec)
+            print(f"OK  ({meta['title']} v{meta['version']}, {meta['endpoints']} endpoints, {meta['schemas']} schemas)")
+            summary[name] = {"status": "ok", "url": base_url, "spec_path": path, **meta, "file": out_file}
+            continue
 
-            schema_count = len(parsed.get("components", {}).get("schemas", {}))
-            path_count = len(parsed.get("paths", {}))
-            title = parsed.get("info", {}).get("title", "?")
-            version = parsed.get("info", {}).get("version", "?")
-            print(f"OK  ({title} v{version}, {path_count} endpoints, {schema_count} schemas)")
-            summary[name] = {
-                "status": "ok",
-                "url": base_url,
-                "spec_path": path,
-                "title": title,
-                "version": version,
-                "endpoints": path_count,
-                "schemas": schema_count,
-                "file": out_file,
-            }
-        else:
-            html = fetch_html(base_url)
+        # Try 2: fetch HTML page, parse for spec URL, fetch that
+        spec, spec_url, html = fetch_spec_via_html(base_url)
+        if spec:
+            out_file, meta = save_spec(name, spec)
+            print(
+                f"OK  ({meta['title']} v{meta['version']}, {meta['endpoints']} endpoints, {meta['schemas']} schemas) [from HTML]"
+            )
+            summary[name] = {"status": "ok", "url": base_url, "spec_path": spec_url, **meta, "file": out_file}
             if html:
-                out_file = os.path.join(OUTPUT_DIR, f"{name}_page.html")
-                with open(out_file, "w", encoding="utf-8") as f:
+                html_file = os.path.join(OUTPUT_DIR, f"{name}_page.html")
+                with open(html_file, "w", encoding="utf-8") as f:
                     f.write(html)
-                print(f"PARTIAL  (saved HTML page, no JSON spec found)")
-                summary[name] = {"status": "partial", "url": base_url, "file": out_file}
+            continue
+
+        # Fallback: save whatever we got
+        if html:
+            html_file = os.path.join(OUTPUT_DIR, f"{name}_page.html")
+            with open(html_file, "w", encoding="utf-8") as f:
+                f.write(html)
+            print("PARTIAL  (saved HTML page, no JSON spec found)")
+            summary[name] = {"status": "partial", "url": base_url, "file": html_file}
+        else:
+            probe = try_fetch(base_url)
+            if probe:
+                print("UP  (reachable but no spec found)")
+                summary[name] = {"status": "up_no_spec", "url": base_url}
             else:
-                health = try_fetch(base_url)
-                if health:
-                    print(f"UP  (reachable but no spec found)")
-                    summary[name] = {"status": "up_no_spec", "url": base_url}
-                else:
-                    print(f"DOWN  (unreachable)")
-                    summary[name] = {"status": "down", "url": base_url}
+                print("DOWN  (unreachable)")
+                summary[name] = {"status": "down", "url": base_url}
 
     summary_file = os.path.join(OUTPUT_DIR, f"_summary_{timestamp}.json")
     with open(summary_file, "w", encoding="utf-8") as f:
@@ -131,10 +186,16 @@ def main():
 
     print()
     ok = sum(1 for v in summary.values() if v["status"] == "ok")
-    print(f"Done: {ok}/{len(SERVICES)} specs pulled. Summary: {summary_file}")
+    partial = sum(1 for v in summary.values() if v["status"] == "partial")
+    print(f"Done: {ok}/{len(SERVICES)} specs pulled, {partial} partial. Summary: {summary_file}")
+
+    if partial > 0:
+        print(f"\nPartial results saved as HTML in {OUTPUT_DIR}/")
+        print("Open the HTML files in a browser to see the Swagger UI.")
 
     if ok == 0:
-        print("\nNo specs found. Are you on the MASH network (10.5.x)?")
+        print("\nNo JSON specs found. The services may use a non-standard spec path.")
+        print("Check the saved HTML files for clues, or open the Swagger URLs in a browser.")
         sys.exit(1)
 
 
