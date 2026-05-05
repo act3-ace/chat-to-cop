@@ -95,8 +95,19 @@ def fetch_spec_via_html(base_url: str) -> tuple[str | None, str | None, str | No
         if not html or "<html" not in html.lower():
             continue
 
-        spec_urls = extract_spec_urls_from_html(html)
-        for spec_url in spec_urls:
+        all_spec_urls: list[str] = []
+
+        # Extract URLs from the HTML page itself
+        all_spec_urls.extend(extract_spec_urls_from_html(html))
+
+        # .NET Swagger loads config from index.js -- fetch and parse that too
+        for js_path in ["/swagger/index.js", "/swagger/swagger-config.js"]:
+            js_url = base_url.rstrip("/") + js_path
+            js_body = try_fetch(js_url)
+            if js_body:
+                all_spec_urls.extend(extract_spec_urls_from_html(js_body))
+
+        for spec_url in all_spec_urls:
             if spec_url.startswith("/"):
                 full_url = base_url.rstrip("/") + spec_url
             elif spec_url.startswith("http"):
