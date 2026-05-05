@@ -127,13 +127,18 @@ echo   Git: %GITVER%
 echo   [OK] Git %GITVER% >> "%LOGFILE%"
 
 REM -------------------------------------------------------------------
-REM Check Ollama (skip if using cloud backend)
+REM Check Ollama (skip if using cloud or live mode)
 REM -------------------------------------------------------------------
 
 set OLLAMA_OK=0
 if "%USE_CLOUD%"=="1" (
     echo   Ollama: skipped ^(using remote backend^)
     echo   [SKIP] Ollama -- cloud mode >> "%LOGFILE%"
+    goto :skip_ollama_check
+)
+if "%1"=="--live" (
+    echo   Ollama: skipped ^(live mode -- uses env vars or localhost default^)
+    echo   [SKIP] Ollama -- live mode >> "%LOGFILE%"
     goto :skip_ollama_check
 )
 
@@ -159,6 +164,10 @@ if errorlevel 1 (
 )
 
 :skip_ollama_check
+
+REM In live mode, skip GPU detection and model setup -- just need the package
+set RECOMMENDED_MODEL=model-b:7b-8k
+if "%1"=="--live" goto :skip_gpu_detection
 
 REM -------------------------------------------------------------------
 REM GPU detection -- pick the best model for this hardware
@@ -233,6 +242,8 @@ if errorlevel 1 (
 
 echo.
 
+:skip_gpu_detection
+
 REM -------------------------------------------------------------------
 REM Install package if needed
 REM -------------------------------------------------------------------
@@ -276,8 +287,10 @@ if errorlevel 1 (
 )
 
 REM -------------------------------------------------------------------
-REM Configure LLM backend
+REM Configure LLM backend (skip in live mode -- uses env vars or defaults)
 REM -------------------------------------------------------------------
+
+if "%1"=="--live" goto :skip_ollama_setup
 
 if "%USE_CLOUD%"=="1" goto :setup_cloud_backend
 
