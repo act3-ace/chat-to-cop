@@ -388,7 +388,7 @@ function renderUpdates(updates) {
             + '" onclick="showOverrideInput(' + u.id + ')">WRONG</button>';
       html += '<input class="override-reason-input" id="ovr-reason-' + u.id
             + '" placeholder="why? (Enter to skip)"'
-            + ' onkeydown="if(event.key===\'Enter\'){submitOverride(' + u.id + ')}">';
+            + ' onkeydown="if(event.key===\\'Enter\\'){submitOverride(' + u.id + ')}">';
     }
     html += '</td>';
     html += '</tr>';
