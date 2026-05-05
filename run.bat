@@ -39,25 +39,28 @@ echo ================================================================ >> "%LOGFI
 if "%1"=="--help" goto :help
 if "%1"=="-h" goto :help
 
+REM Save args before call :auto_update_pull -- the call+goto pattern
+REM inside the subroutine corrupts %1/%2 on some cmd.exe versions.
+set _ARG1=%1
+set _ARG2=%2
+
 REM -------------------------------------------------------------------
 REM Parse --cloud argument
 REM -------------------------------------------------------------------
 
 set CLOUD_URL=
 set USE_CLOUD=0
-if "%1"=="--cloud" (
-    if "%2"=="" (
+if "%_ARG1%"=="--cloud" (
+    if "%_ARG2%"=="" (
         echo ERROR: --cloud requires a URL.
         echo Usage: run.bat --cloud http://REMOTE_IP:PORT/v1
         pause
         exit /b 1
     )
-    set CLOUD_URL=%2
+    set CLOUD_URL=%_ARG2%
     set USE_CLOUD=1
-    echo   Using remote LLM backend: %2
-    echo   [cloud] URL=%2 >> "%LOGFILE%"
-    shift
-    shift
+    echo   Using remote LLM backend: %_ARG2%
+    echo   [cloud] URL=%_ARG2% >> "%LOGFILE%"
 )
 
 REM -------------------------------------------------------------------
@@ -136,7 +139,7 @@ if "%USE_CLOUD%"=="1" (
     echo   [SKIP] Ollama -- cloud mode >> "%LOGFILE%"
     goto :skip_ollama_check
 )
-if "%1"=="--live" (
+if "%_ARG1%"=="--live" (
     echo   Ollama: skipped ^(live mode -- uses env vars or localhost default^)
     echo   [SKIP] Ollama -- live mode >> "%LOGFILE%"
     goto :skip_ollama_check
@@ -167,7 +170,7 @@ if errorlevel 1 (
 
 REM In live mode, skip GPU detection and model setup -- just need the package
 set RECOMMENDED_MODEL=model-b:7b-8k
-if "%1"=="--live" goto :skip_gpu_detection
+if "%_ARG1%"=="--live" goto :skip_gpu_detection
 
 REM -------------------------------------------------------------------
 REM GPU detection -- pick the best model for this hardware
@@ -290,7 +293,7 @@ REM -------------------------------------------------------------------
 REM Configure LLM backend (skip in live mode -- uses env vars or defaults)
 REM -------------------------------------------------------------------
 
-if "%1"=="--live" goto :skip_ollama_setup
+if "%_ARG1%"=="--live" goto :skip_ollama_setup
 
 if "%USE_CLOUD%"=="1" goto :setup_cloud_backend
 
@@ -367,9 +370,9 @@ REM -------------------------------------------------------------------
 REM Route to the requested mode
 REM -------------------------------------------------------------------
 
-if "%1"=="--smoke-only" goto :smoke
-if "%1"=="--dashboard" goto :dashboard
-if "%1"=="--live" goto :live
+if "%_ARG1%"=="--smoke-only" goto :smoke
+if "%_ARG1%"=="--dashboard" goto :dashboard
+if "%_ARG1%"=="--live" goto :live
 
 REM Default: smoke test + replay + dashboard
 
@@ -377,7 +380,7 @@ REM Default: smoke test + replay + dashboard
 
 REM Quick connectivity check before committing to the smoke test.
 REM Without this, 5 LLM calls x 120s timeout = 10 minutes of apparent freeze.
-if "%USE_CLOUD%"=="0" if "%OLLAMA_OK%"=="1" (
+if "%USE_CLOUD%"=="0" if "!OLLAMA_OK!"=="1" (
     curl -s --max-time 5 http://127.0.0.1:11434/v1/models >nul 2>&1
     if errorlevel 1 (
         echo.
@@ -421,12 +424,12 @@ if errorlevel 1 (
     echo.
     echo   Full log saved to: %CD%\%LOGFILE%
     echo   [FAIL] Smoke test failed >> "%LOGFILE%"
-    if "%1"=="--smoke-only" goto :health_summary
+    if "%_ARG1%"=="--smoke-only" goto :health_summary
 )
 
 echo   [OK] Smoke test passed >> "%LOGFILE%"
 
-if "%1"=="--smoke-only" goto :health_summary
+if "%_ARG1%"=="--smoke-only" goto :health_summary
 
 echo.
 echo ============================================
@@ -456,7 +459,7 @@ uvicorn chat_to_cop.api:app --host 0.0.0.0 --port 8000
 goto :eof
 
 :live
-if "%2"=="" (
+if "%_ARG2%"=="" (
     echo ERROR: --live requires an IRC server URL.
     echo Usage: run.bat --live ws://IRC_SERVER_IP:8097
     pause
@@ -464,10 +467,10 @@ if "%2"=="" (
 )
 echo.
 echo ============================================
-echo   Connecting to live IRC: %2
+echo   Connecting to live IRC: %_ARG2%
 echo ============================================
 echo.
-set CHAT_TO_COP_IRC_URL=%2
+set CHAT_TO_COP_IRC_URL=%_ARG2%
 if not defined CHAT_TO_COP_LLM_URL set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
 if not defined CHAT_TO_COP_LLM_MODEL set CHAT_TO_COP_LLM_MODEL=!RECOMMENDED_MODEL!
 set CHAT_TO_COP_DB_PATH=data\mash_live.db
