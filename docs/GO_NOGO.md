@@ -214,7 +214,7 @@ troubleshooting.
 
 ```powershell
 # Step 1: Verify state
-cd C:\Users\hsclouse\GitProjects\act3\chat-to-cop
+cd C:\Users\user\GitProjects\act3\chat-to-cop
 git status                          # Should be clean, on main
 git pull                            # Should be no-op
 ruff check src/ tests/ scripts/     # Should pass
