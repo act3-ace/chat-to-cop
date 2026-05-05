@@ -74,6 +74,19 @@ Async Python WebSocket client that connects to the IRC server, joins all configu
 
 For development/testing, the router also supports replay mode: read DASH chat log files and feed them through the same agent interface with original timestamps.
 
+### Multi-line Reassembly
+
+Between the message router and channel agents, a reassembly layer (`ingestion/multiline.py`) merges structured multi-line messages. Military chat uses numbered "5 line" formats for CAS requests, cyber taskings, and ISR requests:
+
+    LINE 0: BCOA 0502-01A
+    LINE 1: OCO Prime, to deny cyber on mobile C2
+    LINE 2: Cigar 252 / 331 NM
+    LINE 3: System Denial, Power Denial, Geolocation
+    LINE 4: for specified duration
+    LINE 5: USSF will report if denial is successful
+
+These arrive as 6 separate IRC messages but represent a single tasking. The `MultiLineBuffer` buffers consecutive LINE N: messages from the same sender/channel and emits a single merged `IRCMessage` when the block ends (different speaker, non-LINE message, or a new LINE 0). The channel agent sees one coherent message instead of six fragments.
+
 ### Channel Agent
 
 The core component. One instance per IRC channel, each maintaining:

@@ -115,9 +115,34 @@ Hamilton supporting remotely.
    - `python -m chat_to_cop.cli.adapt_schema` can read these specs
    - Map CoPRecord fields to Track, PaeOutput, etc.
 
+### Multi-line Message Reassembly (Mia's idea)
+- Implemented `src/chat_to_cop/ingestion/multiline.py` -- MultiLineBuffer
+  merges LINE 0 through LINE 5 ("5 line" plans) into a single IRCMessage
+- Wired into replay.py at both live IRC and replay message sources
+- 22 tests in `tests/test_multiline.py`, 1173 total suite passes
+- Commit: 98ffe6a
+
+### DELTRON Training Data Script
+- `scripts/pull_deltron_training_data.py` -- pulls all classified messages,
+  entity table, threat table, bin snapshots from DELTRON REST API
+- Output: `data/deltron_training/` (messages_all.json, messages_summary.csv, etc.)
+- Commit: 08f0e81
+
+### GitHub Mirror and Vendor Access
+- Sanitized orphan snapshot pushed to act3-ace/chat-to-cop (commit 5f12c4c)
+- Branch protection enabled on GitHub main (requires 1 approving review)
+- Natan Vidra (nv78) invited as collaborator for MASH shell scripts
+- Cleaned 18 accidentally tracked PNGs from repo, updated .gitignore
+- Commit: 9661673
+
 ## Files Modified This Session
 
 - `src/chat_to_cop/dashboard.py` (JS escaping fix)
 - `src/chat_to_cop/api.py` (admin endpoint null-safety)
 - `scripts/pull_mash_schemas.py` (complete rewrite, aggressive discovery)
 - `data/mash_schemas/` (74 files from MASH network pull)
+- `src/chat_to_cop/ingestion/multiline.py` (new -- multi-line reassembly)
+- `src/chat_to_cop/replay.py` (wrap message sources with reassemble_multiline)
+- `tests/test_multiline.py` (new -- 22 tests)
+- `scripts/pull_deltron_training_data.py` (new -- DELTRON data puller)
+- `.gitignore` (block *.png, *.jpg, Mia_*.bat, env)

@@ -12,6 +12,23 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- Multi-line message reassembly (2026-05-05): `src/chat_to_cop/ingestion/multiline.py`
+  buffers consecutive LINE N: messages from the same sender/channel and merges
+  them into a single IRCMessage before extraction. Handles CAS 5-lines, cyber
+  taskings, ISR requests. Wired into both live IRC and replay paths. 22 tests.
+- DELTRON training data puller (2026-05-05): `scripts/pull_deltron_training_data.py`
+  pulls all classified messages, entity table, threat table, and bin snapshots
+  from DELTRON's REST API. Outputs to `data/deltron_training/`.
+- GitHub branch protection: main branch on act3-ace/chat-to-cop now requires
+  PR with 1 approving review. Vendor collaborators create branches and PRs.
+
+### Fixed
+
+- Removed 18 accidentally tracked screenshot PNGs, a one-off bat file, and
+  bare env file from git tracking. Updated .gitignore to prevent recurrence.
+
+### Added
+
 - MASH CoP schema discovery (2026-05-05): `scripts/pull_mash_schemas.py`
   aggressively pulls all API schemas from the MASH event network. 10/12
   services discovered with full OpenAPI specs (74 files total). Data in
