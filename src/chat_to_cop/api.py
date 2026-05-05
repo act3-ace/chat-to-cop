@@ -29,6 +29,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, model_validator
 
+from chat_to_cop.config import PipelineConfig
 from chat_to_cop.dashboard import DASHBOARD_HTML
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.cop_writer import CoPWriter
@@ -44,7 +45,8 @@ _cop_writer: CoPWriter | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _store
-    _store = WorldStateStore("data/world_state.db")
+    config = PipelineConfig()
+    _store = WorldStateStore(config.db_path)
     await _store.open()
     yield
     if _store:
