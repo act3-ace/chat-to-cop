@@ -80,6 +80,8 @@ if exist ".git" (
     call :auto_update_convert
 )
 
+:after_auto_update
+
 echo [1/5] Checking prerequisites...
 echo.
 
@@ -94,7 +96,7 @@ if errorlevel 1 (
     echo.
     echo   Run "setup.bat" to install prerequisites automatically,
     echo   or install Python 3.12 manually from https://www.python.org/downloads/
-    echo   (check "Add Python to PATH" during install).
+    echo   ^(check "Add Python to PATH" during install^).
     echo.
     pause
     exit /b 1
@@ -130,7 +132,7 @@ REM -------------------------------------------------------------------
 
 set OLLAMA_OK=0
 if "%USE_CLOUD%"=="1" (
-    echo   Ollama: skipped (using remote backend)
+    echo   Ollama: skipped ^(using remote backend^)
     echo   [SKIP] Ollama -- cloud mode >> "%LOGFILE%"
     goto :skip_ollama_check
 )
@@ -177,11 +179,11 @@ if errorlevel 1 (
     echo   [WARN] No NVIDIA GPU >> "%LOGFILE%"
     if "%USE_CLOUD%"=="0" (
         echo.
-        echo   WARNING: Without a GPU, local inference will be very slow (5-30x).
+        echo   WARNING: Without a GPU, local inference will be very slow ^(5-30x^).
         echo   Consider using a remote backend instead:
         echo     run.bat --cloud http://REMOTE_SERVER:PORT/v1
         echo.
-        echo   Falling back to smallest model (model-b:3b) for CPU...
+        echo   Falling back to smallest model ^(model-b:3b^) for CPU...
         set RECOMMENDED_MODEL=model-b:3b
         set RECOMMENDED_PULL=model-b:3b
         set MODELFILE=
@@ -193,23 +195,23 @@ if errorlevel 1 (
     )
     REM Trim whitespace from VRAM
     for /f "tokens=*" %%x in ("!GPU_VRAM_MB!") do set GPU_VRAM_MB=%%x
-    echo   GPU: !GPU_NAME! (!GPU_VRAM_MB! MB VRAM)
+    echo   GPU: !GPU_NAME! ^(!GPU_VRAM_MB! MB VRAM^)
     echo   [OK] GPU: !GPU_NAME!, !GPU_VRAM_MB! MB VRAM >> "%LOGFILE%"
 
     REM Pick model based on VRAM
     REM 14B needs ~10GB (10240 MB), 7B needs ~6GB (6144 MB), 3B needs ~3GB
     if !GPU_VRAM_MB! GEQ 10240 (
-        echo   Recommended model: model-b:14b (best quality for your GPU)
+        echo   Recommended model: model-b:14b ^(best quality for your GPU^)
         set RECOMMENDED_MODEL=model-b:14b-8k
         set RECOMMENDED_PULL=model-b:14b
         set MODELFILE=deploy\ollama\Modelfile.14b
     ) else if !GPU_VRAM_MB! GEQ 6144 (
-        echo   Recommended model: model-b:7b (good match for your GPU)
+        echo   Recommended model: model-b:7b ^(good match for your GPU^)
         set RECOMMENDED_MODEL=model-b:7b-8k
         set RECOMMENDED_PULL=model-b:7b
         set MODELFILE=deploy\ollama\Modelfile.7b
     ) else (
-        echo   Recommended model: model-b:3b (your GPU has limited VRAM)
+        echo   Recommended model: model-b:3b ^(your GPU has limited VRAM^)
         set RECOMMENDED_MODEL=model-b:3b
         set RECOMMENDED_PULL=model-b:3b
         set MODELFILE=
@@ -223,7 +225,7 @@ REM -------------------------------------------------------------------
 
 docker --version >nul 2>&1
 if errorlevel 1 (
-    echo   Docker: not found (optional -- needed only for containerized deployment)
+    echo   Docker: not found ^(optional -- needed only for containerized deployment^)
 ) else (
     for /f "tokens=3 delims= " %%v in ('docker --version 2^>^&1') do set DOCKVER=%%v
     echo   Docker: !DOCKVER!
@@ -249,11 +251,11 @@ python -c "from chat_to_cop.models.cop_update import CoPUpdate" >nul 2>&1
 if errorlevel 1 (
     REM Check for bundled wheels first (offline install)
     if exist vendor\*.whl (
-        echo   Installing package from bundled wheels (offline)...
+        echo   Installing package from bundled wheels ^(offline^)...
         python -m pip install --no-index --find-links vendor\ -e ".[dev]"
         echo   [INSTALL] Used vendor wheels >> "%LOGFILE%"
     ) else (
-        echo   Installing package (first run only, may take 2-5 minutes)...
+        echo   Installing package ^(first run only, may take 2-5 minutes^)...
         python -m pip install -e ".[dev]"
     )
     if errorlevel 1 (
@@ -296,7 +298,7 @@ if errorlevel 1 (
 REM Check if the recommended model exists
 ollama list 2>nul | findstr /c:"!RECOMMENDED_MODEL!" >nul 2>&1
 if errorlevel 1 (
-    echo   Pulling !RECOMMENDED_PULL! (this may take a few minutes on first run)...
+    echo   Pulling !RECOMMENDED_PULL! ^(this may take a few minutes on first run^)...
     ollama pull !RECOMMENDED_PULL!
     if defined MODELFILE (
         echo   Creating 8K context variant...
@@ -391,7 +393,7 @@ if errorlevel 1 (
     if "%USE_CLOUD%"=="0" (
         echo   Your local LLM backend did not respond correctly.
         echo   Common fixes:
-        echo     1. Make sure Ollama is running (open Start menu, search "Ollama")
+        echo     1. Make sure Ollama is running ^(open Start menu, search "Ollama"^)
         echo     2. Try a smaller model:  ollama pull model-b:3b
         echo     3. Use a remote server instead:
         echo.
@@ -474,9 +476,9 @@ echo   GPU:       !GPU_NAME! (!GPU_VRAM_MB! MB)
 echo   Backend:   !CHAT_TO_COP_LLM_URL!
 echo   Model:     !CHAT_TO_COP_LLM_MODEL!
 if "%USE_CLOUD%"=="1" (
-    echo   Mode:      Remote (cloud)
+    echo   Mode:      Remote ^(cloud^)
 ) else (
-    echo   Mode:      Local (Ollama)
+    echo   Mode:      Local ^(Ollama^)
 )
 echo   Log file:  %CD%\%LOGFILE%
 echo.
@@ -514,8 +516,11 @@ goto :eof
 
 :auto_update_pull
 REM Already a git clone -- pull latest changes.
+REM Uses goto :after_auto_update (not goto :eof) so that if git pull
+REM changes this file, the goto re-scans from file start and lands
+REM correctly despite the stale call-return byte offset.
 git --version >nul 2>&1
-if errorlevel 1 goto :eof
+if errorlevel 1 goto :after_auto_update
 echo   Checking for updates...
 git pull --ff-only >nul 2>&1
 if errorlevel 1 (
@@ -526,13 +531,13 @@ if errorlevel 1 (
     echo   [OK] git pull succeeded >> "%LOGFILE%"
 )
 echo.
-goto :eof
+goto :after_auto_update
 
 :auto_update_convert
 REM Not a git clone -- try to convert extracted zip into a clone
 REM so future runs get auto-updates.
 git --version >nul 2>&1
-if errorlevel 1 goto :eof
+if errorlevel 1 goto :after_auto_update
 echo   Setting up auto-updates...
 echo   [AUTO-UPDATE] Converting zip to git clone >> "%LOGFILE%"
 git init >nul 2>&1
@@ -547,15 +552,15 @@ if errorlevel 1 goto :convert_failed
 echo   Auto-updates enabled -- future runs will pull the latest code.
 echo   [OK] Converted zip to git clone >> "%LOGFILE%"
 echo.
-goto :eof
+goto :after_auto_update
 
 :convert_failed
 if exist ".git" rmdir /s /q .git >nul 2>&1
 echo   Could not connect to code server -- continuing without auto-updates.
-echo   (This is fine. Everything still works, you just won't get automatic updates.)
+echo   ^(This is fine. Everything still works, you just won't get automatic updates.^)
 echo   [WARN] zip-to-clone conversion failed >> "%LOGFILE%"
 echo.
-goto :eof
+goto :after_auto_update
 
 REM -------------------------------------------------------------------
 REM Help
