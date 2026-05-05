@@ -67,41 +67,38 @@ def _get_store() -> WorldStateStore:
     return _store
 
 
-def _get_cop_writer() -> CoPWriter:
-    if _cop_writer is None:
-        raise RuntimeError("CoPWriter not initialized")
-    return _cop_writer
-
-
 # --- Admin endpoints (pause/resume kill switch) ---
 
 
 @app.post("/admin/pause")
 async def admin_pause():
     """Immediately pause all CoP writes. Incoming updates queue locally."""
-    writer = _get_cop_writer()
-    writer.pause()
-    return {"paused": True, "queue_depth": writer.pause_queue_size}
+    if _cop_writer is None:
+        return {"paused": False, "queue_depth": 0, "error": "standalone mode"}
+    _cop_writer.pause()
+    return {"paused": True, "queue_depth": _cop_writer.pause_queue_size}
 
 
 @app.post("/admin/resume")
 async def admin_resume():
     """Resume CoP writes and flush queued updates."""
-    writer = _get_cop_writer()
-    writer.resume()
-    results = await writer.flush_pause_queue()
+    if _cop_writer is None:
+        return {"paused": False, "flushed": 0, "queue_depth": 0, "error": "standalone mode"}
+    _cop_writer.resume()
+    results = await _cop_writer.flush_pause_queue()
     return {
         "paused": False,
         "flushed": len(results),
-        "queue_depth": writer.pause_queue_size,
+        "queue_depth": _cop_writer.pause_queue_size,
     }
 
 
 @app.get("/admin/status")
 async def admin_status():
     """Current pause state and queue depth."""
-    writer = _get_cop_writer()
-    return {"paused": writer.paused, "queue_depth": writer.pause_queue_size}
+    if _cop_writer is None:
+        return {"paused": False, "queue_depth": 0}
+    return {"paused": _cop_writer.paused, "queue_depth": _cop_writer.pause_queue_size}
 
 
 @app.get("/", response_class=RedirectResponse, include_in_schema=False)
