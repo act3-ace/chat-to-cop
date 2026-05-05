@@ -12,6 +12,27 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- MASH CoP schema discovery (2026-05-05): `scripts/pull_mash_schemas.py`
+  aggressively pulls all API schemas from the MASH event network. 10/12
+  services discovered with full OpenAPI specs (74 files total). Data in
+  `data/mash_schemas/<service>/openapi_spec.json`. Issue #17 UNBLOCKED.
+  - TrackManager (14 endpoints, 8 schemas): `POST /tracks`, `PUT /tracks/{id}`
+  - SmartPackManager (12 endpoints, 33 schemas): AirOperationsDirective, JTO targets
+  - EffectsManager (30 endpoints, 23 schemas): weapons DB with Pk tables
+  - EventManager (16 endpoints, 18 schemas): PaeInput/PaeOutput with SSE
+  - MissionManager (28 endpoints, 29 schemas): COA, Commander's Intent, GBC
+  - Also: AOI, POI, MEF managers; DELTRON v0.5.8-mash1; IRC Multiplexer v2.2.0
+
+### Fixed
+
+- Dashboard JS syntax error: Python `\'` in triple-quoted strings produced
+  bare quotes that broke JavaScript string literals. Fixed to `\\'`.
+- Admin endpoints (/admin/status, /admin/pause, /admin/resume) returned 500
+  when CoPWriter not initialized (standalone serve.bat mode). Now return
+  safe defaults.
+
+### Added
+
 - Contractor/vendor backend guide docs/BACKENDS.md (!150): Setup
   instructions for all 6 backends (Ollama, vLLM/LM Studio/llama.cpp,
   Azure OpenAI, Bedrock, Anthropic, Ask Sage), environment variable

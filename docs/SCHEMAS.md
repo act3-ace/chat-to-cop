@@ -2,11 +2,142 @@
 
 Reference documentation for the data formats used in the DASH/MASH event infrastructure.
 
-## CoP Database (Pending)
+## CoP Database (DISCOVERED 2026-05-05)
 
-The contractor team is building the Track Manager and SmartPack Manager databases for MASH. We don't have the final schema yet. When it arrives, map the entity types below to the actual database fields.
+Full OpenAPI specs pulled from the live MASH network. Raw specs in `data/mash_schemas/<service>/openapi_spec.json`.
 
-**Key design decision from the planning meeting:** All database objects have a freeform JSON metadata dictionary (string key-value pairs). If extracted data doesn't map to a strict schema field, put it in metadata. Don't lose data just because we can't categorize it yet.
+### Track Manager (http://10.5.185.29:3021)
+
+The primary write target for chat-to-cop. 14 endpoints, 8 schemas.
+
+**Write endpoints:**
+- `POST /tracks` -- Create a new track (assigns ID if not provided)
+- `PUT /tracks/{id}` -- Create or update (upsert) by ID
+
+**Query endpoints:**
+- `GET /tracks` -- All tracks
+- `GET /tracks/{id}` -- By ID
+- `GET /tracks/label/{label}` -- By label (callsign)
+- `GET /tracks/identifier/{identifier}` -- By id, label, sourceId, JTN, or alias
+- `GET /tracks/alias/{identifier}` -- Aliases for a track
+- `GET /trackAliasByJtn/{jtn}` -- Aliases by JTN
+
+**Streaming:**
+- `GET /tracks-sse` -- Server-Sent Events stream of TrackCreatedOrUpdated
+
+**Track schema:**
+```json
+{
+  "id": "string",
+  "sourceId": "string|null",
+  "aliases": {"string": "string"},
+  "originator": "string|null",
+  "label": "string|null",
+  "entityType": "string|null",
+  "cotType": "string|null",
+  "location": {"type": "Point", "coordinates": [lon, lat, alt]},
+  "rollDeg": 0.0,
+  "pitchDeg": 0.0,
+  "headingDeg": 0.0,
+  "speed": 0.0,
+  "missionNumber": "string|null",
+  "capabilities": ["Key:Value", ...],
+  "comms": ["Key:Value", ...],
+  "weapons": ["string", ...],
+  "targets": ["string", ...],
+  "missions": ["Key:Value", ...],
+  "affiliation": 0,
+  "aliasAffiliations": {"alias": affiliation_int},
+  "dimension": 0,
+  "manned": false,
+  "lastUpdateTime": "ISO-8601",
+  "detectionTime": "ISO-8601",
+  "additionalInfo": "string|null",
+  "icon": "string|null",
+  "genMsgJtn": "string|null"
+}
+```
+
+**Affiliation enum (integer):** 0=Unknown, 1=Friend, 2=Neutral, 3=Hostile (inferred from live data)
+
+**Dimension enum (integer):** 0=Air, 1=Land, 2=Surface, 3=Subsurface, 4=Space (inferred)
+
+**Key insight: missions[], capabilities[], comms[] use "Key:Value" string arrays.**
+Observed keys in missions[]: Callsign, CallShort, AirEntityType, AirEntityTypeDesc,
+AirActivity, AirActivityDesc, ModeI, ModeII, ModeIII, ModeIIICodeDesc, J13UpdateTime,
+Fuel, FuelFn, MsgTimeZ, TrackNumber, AirSpecificType, AirSpecificTypeDesc, OpCapAircraft,
+StoresSummation.
+
+**Design note:** This confirms the "freeform metadata dictionary" approach from the planning meeting. The string arrays ARE the metadata. Our CoPWriter should format extracted data as "Key:Value" strings in the appropriate array.
+
+### Event Manager (http://10.5.185.29:3016)
+
+PAE (Perceive Actionable Entity) input/output pipeline. 16 endpoints, 18 schemas.
+
+**Write endpoints:**
+- `POST /paeoutputs` -- Write a single PAE output
+- `POST /paeoutputs/bulk` -- Batch write
+- `GET /paeoutputs-sse` -- SSE stream of outputs
+
+**Key schemas:** PaeInput, PaeOutput, Event, EventAction, EventTarget, EventDetail
+
+### Mission Manager (http://10.5.185.29:3022)
+
+GBC (Generate Battle COA) output. 28 endpoints, 29 schemas.
+
+**Write endpoints:**
+- `POST /missions/coa` -- Create Course of Action
+- `PUT /missions/coa/{id}` -- Upsert COA
+- `POST /missions/coa-request` -- COA generation request
+- `POST /missions/intent` -- Commander's Intent
+
+**Key schemas:** Coa, CoaRequest, CommandersIntent, GbcOutput, BattleCoaHyperedge,
+BattleCoaVertex, BattleCoaMetadata, SelectedAction, WindowOfOpportunity
+
+### Effects Manager (http://10.5.185.29:3024)
+
+Weapons and effects database. 30 endpoints, 23 schemas.
+
+**Write endpoints (by category):**
+- `/damageeffect`, `/damageeffects/bulk`
+- `/cyberattacks`, `/cybereffect`, `/cybereffects/bulk`
+- `/electronicattackeffect`, `/electronicattackeffects/bulk`
+- `/sensingeffect`, `/sensingeffects/bulk`
+- `/commtransporteffect`, `/commtransporteffects/bulk`
+- `/effectorconfiguration/{callsign}`, `/effectorplays/bulk`
+- `/decisionoperator/bulk`
+
+**Key schemas:** DamageEffect (with Pk tables by target type), CyberAttack,
+ElectronicAttackEffect, SensingEffect, EffectorConfiguration, EffectorPlays
+
+### SmartPack Manager (http://10.5.185.29:3028)
+
+Operational planning data. 12 endpoints, 33 schemas.
+
+**CRUD endpoints:**
+- `/api/AirOperationsDirective` -- AODs
+- `/api/PulseJointTaskOrderTarget` -- JTO targets
+- `/api/AirOperationsCenter` -- AOCs
+
+**Key schemas:** DbAirOperationsDirective (with CDE, loadouts, targets),
+DbPulseJointTaskOrderTarget, DbBullseye, DbAirfield, DbAreaOfResponsibility,
+CommandersIntent, OperationalDesignSection, ExecutionSection
+
+### Other Services
+
+| Service | Port | Endpoints | Notes |
+|---------|------|-----------|-------|
+| AreaOfInterestManager | :3015 | 8 | AOI CRUD, 10 schemas |
+| PointOfInterestManager | :3017 | 6 | POI CRUD, 2 schemas |
+| MatchEffectorManager | :3027 | 10 | MEF output, 3 schemas |
+| DELTRON | :3060 | 13 | Jeremy's importance scorer, 18 schemas |
+| IRC Multiplexer | :3080 | 8 | Channel/message API, 3 schemas |
+
+---
+
+## Historical: BattleEffect Schema V2 (DASH 2 reference)
+
+**Note:** The schemas above (from MASH live network) supersede this historical reference. Kept for comparison with DASH 2 vendor output format.
 
 ## BattleEffect Schema V2
 
