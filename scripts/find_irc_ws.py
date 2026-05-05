@@ -148,9 +148,11 @@ async def main():
     if working:
         best = working[0]
         print(f"SUCCESS -- use this URL:\n")
+        print(f"  run.bat --live {best}")
+        print(f"\nOr manually:")
         print(f"  python -m chat_to_cop --irc-url {best}")
-        print(f"\nOr in .env:")
-        print(f"  CHAT_TO_COP_IRC_URL={best}")
+        print(f"\nEnv var (if needed):")
+        print(f"  set CHAT_TO_COP_IRC_URL={best}")
         if len(working) > 1:
             print(f"\nOther working endpoints: {working[1:]}")
     else:
