@@ -1,0 +1,173 @@
+# Apptainer/Singularity definition for DSRC HPC systems
+#
+# IMPORTANT: Compute nodes have NO INTERNET ACCESS. Ollama + the LLM model
+# must be baked into the container at build time.
+#
+# Build workflow (on a machine WITH internet):
+#   1. Download Ollama model: bash deploy/dsrc/download_model.sh
+#   2. Build container:       apptainer build chat-to-cop.sif deploy/dsrc/singularity.def
+#   3. Transfer to Narwhal:   scp chat-to-cop.sif user@narwhal.hpc.mil:$WORKDIR/
+#
+# DO NOT build on HPC login nodes - they lack build privileges and internet.
+#
+# Run: apptainer run --nv chat-to-cop.sif <path-to-chat.zip> [options]
+
+Bootstrap: docker
+From: nvidia/cuda:12.1-cudnn8-runtime-ubuntu22.04
+
+%labels
+    Author Hamilton Clouse
+    Version 1.0
+    Description Chat-to-CoP pipeline with Ollama + Qwen2.5:7B for DSRC HPCs (offline)
+
+%environment
+    # Python
+    export PYTHONUNBUFFERED=1
+    export PYTHONDONTWRITEBYTECODE=1
+    export PATH="/opt/venv/bin:/opt/ollama/bin:$PATH"
+
+    # Ollama model storage (baked in)
+    export OLLAMA_MODELS=/opt/ollama-models
+    export OLLAMA_HOST=127.0.0.1:11434
+
+    # Chat-to-CoP defaults
+    export CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
+    export CHAT_TO_COP_LLM_MODEL=qwen2.5:7b
+    export CHAT_TO_COP_FALLBACK_MODEL=qwen2.5:3b
+    export CHAT_TO_COP_LLM_NUM_CTX=8192
+    export CHAT_TO_COP_LLM_TIMEOUT=120
+    export CHAT_TO_COP_METRICS=true
+
+%post
+    # =========================================================================
+    # System dependencies
+    # =========================================================================
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3.11-dev \
+        python3-pip \
+        curl \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+    ln -sf /usr/bin/python3.11 /usr/bin/python3
+    ln -sf /usr/bin/python3.11 /usr/bin/python
+
+    # =========================================================================
+    # Install Ollama
+    # =========================================================================
+    mkdir -p /opt/ollama/bin
+    curl -fsSL https://ollama.com/download/ollama-linux-amd64 -o /opt/ollama/bin/ollama
+    chmod +x /opt/ollama/bin/ollama
+
+    # =========================================================================
+    # Python virtual environment
+    # =========================================================================
+    python3 -m venv /opt/venv
+    . /opt/venv/bin/activate
+
+    pip install --no-cache-dir --upgrade pip wheel setuptools
+
+    # Install chat-to-cop and all dependencies
+    pip install --no-cache-dir \
+        pydantic>=2.0 \
+        pydantic-settings>=2.0 \
+        instructor>=1.0 \
+        openai>=1.0 \
+        websockets>=12.0 \
+        fastapi>=0.110 \
+        uvicorn>=0.27 \
+        loguru>=0.7 \
+        aiosqlite>=0.20 \
+        tenacity>=8.0 \
+        pybreaker>=1.0 \
+        httpx>=0.27
+
+    # =========================================================================
+    # Create directories
+    # =========================================================================
+    mkdir -p /app/src /app/config /app/data /opt/ollama-models
+    chmod -R 755 /app /opt/ollama-models
+
+%files
+    # Application source code
+    src/chat_to_cop /app/src/chat_to_cop
+    pyproject.toml /app/pyproject.toml
+    config/ /app/config/
+
+    # Pre-downloaded Ollama model blobs (from deploy/dsrc/ollama-models/)
+    # These must exist before building - run download_model.sh first!
+    deploy/dsrc/ollama-models /opt/ollama-models
+
+%post
+    # Install the chat-to-cop package itself
+    . /opt/venv/bin/activate
+    cd /app && pip install --no-cache-dir .
+
+%runscript
+    #!/bin/bash
+    # Usage: apptainer run --nv chat-to-cop.sif /path/to/chat.zip [options]
+    #
+    # This starts Ollama, waits for it, then runs the replay pipeline.
+    # For a long-running service, use the submit_slurm.sh script instead.
+
+    export OLLAMA_MODELS=/opt/ollama-models
+    export PATH="/opt/venv/bin:/opt/ollama/bin:$PATH"
+
+    # Start Ollama in background
+    ollama serve &
+    OLLAMA_PID=$!
+
+    # Wait for Ollama to be ready
+    echo "Waiting for Ollama..."
+    retries=0
+    until curl -sf http://127.0.0.1:11434/api/tags > /dev/null 2>&1; do
+        retries=$((retries + 1))
+        if [ "$retries" -ge 60 ]; then
+            echo "ERROR: Ollama did not start after 120 seconds"
+            kill $OLLAMA_PID 2>/dev/null
+            exit 1
+        fi
+        sleep 2
+    done
+    echo "Ollama ready. Running replay..."
+
+    # Run the replay pipeline
+    python -m chat_to_cop.replay "$@"
+    EXIT_CODE=$?
+
+    # Cleanup
+    kill $OLLAMA_PID 2>/dev/null
+    exit $EXIT_CODE
+
+%help
+    ============================================================================
+    Chat-to-CoP Pipeline for DSRC HPC Systems
+    ============================================================================
+
+    AI staff officers: real-time world-state extraction from military IRC chat
+    to Common Operating Picture. Includes Ollama + Qwen 2.5 7B baked in.
+
+    QUICK START:
+      apptainer run --nv chat-to-cop.sif /path/to/chat.zip --num-ctx 8192
+
+    REPLAY OPTIONS:
+      --url URL          LLM endpoint (default: local Ollama)
+      --model MODEL      Model name (default: qwen2.5:7b)
+      --db PATH          SQLite output path (default: data/world_state.db)
+      --num-ctx N        Context window size (default: 8192)
+      --timeout SECS     Per-message LLM timeout
+
+    STORAGE:
+      - Run from $WORKDIR (Lustre, high-performance)
+      - Archive results to $ARCHIVE_HOME (persistent)
+      - Do not use $HOME for large I/O
+
+    INCLUDED:
+      - Ollama server (GPU-accelerated)
+      - Qwen 2.5 7B model (~5GB, fits in 32GB V100)
+      - Qwen 2.5 3B fallback model (~2GB)
+      - Full chat-to-cop pipeline with degrading backend
+
+    ============================================================================

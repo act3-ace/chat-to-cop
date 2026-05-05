@@ -1,0 +1,278 @@
+stages:
+  - check
+  - test
+  - build
+  - release
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  # Container registry path on DLE GitLab
+  CONTAINER_IMAGE: "$CI_REGISTRY_IMAGE"
+
+cache:
+  paths:
+    - .pip-cache/
+
+# --- Stage: check (every push) ---
+
+lint:
+  stage: check
+  image: python:3.12-slim
+  script:
+    - pip install ruff
+    - ruff check src/ tests/
+    - ruff format --check src/ tests/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+# --- Stage: test (every push) ---
+
+test:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install -e ".[dev]"
+    - pytest tests/ -k "not integration" -v --tb=short
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+# --- Stage: build (main branch only) ---
+# Uses Kaniko instead of Docker-in-Docker — DLE shared runners don't support DinD.
+
+build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"username\":\"${CI_REGISTRY_USER}\",\"password\":\"${CI_REGISTRY_PASSWORD}\"},\"https://index.docker.io/v1/\":{\"username\":\"${DOCKERHUB_USER:-}\",\"password\":\"${DOCKERHUB_TOKEN:-}\"}}}" > /kaniko/.docker/config.json
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${CONTAINER_IMAGE}:latest"
+      --destination "${CONTAINER_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+      --cache=true
+      --skip-tls-verify
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# --- Stage: build (tagged releases) ---
+
+build-release:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"username\":\"${CI_REGISTRY_USER}\",\"password\":\"${CI_REGISTRY_PASSWORD}\"},\"https://index.docker.io/v1/\":{\"username\":\"${DOCKERHUB_USER:-}\",\"password\":\"${DOCKERHUB_TOKEN:-}\"}}}" > /kaniko/.docker/config.json
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${CONTAINER_IMAGE}:${CI_COMMIT_TAG}"
+      --destination "${CONTAINER_IMAGE}:latest"
+      --cache=true
+      --skip-tls-verify
+      --tar-path chat-to-cop.tar
+  artifacts:
+    paths:
+      - chat-to-cop.tar
+    expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+# Build Apptainer/Singularity image from the Docker tarball (avoids DLE
+# registry TLS issues — Singularity can't skip cert verification).
+build-apptainer:
+  stage: build
+  image:
+    name: quay.io/singularity/singularity:v4.1.0
+    entrypoint: [""]
+  variables:
+    SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
+  script:
+    - singularity build chat-to-cop_${CI_COMMIT_TAG:-latest}.sif docker-archive:chat-to-cop.tar
+  artifacts:
+    paths:
+      - "*.sif"
+    expire_in: 90 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  needs:
+    - build-release
+
+# Build HPC image on an AG compute node via SSH. DLE shared runners OOM on
+# the 20GB+ image; AG nodes have Docker and enough RAM (128GB on r5.4xlarge).
+# Requires CI variables: AG_SSH_KEY (file), AG_USERNAME, AG_SNIPPET_ID,
+# DLE_GITLAB_TOKEN. See deploy/ci/ag-build-hpc.sh for details.
+build-hpc-on-ag:
+  stage: build
+  image: ubuntu:22.04
+  variables:
+    AG_NODE_TYPE: "m7i.4xlarge"
+    AG_WALLTIME: "2:00:00"
+    AG_DISK_GB: "90"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - cp "$AG_SSH_KEY" ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
+    - |
+      cat > ~/.ssh/config <<EOF
+      Host ag-head
+          HostName ag.example.mil
+          User $AG_USERNAME
+          IdentityFile ~/.ssh/ag_key
+          IdentitiesOnly yes
+      EOF
+    - chmod 600 ~/.ssh/config
+    - ssh-keyscan ag.example.mil >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    - bash deploy/ci/ag-build-hpc.sh
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+  timeout: 3h
+
+# Validate the portable (flash drive) deployment files on every push that
+# touches them. Runs on shared runners (no Docker needed): checks that all
+# required files exist, the compose YAML parses correctly, and the Python
+# package imports cleanly. The full Docker build + model bake runs in the
+# build-flash-drive job below (requires AG credentials).
+test-portable:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install -q pyyaml .
+    - python scripts/validate_portable.py
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - .gitlab-ci.yml
+        - Dockerfile
+        - deploy/portable/**
+        - deploy/ci/ag-*flash*
+        - scripts/package-flash-drive.sh
+        - scripts/mock_irc_server.py
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - .gitlab-ci.yml
+        - Dockerfile
+        - deploy/portable/**
+        - deploy/ci/ag-*flash*
+        - scripts/package-flash-drive.sh
+        - scripts/mock_irc_server.py
+
+# Build flash drive package (Docker images + portable deploy files) on an AG
+# compute node. No GPU needed — m7i.4xlarge provides Docker + enough disk/RAM
+# for image builds and Ollama model bake. Output is a tarball artifact.
+# Requires CI variables: AG_SSH_KEY (file), AG_USERNAME, AG_SNIPPET_ID,
+# DLE_GITLAB_TOKEN. See deploy/ci/ag-build-flash-drive.sh for details.
+build-flash-drive:
+  stage: build
+  image: ubuntu:22.04
+  variables:
+    AG_NODE_TYPE: "m7i.4xlarge"
+    AG_WALLTIME: "1:00:00"
+    AG_DISK_GB: "100"
+    FLASH_DRIVE_MODEL: "qwen2.5:7b"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - cp "$AG_SSH_KEY" ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
+    - |
+      cat > ~/.ssh/config <<EOF
+      Host ag-head
+          HostName ag.example.mil
+          User $AG_USERNAME
+          IdentityFile ~/.ssh/ag_key
+          IdentitiesOnly yes
+      EOF
+    - chmod 600 ~/.ssh/config
+    - ssh-keyscan ag.example.mil >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    - bash deploy/ci/ag-build-flash-drive.sh --model "$FLASH_DRIVE_MODEL"
+  artifacts:
+    paths:
+      - chat-to-cop-portable.tar.gz
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+  timeout: 2h
+
+# Pull HPC image from DLE registry (skopeo handles TLS skip) and convert
+# to Apptainer .sif for DSRC deployment.
+build-hpc-sif:
+  stage: build
+  image: fedora:40
+  variables:
+    SINGULARITY_CACHEDIR: "$CI_PROJECT_DIR/.singularity-cache"
+  script:
+    - dnf install -y skopeo apptainer
+    - skopeo copy
+      --src-tls-verify=false
+      --src-creds "${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD}"
+      docker://${CONTAINER_IMAGE}:hpc-${CI_COMMIT_TAG:-latest}
+      docker-archive:chat-to-cop-hpc.tar
+    - singularity build chat-to-cop-hpc_${CI_COMMIT_TAG:-latest}.sif docker-archive:chat-to-cop-hpc.tar
+    - rm -f chat-to-cop-hpc.tar
+  artifacts:
+    paths:
+      - "chat-to-cop-hpc_*.sif"
+    expire_in: 90 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+      when: manual
+      allow_failure: true
+  needs:
+    - build-hpc-on-ag
+  timeout: 1h
+
+# --- Stage: release (tagged releases) ---
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  variables:
+    SSL_CERT_FILE: "$CI_SERVER_TLS_CA_FILE"
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "Release $CI_COMMIT_TAG"
+    description: |
+      ## Container Images
+
+      **Docker:**
+      ```
+      docker pull $CONTAINER_IMAGE:$CI_COMMIT_TAG
+      ```
+
+      **Apptainer/Singularity (for DSRC HPC):**
+      Download `chat-to-cop_$CI_COMMIT_TAG.sif` from the build artifacts.
+      ```
+      singularity run chat-to-cop_$CI_COMMIT_TAG.sif
+      ```
+
+      See the [CHANGELOG](CHANGELOG.md) for details.
+    assets:
+      links:
+        - name: "Apptainer SIF image (slim, no LLM)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/chat-to-cop_${CI_COMMIT_TAG}.sif?job=build-apptainer"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  needs:
+    - build-apptainer

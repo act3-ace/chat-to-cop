@@ -1,0 +1,60 @@
+{
+  "name": "vllm-chat2cop",
+  "description": "vLLM serving Qwen2.5-14B-Instruct-AWQ for chat-to-cop world-state extraction",
+  "version": "1.0.0",
+  "type": "custom",
+  "port": 8000,
+  "healthcheck": {
+    "path": "/v1/models",
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3
+  },
+  "parameters": {
+    "MODEL_NAME": {
+      "description": "HuggingFace model ID to serve",
+      "default": "Qwen/Qwen2.5-14B-Instruct-AWQ",
+      "required": false
+    },
+    "MAX_MODEL_LEN": {
+      "description": "Maximum context window length (tokens)",
+      "default": "8192",
+      "required": false
+    },
+    "GPU_MEMORY_UTIL": {
+      "description": "Fraction of GPU memory to use (0.0-1.0)",
+      "default": "0.90",
+      "required": false
+    },
+    "TRUST_REMOTE_CODE": {
+      "description": "Trust remote code in model repo (needed for Qwen)",
+      "default": "1",
+      "required": false
+    },
+    "HF_CACHE_DIR": {
+      "description": "Directory for HuggingFace model cache (use /tmp to avoid quota)",
+      "default": "/tmp/huggingface",
+      "required": false
+    }
+  },
+  "docker": {
+    "image": "vllm/vllm-openai:v0.19.1-cu130",
+    "gpu": true,
+    "shm_size": "4g",
+    "volumes": [
+      "${HF_CACHE_DIR}:/root/.cache/huggingface"
+    ],
+    "command": [
+      "--model", "${MODEL_NAME}",
+      "--max-model-len", "${MAX_MODEL_LEN}",
+      "--gpu-memory-utilization", "${GPU_MEMORY_UTIL}",
+      "--trust-remote-code",
+      "--dtype", "auto"
+    ]
+  },
+  "tags": ["llm", "gpu", "chat-to-cop", "mash"],
+  "credits_per_hour": {
+    "g4dn.xlarge": 92,
+    "p3.2xlarge": 510
+  }
+}

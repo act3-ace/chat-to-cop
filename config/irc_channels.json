@@ -1,0 +1,64 @@
+{
+    "description": "IRC server configuration from DASH 3 GBC event. MASH may use different channels/server.",
+    "source": "DASH 3 GBC .http/irc/config.json",
+    "server": {
+        "url": "ws://10.0.0.1:8097",
+        "protocol": "websocket"
+    },
+    "channels": {
+        "typed_chat": {
+            "#c2_coord": {
+                "description": "C2 coordination — primary operational channel",
+                "priority": "HIGH",
+                "content": "Tasking, status updates, coordination between cells"
+            },
+            "#isr_reports": {
+                "description": "Intelligence, surveillance, reconnaissance reports",
+                "priority": "HIGH",
+                "content": "TACREPs, track identification, threat assessments"
+            },
+            "#fires": {
+                "description": "Fires coordination",
+                "priority": "HIGH",
+                "content": "Fire missions, strike coordination, BDA"
+            },
+            "#jprc": {
+                "description": "Joint Personnel Recovery Center",
+                "priority": "MEDIUM",
+                "content": "CSAR, bailout reports, survivor locations"
+            },
+            "#vegas_internal": {
+                "description": "Exercise control internal channel",
+                "priority": "LOW",
+                "content": "STARTEX/ENDEX, calibration, white cell coordination"
+            }
+        },
+        "voice_stt": {
+            "#stt_C2Coord": {
+                "description": "Speech-to-text from C2 coordination voice net",
+                "priority": "MEDIUM",
+                "content": "Transcribed voice from primary coordination frequency"
+            },
+            "#stt_hydroBMA": {
+                "description": "STT from Hydro Battle Management Area position",
+                "priority": "MEDIUM",
+                "content": "Transcribed voice from Hydro BM position"
+            },
+            "#stt_crusherBMA": {
+                "description": "STT from Crusher BMA position",
+                "priority": "MEDIUM",
+                "content": "Transcribed voice from Crusher BM position"
+            },
+            "#stt_mesquiteBMA": {
+                "description": "STT from Mesquite BMA position",
+                "priority": "MEDIUM",
+                "content": "Transcribed voice from Mesquite BM position"
+            },
+            "#stt_taipanBMA": {
+                "description": "STT from Taipan BMA position",
+                "priority": "MEDIUM",
+                "content": "Transcribed voice from Taipan BM position"
+            }
+        }
+    }
+}

@@ -1,0 +1,27 @@
+# LiteLLM Proxy Configuration for AWS Bedrock on Analytics Gateway
+#
+# Exposes Bedrock Claude Sonnet via an OpenAI-compatible /v1/chat/completions
+# endpoint. Operators point CHAT_TO_COP_LLM_URL at this proxy and get
+# Claude Sonnet without needing AWS credentials on their laptop.
+#
+# Region: us-gov-west-1 (AWS GovCloud, IL5-approved on AG)
+#
+# Usage:
+#   litellm --config litellm_config.yaml --port 4000 --host 0.0.0.0
+
+model_list:
+  - model_name: claude-sonnet
+    litellm_params:
+      model: bedrock/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: us-gov-west-1
+      max_tokens: 4096
+
+litellm_settings:
+  # Drop requests after 120s (matches chat-to-cop default llm_timeout)
+  request_timeout: 120
+  # Disable telemetry on gov networks
+  telemetry: false
+
+general_settings:
+  # No auth required -- the proxy runs on a private AG node
+  master_key: null
