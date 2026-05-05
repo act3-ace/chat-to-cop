@@ -28,6 +28,7 @@ from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.config import PipelineConfig
 from chat_to_cop.equifinality import PathEntropyTracker
 from chat_to_cop.ingestion.irc_client import IRCClient
+from chat_to_cop.ingestion.multiline import reassemble_multiline
 from chat_to_cop.ingestion.replay import replay_messages
 from chat_to_cop.metrics import metrics
 from chat_to_cop.output.cop_writer import CoPWriter
@@ -193,12 +194,12 @@ async def run_replay(
             ]
             channels = irc_channels or _default_channels
             irc_client = IRCClient(irc_url, channels)
-            message_source = irc_client.iter_messages()
+            message_source = reassemble_multiline(irc_client.iter_messages())
             logger.info(f"Live IRC: {irc_url}")
             logger.info(f"Channels: {', '.join(channels)}")
         else:
             assert path is not None
-            message_source = replay_messages(path, speed=speed)
+            message_source = reassemble_multiline(replay_messages(path, speed=speed))
             logger.info(f"Replaying {path}")
 
         logger.info(f"LLM: {config.llm.llm_url} / {config.llm.llm_model}")
