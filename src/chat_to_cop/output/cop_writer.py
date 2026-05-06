@@ -61,8 +61,8 @@ class CoPWriter:
     - resume(): allows new writes; call flush_pause_queue() to drain backlog
 
     Configurable thresholds:
-    - auto_threshold: minimum confidence for AUTO tier (default 0.95, raised from
-      0.7 after ECE=0.67 calibration finding on model-b-7b — see #58)
+    - auto_threshold: minimum confidence for AUTO tier (default 0.85, lowered from
+      0.95 for MASH — see #98)
     - flag_threshold: minimum confidence for FLAGGED tier (default 0.5, raised from 0.4)
     - high_risk_types: update types that always require HUMAN review
     """
@@ -73,7 +73,7 @@ class CoPWriter:
         http_client=None,
         rest_client: CoPRESTClient | None = None,
         max_queue_size: int = 1000,
-        auto_threshold: float = 0.95,
+        auto_threshold: float = 0.85,
         flag_threshold: float = 0.5,
         high_risk_types: list[str] | None = None,
         adapter: SchemaAdapter | None = None,

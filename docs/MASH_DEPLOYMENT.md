@@ -653,7 +653,7 @@ The CoP database endpoint will be provided by the contractor team. Until then, t
 ```bash
 # When the endpoint is available:
 export CHAT_TO_COP_COP_API_URL="http://COP_SERVER:PORT/api/updates"
-export CHAT_TO_COP_COP_AUTO_THRESHOLD=0.95
+export CHAT_TO_COP_COP_AUTO_THRESHOLD=0.85
 ```
 
 ### All configuration variables
@@ -669,7 +669,7 @@ export CHAT_TO_COP_COP_AUTO_THRESHOLD=0.95
 | `CHAT_TO_COP_DB_PATH` | `data/world_state.db` | SQLite database path |
 | `CHAT_TO_COP_METRICS` | `true` | Enable instrumentation |
 | `CHAT_TO_COP_COP_API_URL` | (empty = dry-run) | CoP REST API URL |
-| `CHAT_TO_COP_COP_AUTO_THRESHOLD` | `0.95` | Auto-write confidence threshold |
+| `CHAT_TO_COP_COP_AUTO_THRESHOLD` | `0.85` | Auto-write confidence threshold |
 
 ---
 

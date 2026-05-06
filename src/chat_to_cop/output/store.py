@@ -309,6 +309,12 @@ class WorldStateStore:
         row = await cursor.fetchone()
         return row["cnt"]  # type: ignore[index]
 
+    async def last_audit_timestamp(self) -> str | None:
+        """Return the most recent audit_log timestamp, or None if empty."""
+        cursor = await self.db.execute("SELECT MAX(timestamp) as ts FROM audit_log")
+        row = await cursor.fetchone()
+        return row["ts"] if row else None  # type: ignore[index]
+
     async def write_speaker(self, model: SpeakerModel, channel: str) -> None:
         """Persist a speaker model (upsert by username + channel)."""
         await self.db.execute(

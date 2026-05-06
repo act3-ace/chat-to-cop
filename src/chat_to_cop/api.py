@@ -152,10 +152,14 @@ async def get_entity(entity_id: str):
 async def get_health():
     """System health check."""
     store = _get_store()
+    msg_total = sum(metrics._counters.get("agent_messages_received_total", {}).values())
+    last_msg = await store.last_audit_timestamp()
     return {
         "status": "ok",
         "updates_count": await store.count_updates(),
         "entities_count": await store.count_entities(),
+        "messages_received": msg_total,
+        "last_message_time": last_msg,
     }
 
 

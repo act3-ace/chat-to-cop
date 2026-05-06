@@ -201,6 +201,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 </div>
 
 <div class="stats-bar">
+  <div><span class="stat-label">Messages:</span><span class="stat-value" id="stat-messages">-</span></div>
+  <div><span class="stat-label">Last msg:</span><span class="stat-value" id="stat-last-msg">-</span></div>
   <div><span class="stat-label">Updates:</span><span class="stat-value" id="stat-updates">-</span></div>
   <div><span class="stat-label">Entities:</span><span class="stat-value" id="stat-entities">-</span></div>
   <div><span class="stat-label">Corrections:</span><span class="stat-value" id="stat-corrections">-</span></div>
@@ -578,6 +580,20 @@ function refresh() {
     document.getElementById('stat-status').textContent = results[2].status;
     document.getElementById('stat-corrections').textContent = results[3].total;
     document.getElementById('stat-overrides').textContent = overrides.length;
+    document.getElementById('stat-messages').textContent = results[2].messages_received || 0;
+    var lastMsg = results[2].last_message_time;
+    if (lastMsg) {
+      var ago = Math.round((Date.now() - new Date(lastMsg).getTime()) / 1000);
+      if (ago < 60) {
+        document.getElementById('stat-last-msg').textContent = ago + 's ago';
+      } else if (ago < 3600) {
+        document.getElementById('stat-last-msg').textContent = Math.round(ago/60) + 'm ago';
+      } else {
+        document.getElementById('stat-last-msg').textContent = Math.round(ago/3600) + 'h ago';
+      }
+    } else {
+      document.getElementById('stat-last-msg').textContent = 'none';
+    }
     ind.className = 'refresh-indicator';
   }).catch(function(err) {
     console.error('Refresh error:', err);

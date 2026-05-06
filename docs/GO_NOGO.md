@@ -33,7 +33,7 @@ to `config.py` (`PipelineConfig` and its nested configs via pydantic-settings).
 | Primary model | `model-b:7b` (pinned) | `CHAT_TO_COP_LLM_MODEL=model-b:7b` | Fastest viable model; latency is #1 priority. 14B available as upgrade if GPU headroom allows |
 | Context window | 8192 | `CHAT_TO_COP_LLM_NUM_CTX=8192` | Minimum required for full system prompt + conversation window |
 | Fallback model | `model-b:3b` | `CHAT_TO_COP_FALLBACK_MODEL=model-b:3b` | Lightweight fallback when primary circuit breaker opens |
-| Auto-write threshold | 0.95 | `CHAT_TO_COP_COP_AUTO_THRESHOLD=0.95` | Calibration finding: 7B says 0.95 but is correct 65% of the time (ECE=0.67) |
+| Auto-write threshold | 0.85 | `CHAT_TO_COP_COP_AUTO_THRESHOLD=0.85` | Lowered from 0.95 for MASH (#98): 0.95 silently filtered valid extractions in 0.85-0.94 range |
 | Flag threshold | 0.50 | `CHAT_TO_COP_COP_FLAG_THRESHOLD=0.5` | Below this -> HUMAN review; mid-range confidence bucket is essentially empty on ModelB |
 | High-risk types | weapons, csar, fire_mission, cyber_ew | `CHAT_TO_COP_COP_HIGH_RISK_TYPES` | Always routed to human review regardless of confidence |
 | CoP writer mode | dry-run | `CHAT_TO_COP_COP_API_URL=""` | No external writes until Sarah Bowman confirms schema; flip to real endpoint on-site |
@@ -97,7 +97,7 @@ The default model is `model-b:7b`. To change the production model:
 
 ### Confidence threshold flip
 
-The auto-write (0.95) and flag (0.50) thresholds were set based on the model-b-7b calibration curve (ECE=0.67). To change them:
+The auto-write (0.85) and flag (0.50) thresholds balance precision against the operational cost of a silent dashboard. The auto-write was lowered from 0.95 to 0.85 for MASH (#98) after Mia observed the system appearing dead during exercise traffic. To change them:
 
 1. Run `scripts/calibration_analysis.py` on the production model and produce an updated calibration curve.
 2. The auto-write threshold should correspond to the calibrated confidence level where precision exceeds 90% on the silver labels.

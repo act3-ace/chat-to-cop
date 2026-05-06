@@ -200,14 +200,16 @@ class CoPWriterConfig(BaseSettings):
         description="CoP REST API base URL. Empty string = dry-run mode (log only, no HTTP).",
     )
     cop_auto_threshold: float = Field(
-        default=0.95,
+        default=0.85,
         description=(
             "Minimum confidence for AUTO write authority (written immediately). "
-            "Default raised from 0.7 to 0.95 after calibration finding: model-b-7b "
-            "says 0.95 but is correct only 65% of the time (ECE=0.67). When a "
+            "Lowered from 0.95 to 0.85 for MASH: at 0.95, the 7B model's valid "
+            "extractions in the 0.85-0.94 range were silently filtered, making "
+            "the dashboard appear dead during low-entity-density traffic. The "
+            "design philosophy is 'even 70%% is great' -- 0.85 balances precision "
+            "against the operational cost of a silent system. When a "
             "CalibrationModel is loaded, the *calibrated* confidence is used, so "
-            "this threshold operates on the calibrated value. Without calibration, "
-            "the higher default prevents overconfident AUTO writes."
+            "this threshold operates on the calibrated value."
         ),
     )
     cop_flag_threshold: float = Field(

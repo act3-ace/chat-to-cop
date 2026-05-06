@@ -18,6 +18,7 @@ the extraction pipeline sees them.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import AsyncIterator
 
@@ -132,10 +133,40 @@ async def reassemble_multiline(
     Buffers consecutive LINE N: messages from the same sender/channel,
     merging them into a single message. Non-LINE messages pass through
     immediately (after flushing any pending buffer).
+
+    When the buffer has pending lines and no new message arrives within
+    *flush_timeout* seconds, the buffer is flushed automatically so
+    messages are not held indefinitely during exercise breaks.
     """
     buf = MultiLineBuffer(flush_timeout=flush_timeout)
+    ait = source.__aiter__()
 
-    async for msg in source:
+    # We can't use asyncio.wait_for on __anext__() directly because
+    # cancellation corrupts async generator state. Instead, run the
+    # fetch in a shielded task and race it against a sleep.
+    pending_next: asyncio.Task[IRCMessage] | None = None
+
+    while True:
+        try:
+            if pending_next is None:
+                pending_next = asyncio.ensure_future(ait.__anext__())
+
+            if buf.pending:
+                done, _ = await asyncio.wait({pending_next}, timeout=flush_timeout)
+                if not done:
+                    flushed = buf.flush()
+                    if flushed:
+                        yield flushed
+                    continue
+            else:
+                await asyncio.shield(pending_next)
+
+            msg = pending_next.result()
+            pending_next = None
+        except StopAsyncIteration:
+            pending_next = None
+            break
+
         is_line = _LINE_RE.match(msg.content) is not None
         result = buf.add(msg)
         if result:

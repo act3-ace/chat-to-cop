@@ -117,31 +117,30 @@ class TestWriteAuthorityClassification:
     """Test the tiered write authority rules."""
 
     def test_high_confidence_low_risk_is_auto(self):
-        # With new default auto_threshold=0.95, need >= 0.95 for AUTO
+        # With default auto_threshold=0.85, need >= 0.85 for AUTO
         assert classify_write_authority(0.96, "fuel") == WriteAuthority.AUTO
 
     def test_high_confidence_status_is_auto(self):
         assert classify_write_authority(0.95, "status_change") == WriteAuthority.AUTO
 
-    def test_085_is_now_flagged_not_auto(self):
-        # 0.85 used to be AUTO at the old 0.7 threshold; now it's FLAGGED
-        assert classify_write_authority(0.85, "fuel") == WriteAuthority.FLAGGED
+    def test_085_is_auto(self):
+        # 0.85 is the boundary -- at threshold means AUTO
+        assert classify_write_authority(0.85, "fuel") == WriteAuthority.AUTO
 
     def test_medium_confidence_is_flagged(self):
-        # 0.55 is between flag_threshold (0.5) and auto_threshold (0.95)
+        # 0.55 is between flag_threshold (0.5) and auto_threshold (0.85)
         assert classify_write_authority(0.55, "fuel") == WriteAuthority.FLAGGED
 
-    def test_boundary_095_is_auto(self):
-        # New default auto_threshold is 0.95 (raised from 0.7 after ECE=0.67)
-        assert classify_write_authority(0.95, "entity_id") == WriteAuthority.AUTO
+    def test_boundary_085_is_auto(self):
+        # Default auto_threshold is 0.85 (lowered from 0.95 for MASH, #98)
+        assert classify_write_authority(0.85, "entity_id") == WriteAuthority.AUTO
 
     def test_boundary_05_is_flagged(self):
-        # New default flag_threshold is 0.5 (raised from 0.4)
         assert classify_write_authority(0.5, "entity_id") == WriteAuthority.FLAGGED
 
-    def test_old_auto_threshold_now_flagged(self):
-        # 0.7 used to be AUTO; with new threshold 0.95 it's FLAGGED
-        assert classify_write_authority(0.7, "entity_id") == WriteAuthority.FLAGGED
+    def test_084_is_flagged(self):
+        # Just below the auto_threshold of 0.85
+        assert classify_write_authority(0.84, "entity_id") == WriteAuthority.FLAGGED
 
     def test_low_confidence_is_human(self):
         assert classify_write_authority(0.3, "fuel") == WriteAuthority.HUMAN
@@ -780,7 +779,7 @@ class TestCoPWriterConfig:
     def test_defaults(self):
         config = CoPWriterConfig()
         assert config.cop_api_url == ""
-        assert config.cop_auto_threshold == 0.95
+        assert config.cop_auto_threshold == 0.85
         assert config.cop_flag_threshold == 0.5
         assert "weapons" in config.cop_high_risk_types
         assert "csar" in config.cop_high_risk_types
@@ -790,7 +789,7 @@ class TestCoPWriterConfig:
     def test_from_config_creates_writer(self):
         config = CoPWriterConfig()
         writer = CoPWriter.from_config(config)
-        assert writer._auto_threshold == 0.95
+        assert writer._auto_threshold == 0.85
         assert writer._flag_threshold == 0.5
         assert writer._rest_client is not None
 

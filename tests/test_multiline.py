@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -232,3 +233,19 @@ class TestReassembleMultiline:
         assert "BCOA 0502-01A" in results[1].content
         assert results[2].content == "copy all"
         assert results[3].content == "next tasking incoming"
+
+    @pytest.mark.asyncio
+    async def test_timeout_flushes_buffer(self):
+        """Buffer flushes after timeout with no new messages."""
+
+        async def slow_source():
+            yield _msg("LINE 0: BCOA 0502-01A")
+            yield _msg("LINE 1: deny cyber")
+            await asyncio.sleep(5)  # Exceeds flush_timeout
+            yield _msg("roger that", sender="ORCA_MC")
+
+        results = [msg async for msg in reassemble_multiline(slow_source(), flush_timeout=0.5)]
+        assert len(results) == 2
+        assert "BCOA 0502-01A" in results[0].content
+        assert "deny cyber" in results[0].content
+        assert results[1].content == "roger that"

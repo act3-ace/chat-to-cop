@@ -250,7 +250,7 @@ def classify_write_authority(
     confidence: float,
     update_type: str,
     *,
-    auto_threshold: float = 0.95,
+    auto_threshold: float = 0.85,
     flag_threshold: float = 0.5,
     high_risk_types: frozenset[str] | None = None,
 ) -> WriteAuthority:
@@ -262,13 +262,9 @@ def classify_write_authority(
     - confidence flag_threshold to auto_threshold -> FLAGGED
     - confidence >= auto_threshold -> AUTO
 
-    Thresholds were raised from 0.7/0.4 to 0.95/0.5 on 2026-04-10 after
-    calibration revealed model-b-7b is bimodally overconfident (ECE=0.67):
-    at raw confidence 0.95, only 65% of predictions were correct.  When a
-    CalibrationModel is active upstream, the confidence reaching this
-    function is already calibrated, and these thresholds operate on the
-    calibrated value.  Without calibration, the higher defaults prevent
-    overconfident AUTO writes.  See #58 and data/calibration/model-b_7b-8k.json.
+    auto_threshold lowered from 0.95 to 0.85 for MASH (see #98). At 0.95,
+    valid extractions in the 0.85-0.94 range were silently filtered. When a
+    CalibrationModel is active upstream, the calibrated confidence is used.
     """
     if high_risk_types is None:
         high_risk_types = HIGH_RISK_TYPES
@@ -388,7 +384,7 @@ def _entity_to_battle_effect(entity, update) -> BattleEffect:
 def cop_update_to_records(
     update,
     *,
-    auto_threshold: float = 0.95,
+    auto_threshold: float = 0.85,
     flag_threshold: float = 0.5,
     high_risk_types: frozenset[str] | None = None,
 ) -> list[CoPRecord]:

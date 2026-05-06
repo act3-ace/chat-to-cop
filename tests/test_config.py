@@ -284,7 +284,7 @@ class TestCoPWriterConfigReachesWriter:
     def test_defaults(self):
         cfg = CoPWriterConfig()
         assert cfg.cop_api_url == ""  # dry-run mode
-        assert cfg.cop_auto_threshold == 0.95
+        assert cfg.cop_auto_threshold == 0.85
         assert cfg.cop_flag_threshold == 0.5
         assert "weapons" in cfg.cop_high_risk_types
         assert "csar" in cfg.cop_high_risk_types
