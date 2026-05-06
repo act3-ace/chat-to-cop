@@ -12,15 +12,29 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- Dashboard processing heartbeat (#97, 2026-05-06): stats bar shows Messages
+  received count and Last msg relative timestamp. Extends /health API endpoint
+  and store with last_audit_timestamp(). Immediate visibility into message flow.
+- Multiline buffer flush timeout (#99, 2026-05-06): buffered LINE messages are
+  flushed after flush_timeout seconds of inactivity. Uses asyncio.wait (not
+  wait_for, which cancels generators) to avoid corrupting async generator state.
+  Prevents messages held indefinitely during exercise breaks. 23 tests.
 - Multi-line message reassembly (2026-05-05): `src/chat_to_cop/ingestion/multiline.py`
   buffers consecutive LINE N: messages from the same sender/channel and merges
   them into a single IRCMessage before extraction. Handles CAS 5-lines, cyber
-  taskings, ISR requests. Wired into both live IRC and replay paths. 22 tests.
+  taskings, ISR requests. Wired into both live IRC and replay paths.
 - DELTRON training data puller (2026-05-05): `scripts/pull_deltron_training_data.py`
   pulls all classified messages, entity table, threat table, and bin snapshots
   from DELTRON's REST API. Outputs to `data/deltron_training/`.
 - GitHub branch protection: main branch on act3-ace/chat-to-cop now requires
   PR with 1 approving review. Vendor collaborators create branches and PRs.
+
+### Changed
+
+- COP_AUTO_THRESHOLD lowered from 0.95 to 0.85 (#98, 2026-05-06). At 0.95,
+  the 7B model's valid extractions in the 0.85-0.94 range were silently
+  filtered. Updated defaults across config.py, cop_schema.py, cop_writer.py,
+  and docs. Design philosophy: "70% is great."
 
 ### Fixed
 
