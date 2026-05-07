@@ -132,6 +132,38 @@ class TestBuildSystemPrompt:
         assert "SIGINT" in DEFAULT_GLOSSARY
         assert "DRAGON EYE" in DEFAULT_GLOSSARY
 
+    def test_default_glossary_bcoa_terms(self):
+        assert "BCOA" in DEFAULT_GLOSSARY
+        assert "ABM" in DEFAULT_GLOSSARY
+        assert "PIT" in DEFAULT_GLOSSARY
+        assert "DDRR-rr" in DEFAULT_GLOSSARY
+        assert "five line" in DEFAULT_GLOSSARY
+
+    def test_prompt_contains_bcoa_workflow(self):
+        prompt = build_system_prompt()
+        assert "BCOA (Battle COA) WORKFLOW" in prompt
+        assert "DDRR-rr format" in prompt
+        assert "request_id" in prompt
+        assert "coa_letter" in prompt
+        assert "directed_to" in prompt
+
+    def test_prompt_contains_bcoa_request_example(self):
+        prompt = build_system_prompt()
+        assert "bcoa options for jtn tn044" in prompt
+        assert "0602-02" in prompt
+        assert "BCOA request with DDRR-rr ID" in prompt
+
+    def test_prompt_contains_bcoa_fiveline_example(self):
+        prompt = build_system_prompt()
+        assert "HAMMER 21 TO DEST ENEM DESTROYER JTN025" in prompt
+        assert "0602-03" in prompt
+        assert "Five-line BCOA submission" in prompt
+
+    def test_prompt_contains_bcoa_update_example(self):
+        prompt = build_system_prompt()
+        assert "update bcoa 0602-02B" in prompt
+        assert "BCOA update referencing prior COA" in prompt
+
     def test_prompt_contains_radio_banter_noise_examples(self):
         prompt = build_system_prompt()
         # Radio check few-shot examples

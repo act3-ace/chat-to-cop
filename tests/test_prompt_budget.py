@@ -30,10 +30,11 @@ def test_prompt_without_glossary_is_compact():
     """The bare prompt (no glossary, no world state, no speakers) should be
     well under the ceiling. If it isn't, the few-shot examples have bloated.
 
-    Threshold: 10,000 chars (~2,500 tokens) leaves room for glossary, speaker
-    context, and world state within a typical 4K-8K token context window."""
+    Threshold: 12,000 chars (~3,000 tokens) leaves room for glossary, speaker
+    context, and world state within a typical 4K-8K token context window.
+    Raised from 10K after adding BCOA workflow examples from live MASH data."""
     prompt = build_system_prompt()
-    assert len(prompt) < 10_000, f"Bare prompt is {len(prompt)} chars, unexpectedly large"
+    assert len(prompt) < 12_000, f"Bare prompt is {len(prompt)} chars, unexpectedly large"
 
 
 def test_glossary_adds_meaningful_content():

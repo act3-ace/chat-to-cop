@@ -339,6 +339,38 @@ def build_system_prompt(
         "    {metadata:{task:SEAD, target:SA-20}}]",
         "  reasoning: Coordination/asset management is tasking, not fire_mission",
         "",
+        "BCOA (Battle COA) WORKFLOW — messages follow a structured request/response cycle:",
+        "- Request IDs use DDRR-rr format: DD=day, RR=run, rr=sequence (e.g. 0602-02 = day 06, run 2, request 2).",
+        "- COA variants append a letter: 0602-02A, 0602-02B.",
+        "- @mentions (@vegas_pit_a, @vegas_abm_4) direct the request to a specific role.",
+        "- LINE 0 of a five-line BCOA submission carries the request ID + COA letter.",
+        "- Extract request_id, coa_letter, and directed_to into metadata.",
+        "",
+        'Message: "@vegas_pit_b bcoa options for jtn tn044 cuban vp moving east cigar 250/351 0602-02 pls"',
+        "Output: update_type=tasking, confidence=0.9",
+        "  entities: [{track_number:tn044, affiliation:HOSTILE,",
+        "    bearing:250, range_nm:351, metadata:{request_id:0602-02,",
+        "    directed_to:vegas_pit_b, platform_desc:cuban vp, movement:moving east}}]",
+        "  reasoning: BCOA request with DDRR-rr ID, entity is the target being tasked against",
+        "",
+        'Message: "0602-03A\\nHAMMER 21 TO DEST ENEM DESTROYER JTN025\\n268/43\\n'
+        "HAMMER 31 TO PROVIDE ESC FOR PHANTOM31. WILL STRIKE TN025 WITH AGM-84H\\n"
+        'MAINTAIN TRACKING OF TN025\\nREPORT BDA"',
+        "Output: update_type=tasking, confidence=0.9",
+        "  entities: [{callsign:HAMMER 21, track_number:JTN025, metadata:{task:destroy,",
+        "    request_id:0602-03, coa_letter:A, target_desc:enemy destroyer}},",
+        "    {callsign:HAMMER 31, metadata:{task:escort, supporting:PHANTOM31,",
+        "    weapon_type:AGM-84H, target:TN025}},",
+        "    {track_number:TN025, metadata:{task:maintain_tracking, bda_required:true}}]",
+        "  reasoning: Five-line BCOA submission. LINE 0 has request ID 0602-03A. Multiple entities tasked.",
+        "",
+        'Message: "@vegas_abm_4 update bcoa 0602-02B include the cyber gameplan from your other abm '
+        'and then see if GMTI is available"',
+        "Output: update_type=tasking, confidence=0.85",
+        "  entities: [{metadata:{request_id:0602-02, coa_letter:B,",
+        "    directed_to:vegas_abm_4, action:update, add_cyber:true, check_gmti:true}}]",
+        "  reasoning: BCOA update referencing prior COA by request ID + letter",
+        "",
         "TYPE DISAMBIGUATION — use these rules to choose the correct update_type:",
         "- cyber_ew: Electronic warfare, jamming, SIGINT, COMINT, ELINT, DRFM, cyber effects,",
         "  EW systems (DRAGON EYE, GPS jamming, Dazzler, buzzer). The effect is electromagnetic or cyber.",
@@ -389,8 +421,14 @@ DEFAULT_GLOSSARY = """## Brevity / Tactical Terms
 - "BVR" = beyond visual range
 - "WVR" = within visual range
 - "COA" or "CAO" = course of action (DASH uses both interchangeably)
+- "BCOA" = battle course of action (five-line structured plan)
 - "GBC" = generate battle course of action
 - "MEF" = match effectors to targets
+- "ABM" = air battle manager (numbered: ABM1, ABM2, etc.)
+- "PIT" = planning/integration team (pit_a, pit_b)
+- "SL" = senior leader (VEGAS_SL)
+- "DDRR-rr" = request ID format: DD=day, RR=run, rr=sequence (e.g. 0602-02)
+- "five line" or "5 line" = structured BCOA format: LINE 0-5
 - "SCL" = station configuration loadout (weapon arrangement on aircraft)
 - "F2T2EA" = find, fix, track, target, engage, assess (kill chain)
 - "IFTU" = in-flight target update
