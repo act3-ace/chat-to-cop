@@ -12,6 +12,33 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- IRC channel auto-discovery (2026-05-07): IRC client sends LIST every 2
+  minutes and auto-joins new channels sorted by user count, up to a
+  configurable cap (default 50). Channels with zero users are skipped.
+  Config: CHAT_TO_COP_IRC_DISCOVER_CHANNELS, CHAT_TO_COP_IRC_MAX_CHANNELS.
+  12 tests.
+- DELTRON entity-table and threat-table pulls (2026-05-07):
+  bootstrap_mash_glossary.py now also pulls from /entity-table and
+  /threat-table endpoints, supplementing the existing /category bin-scraping
+  with structured entity records and live threat catalog data.
+- DELTRON glossary auto-refresh (2026-05-07): run.bat attempts to pull a
+  fresh glossary from live DELTRON on every startup, falling back to cached
+  data/mash_glossary.txt if DELTRON is unreachable. serve.bat auto-detects
+  the cached glossary. bootstrap_mash_glossary.py exits without overwriting
+  when DELTRON is down, preserving previously-built glossary files.
+- BCOA workflow examples in extraction prompt (2026-05-07): three few-shot
+  examples for BCOA request, five-line submission, and BCOA update messages.
+  Glossary expanded with ABM, PIT, SL, DDRR-rr, five line, BCOA terms.
+- DELTRON validation script (2026-05-07): scripts/validate_against_deltron.py
+  compares chat-to-cop extraction against DELTRON silver labels with
+  precision/recall/F1 on callsigns and track numbers. Standalone, stdlib only.
+- MASH glossary bootstrap script (2026-05-07):
+  scripts/bootstrap_mash_glossary.py pulls DELTRON entity catalog and Track
+  Manager tracks, writes data/mash_glossary.txt. Supports --from-file for
+  offline mode. Groups callsigns by family.
+- Supplemental glossary pipeline (2026-05-07): config.glossary_file ->
+  replay.py loads file -> appends to DEFAULT_GLOSSARY -> Supervisor(glossary=)
+  -> ChannelAgent(glossary=). Env var: CHAT_TO_COP_GLOSSARY_FILE.
 - Dashboard processing heartbeat (#97, 2026-05-06): stats bar shows Messages
   received count and Last msg relative timestamp. Extends /health API endpoint
   and store with last_audit_timestamp(). Immediate visibility into message flow.

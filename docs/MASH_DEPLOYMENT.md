@@ -628,7 +628,9 @@ export CHAT_TO_COP_IRC_URL=ws://IRC_SERVER_IP:8097
 
 ### Channel list
 
-Channels are auto-discovered by the supervisor when messages arrive. No pre-configuration needed. Expected channels based on DASH 3:
+The IRC client auto-discovers channels by sending LIST to the server every
+2 minutes and joining any new channels with active users (up to 50 total).
+No pre-configuration needed. The default seed channels based on DASH 3:
 
 - `#c2_coord` -- cross-BMA coordination (highest value)
 - `#fires` -- fire missions
@@ -636,6 +638,28 @@ Channels are auto-discovered by the supervisor when messages arrive. No pre-conf
 - `#jprc` -- personnel recovery
 - `#vegas_internal`, `#hydro_internal`, `#crusher_internal`, `#taipan_internal`, `#mesquite_internal`
 - `#stt_hydroBMA`, `#stt_crusherBMA`, `#stt_C2Coord`, etc. (voice-to-text)
+
+Channels that appear mid-exercise are joined automatically. To disable
+discovery or adjust the cap:
+
+```bash
+set CHAT_TO_COP_IRC_DISCOVER_CHANNELS=false
+set CHAT_TO_COP_IRC_MAX_CHANNELS=30
+```
+
+### Supplemental glossary (DELTRON integration)
+
+run.bat automatically pulls confirmed entities from DELTRON on startup and
+writes `data\mash_glossary.txt`. This glossary is appended to the built-in
+DEFAULT_GLOSSARY so the LLM recognizes exercise-specific callsigns, threats,
+and track numbers. If DELTRON is unreachable, the cached glossary from the
+previous run is used.
+
+To manually rebuild from a saved DELTRON export:
+
+```bash
+python scripts\bootstrap_mash_glossary.py --from-file path\to\messages.json
+```
 
 ### Bullseye reference point
 
