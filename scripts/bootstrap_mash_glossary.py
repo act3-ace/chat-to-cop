@@ -163,9 +163,13 @@ def main() -> None:
     else:
         print(f"  Pulling entities from DELTRON ({DELTRON_URL})...")
         if _fetch_json(f"{DELTRON_URL}/health") is None:
-            print("    DELTRON unreachable. Use --from-file for offline mode.")
-        else:
-            families, ungrouped, threats = _pull_deltron_entities()
+            print("    DELTRON unreachable.")
+            if os.path.isfile(args.output):
+                print(f"    Keeping existing {args.output}")
+            else:
+                print("    No cached glossary. Use --from-file for offline mode.")
+            raise SystemExit(1)
+        families, ungrouped, threats = _pull_deltron_entities()
     total = sum(len(v) for v in families.values()) + len(ungrouped)
     print(f"    {len(families)} families, {total} callsigns, {len(threats)} threats")
 

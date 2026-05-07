@@ -7,6 +7,14 @@ setlocal enabledelayedexpansion
 REM Match the DB that "run.bat --live" writes to.
 REM If you only ran the demo (not --live), it reads world_state.db instead.
 set CHAT_TO_COP_DB_PATH=data\world_state.db
+
+REM Auto-detect supplemental glossary (built by bootstrap_mash_glossary.py)
+if not defined CHAT_TO_COP_GLOSSARY_FILE (
+    if exist data\mash_glossary.txt (
+        set CHAT_TO_COP_GLOSSARY_FILE=data\mash_glossary.txt
+        echo   Glossary: data\mash_glossary.txt ^(auto-detected^)
+    )
+)
 if exist data\mash_live.db set CHAT_TO_COP_DB_PATH=data\mash_live.db
 
 REM Auto-detect network IP (prefer 10.5.x MASH network, then any 10.x, then 192.168.x)

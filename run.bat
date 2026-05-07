@@ -248,6 +248,30 @@ echo.
 :skip_gpu_detection
 
 REM -------------------------------------------------------------------
+REM Refresh supplemental glossary from live DELTRON (falls back to cached)
+REM -------------------------------------------------------------------
+
+if not defined CHAT_TO_COP_GLOSSARY_FILE (
+    echo   Refreshing glossary from DELTRON...
+    python scripts\bootstrap_mash_glossary.py >nul 2>&1
+    if errorlevel 1 (
+        if exist data\mash_glossary.txt (
+            echo   DELTRON unreachable -- using cached glossary
+            echo   [WARN] DELTRON unreachable, using cached glossary >> "%LOGFILE%"
+        ) else (
+            echo   DELTRON unreachable -- no glossary available
+            echo   [WARN] DELTRON unreachable, no glossary >> "%LOGFILE%"
+        )
+    ) else (
+        echo   Glossary refreshed from DELTRON
+        echo   [OK] Glossary refreshed from DELTRON >> "%LOGFILE%"
+    )
+    if exist data\mash_glossary.txt (
+        set CHAT_TO_COP_GLOSSARY_FILE=data\mash_glossary.txt
+    )
+)
+
+REM -------------------------------------------------------------------
 REM Install package if needed
 REM -------------------------------------------------------------------
 
