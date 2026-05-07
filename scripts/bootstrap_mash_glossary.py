@@ -104,6 +104,53 @@ def _entities_from_file(path: str) -> tuple[dict[str, list[str]], list[str], lis
     return families, ungrouped, []
 
 
+def _pull_entity_table() -> list[str]:
+    """Pull structured entity records from DELTRON's /entity-table endpoint."""
+    data = _fetch_json(f"{DELTRON_URL}/entity-table")
+    if not data:
+        return []
+    records = data if isinstance(data, list) else data.get("records", data.get("entities", []))
+    if isinstance(data, dict) and not records:
+        for key in data:
+            if isinstance(data[key], list):
+                records = data[key]
+                break
+    lines: list[str] = []
+    for r in records:
+        name = r.get("name", r.get("entity", r.get("callsign", "")))
+        etype = r.get("type", r.get("entity_type", r.get("category", "")))
+        affil = r.get("affiliation", r.get("identity", r.get("side", "")))
+        if name:
+            parts = [name]
+            if etype:
+                parts.append(f"type={etype}")
+            if affil:
+                parts.append(f"affiliation={affil}")
+            lines.append(" | ".join(parts))
+    return sorted(set(lines))
+
+
+def _pull_threat_table() -> list[str]:
+    """Pull threat records from DELTRON's /threat-table endpoint."""
+    data = _fetch_json(f"{DELTRON_URL}/threat-table")
+    if not data:
+        return []
+    records = data if isinstance(data, list) else data.get("records", data.get("threats", []))
+    if isinstance(data, dict) and not records:
+        for key in data:
+            if isinstance(data[key], list):
+                records = data[key]
+                break
+    threats: list[str] = []
+    for r in records:
+        name = r.get("name", r.get("threat", r.get("designation", "")))
+        ttype = r.get("type", r.get("threat_type", r.get("category", "")))
+        if name:
+            label = f"{name} ({ttype})" if ttype else name
+            threats.append(label)
+    return sorted(set(threats))
+
+
 def _pull_tracks() -> list[str]:
     """Pull tracks from Track Manager, return formatted glossary lines."""
     data = _fetch_json(f"{TRACK_MANAGER_URL}/tracks")
@@ -119,13 +166,13 @@ def _pull_tracks() -> list[str]:
     return sorted(set(lines))
 
 
-def _build_glossary(families, ungrouped, threats, track_lines) -> str:
+def _build_glossary(families, ungrouped, threats, track_lines, entity_table_lines=None, threat_table_lines=None) -> str:
     """Assemble the glossary text file."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     p: list[str] = [
         "## MASH Exercise Roster (auto-generated from DELTRON + Track Manager)",
         f"## Last updated: {now}",
-        "## Source: DELTRON entity resolver + Track Manager",
+        "## Source: DELTRON entity resolver + entity-table + threat-table + Track Manager",
         "",
         "### Known Callsigns (DELTRON-confirmed)",
     ]
@@ -135,12 +182,20 @@ def _build_glossary(families, ungrouped, threats, track_lines) -> str:
         p.append(f"- {name}")
     if not families and not ungrouped:
         p.append("- (none found)")
+    if entity_table_lines:
+        p += ["", "### Entity Catalog (DELTRON /entity-table)"]
+        p.extend(f"- {line}" for line in entity_table_lines)
     p += ["", "### Known Track Numbers"]
     p.extend(track_lines or ["- (Track Manager unreachable or empty)"])
     p += ["", "### Known Threats"]
+    has_threats = False
+    if threat_table_lines:
+        p.extend(f"- {t}" for t in threat_table_lines)
+        has_threats = True
     if threats:
-        p.extend(f"- {t}" for t in threats)
-    else:
+        p.extend(f"- {t}" for t in threats if t not in (threat_table_lines or []))
+        has_threats = True
+    if not has_threats:
         p += ["- SA-21, SA-22 (SAM systems)", "- destroyer, submarine (naval threats)"]
     p.append("")
     return "\n".join(p) + "\n"
@@ -173,11 +228,30 @@ def main() -> None:
     total = sum(len(v) for v in families.values()) + len(ungrouped)
     print(f"    {len(families)} families, {total} callsigns, {len(threats)} threats")
 
+    entity_table_lines: list[str] = []
+    threat_table_lines: list[str] = []
+    if not args.from_file:
+        print(f"  Pulling entity table from DELTRON ({DELTRON_URL}/entity-table)...")
+        entity_table_lines = _pull_entity_table()
+        print(
+            f"    {len(entity_table_lines)} entity records"
+            if entity_table_lines
+            else "    entity-table empty or unavailable"
+        )
+
+        print(f"  Pulling threat table from DELTRON ({DELTRON_URL}/threat-table)...")
+        threat_table_lines = _pull_threat_table()
+        print(
+            f"    {len(threat_table_lines)} threat records"
+            if threat_table_lines
+            else "    threat-table empty or unavailable"
+        )
+
     print(f"  Pulling tracks from Track Manager ({TRACK_MANAGER_URL})...")
     track_lines = _pull_tracks()
     print(f"    {len(track_lines)} tracks" if track_lines else "    Track Manager unreachable or empty, skipping")
 
-    glossary = _build_glossary(families, ungrouped, threats, track_lines)
+    glossary = _build_glossary(families, ungrouped, threats, track_lines, entity_table_lines, threat_table_lines)
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "w", encoding="utf-8", newline="\n") as f:
         f.write(glossary)

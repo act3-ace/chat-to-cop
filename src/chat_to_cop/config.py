@@ -289,6 +289,14 @@ class PipelineConfig(BaseSettings):
         default=None,
         description="Comma-separated IRC channels to join (e.g. '#c2_coord,#fires'). None = DASH 3 defaults.",
     )
+    irc_discover_channels: bool = Field(
+        default=True,
+        description="Enable periodic IRC LIST to auto-join new channels.",
+    )
+    irc_max_channels: int = Field(
+        default=50,
+        description="Cap on total IRC channels to prevent resource exhaustion.",
+    )
 
     # Store
     db_path: str = Field(

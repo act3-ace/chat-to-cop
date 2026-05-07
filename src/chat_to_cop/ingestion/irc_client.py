@@ -8,6 +8,7 @@ Handles:
 - Channel join/part
 - Message parsing (timestamp, sender, channel, content)
 - Heartbeat/keepalive
+- Periodic channel discovery via IRC LIST
 """
 
 from __future__ import annotations
@@ -29,6 +30,9 @@ from chat_to_cop.models.messages import IRCMessage
 # PRIVMSG format: :sender!user@host PRIVMSG #channel :message content
 _PRIVMSG_RE = re.compile(r"^:(\S+?)(?:!\S+)?\s+PRIVMSG\s+(#\S+)\s+:(.*)$")
 
+# IRC LIST response: :server 322 nick #channel user_count :topic
+_RPL_LIST_RE = re.compile(r"^:\S+\s+322\s+\S+\s+(#\S+)\s+(\d+)\s*:")
+
 # Default backoff parameters for reconnection
 _INITIAL_BACKOFF_S = 1.0
 _MAX_BACKOFF_S = 60.0
@@ -38,6 +42,10 @@ _HEARTBEAT_INTERVAL_S = 30.0
 
 # Read timeout — how long to wait for a message before checking heartbeat
 _READ_TIMEOUT_S = 5.0
+
+# Channel discovery defaults
+_DISCOVERY_INTERVAL_S = 120.0
+_MAX_CHANNELS = 50
 
 
 def parse_irc_message(raw_line: str) -> IRCMessage | None:
@@ -87,6 +95,9 @@ class IRCClient:
         initial_backoff: float = _INITIAL_BACKOFF_S,
         max_backoff: float = _MAX_BACKOFF_S,
         heartbeat_interval: float = _HEARTBEAT_INTERVAL_S,
+        discover_channels: bool = True,
+        discovery_interval: float = _DISCOVERY_INTERVAL_S,
+        max_channels: int = _MAX_CHANNELS,
     ) -> None:
         self.server_url = server_url
         self.channels = list(channels)
@@ -94,12 +105,18 @@ class IRCClient:
         self.initial_backoff = initial_backoff
         self.max_backoff = max_backoff
         self.heartbeat_interval = heartbeat_interval
+        self.discover_channels = discover_channels
+        self.discovery_interval = discovery_interval
+        self.max_channels = max_channels
 
         self._ws = None
         self._connected = False
         self._stop_event = asyncio.Event()
         self._message_count = 0
         self._reconnect_count = 0
+        self._discovery_task: asyncio.Task | None = None
+        self._pending_list: list[tuple[str, int]] | None = None
+        self._pending_joins: list[str] = []
 
     @property
     def connected(self) -> bool:
@@ -161,6 +178,9 @@ class IRCClient:
     async def disconnect(self) -> None:
         """Gracefully disconnect from the IRC server."""
         self._stop_event.set()
+        if self._discovery_task is not None:
+            self._discovery_task.cancel()
+            self._discovery_task = None
         if self._ws is not None:
             try:
                 for channel in self.channels:
@@ -213,6 +233,59 @@ class IRCClient:
             await self._send(f"PART {channel}\r\n")
             logger.info("Parted channel: {}", channel)
 
+    def _handle_list_line(self, line: str) -> bool:
+        """Parse an IRC LIST response line. Returns True if consumed."""
+        if self._pending_list is None:
+            return False
+        m = _RPL_LIST_RE.match(line)
+        if m:
+            self._pending_list.append((m.group(1), int(m.group(2))))
+            return True
+        # 323 = RPL_LISTEND
+        if re.match(r"^:\S+\s+323\s+", line):
+            self._finish_discovery(self._pending_list)
+            self._pending_list = None
+            return True
+        return False
+
+    def _finish_discovery(self, discovered: list[tuple[str, int]]) -> None:
+        """Join newly discovered channels that have active users."""
+        current = set(self.channels)
+        new_channels = [(ch, n) for ch, n in discovered if ch not in current and n > 0]
+        if not new_channels:
+            return
+        slots = self.max_channels - len(current)
+        if slots <= 0:
+            logger.info(
+                "Channel discovery: at max_channels ({}), skipping {} new", self.max_channels, len(new_channels)
+            )
+            return
+        new_channels.sort(key=lambda x: x[1], reverse=True)
+        to_join = new_channels[:slots]
+        for ch, n in to_join:
+            self.channels.append(ch)
+            logger.info("Discovered channel: {} ({} users)", ch, n)
+            metrics.inc("irc_channels_discovered_total")
+        self._pending_joins = [ch for ch, _ in to_join]
+
+    async def _discovery_loop(self) -> None:
+        """Periodically send LIST to discover new channels."""
+        await asyncio.sleep(10)
+        while not self._stop_event.is_set():
+            try:
+                if self._connected and self._pending_list is None:
+                    self._pending_list = []
+                    await self._send("LIST\r\n")
+                    logger.debug("Sent LIST for channel discovery")
+            except Exception as e:
+                logger.debug("Discovery LIST failed: {}", e)
+                self._pending_list = None
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=self.discovery_interval)
+                break
+            except asyncio.TimeoutError:
+                pass
+
     async def iter_messages(self) -> AsyncIterator[IRCMessage]:
         """Async generator that yields parsed IRCMessage objects.
 
@@ -229,6 +302,8 @@ class IRCClient:
                     await self._connect_with_backoff()
                     if self._stop_event.is_set():
                         break
+                    if self.discover_channels and self._discovery_task is None:
+                        self._discovery_task = asyncio.ensure_future(self._discovery_loop())
 
                 loop = asyncio.get_running_loop()
                 last_data_time = loop.time()
@@ -249,6 +324,12 @@ class IRCClient:
 
                     last_data_time = loop.time()
 
+                    # Send JOINs queued by channel discovery
+                    if self._pending_joins:
+                        for ch in self._pending_joins:
+                            await self._send(f"JOIN {ch}\r\n")
+                        self._pending_joins.clear()
+
                     # IRC messages can be batched; split on CRLF
                     for line in raw.split("\r\n"):
                         line = line.strip()
@@ -259,6 +340,10 @@ class IRCClient:
 
                         # Handle PING/PONG keepalive
                         if await self._handle_ping(line):
+                            continue
+
+                        # Consume LIST responses for channel discovery
+                        if self._handle_list_line(line):
                             continue
 
                         # Parse PRIVMSG into IRCMessage

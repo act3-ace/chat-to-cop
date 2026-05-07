@@ -208,10 +208,17 @@ async def run_replay(
                 "#vegas_internal",
             ]
             channels = irc_channels or _default_channels
-            irc_client = IRCClient(irc_url, channels)
+            irc_client = IRCClient(
+                irc_url,
+                channels,
+                discover_channels=config.irc_discover_channels,
+                max_channels=config.irc_max_channels,
+            )
             message_source = reassemble_multiline(irc_client.iter_messages())
             logger.info(f"Live IRC: {irc_url}")
             logger.info(f"Channels: {', '.join(channels)}")
+            if config.irc_discover_channels:
+                logger.info(f"Channel discovery: ON (max {config.irc_max_channels})")
         else:
             assert path is not None
             message_source = reassemble_multiline(replay_messages(path, speed=speed))

@@ -615,3 +615,69 @@ class TestIRCMessageInterface:
         msg = parse_irc_message(line)
         assert msg is not None
         assert msg.is_stt is False
+
+
+class TestChannelDiscovery:
+    """Test IRC LIST-based channel discovery."""
+
+    def test_discovery_defaults(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"])
+        assert client.discover_channels is True
+        assert client.max_channels == 50
+
+    def test_discovery_disabled(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"], discover_channels=False)
+        assert client.discover_channels is False
+
+    def test_handle_list_line_when_not_collecting(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"])
+        assert client._pending_list is None
+        assert client._handle_list_line(":server 322 bot #fires 5 :topic") is False
+
+    def test_handle_list_line_collects_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"])
+        client._pending_list = []
+        assert client._handle_list_line(":server 322 bot #fires 5 :Fire control") is True
+        assert client._handle_list_line(":server 322 bot #new_net 3 :New net") is True
+        assert len(client._pending_list) == 2
+        assert client._pending_list[0] == ("#fires", 5)
+        assert client._pending_list[1] == ("#new_net", 3)
+
+    def test_handle_list_end_triggers_finish(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"])
+        client._pending_list = [("#fires", 5)]
+        assert client._handle_list_line(":server 323 bot :End of /LIST") is True
+        assert client._pending_list is None
+        assert "#fires" in client.channels
+
+    def test_finish_discovery_skips_existing_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord", "#fires"])
+        client._finish_discovery([("#c2_coord", 10), ("#fires", 5)])
+        assert len(client.channels) == 2
+
+    def test_finish_discovery_skips_empty_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"])
+        client._finish_discovery([("#empty", 0)])
+        assert "#empty" not in client.channels
+
+    def test_finish_discovery_joins_new_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"])
+        client._finish_discovery([("#fires", 5), ("#isr", 3)])
+        assert "#fires" in client.channels
+        assert "#isr" in client.channels
+
+    def test_finish_discovery_respects_max_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"], max_channels=2)
+        client._finish_discovery([("#fires", 5), ("#isr", 3)])
+        assert len(client.channels) == 2
+        assert "#fires" in client.channels
+
+    def test_finish_discovery_prefers_popular_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"], max_channels=2)
+        client._finish_discovery([("#quiet", 1), ("#busy", 20), ("#medium", 5)])
+        assert "#busy" in client.channels
+        assert "#quiet" not in client.channels
+
+    def test_config_max_channels(self):
+        client = IRCClient("ws://localhost:8097", ["#c2_coord"], max_channels=10)
+        assert client.max_channels == 10
