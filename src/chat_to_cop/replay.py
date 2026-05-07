@@ -22,7 +22,7 @@ from loguru import logger
 from chat_to_cop.agent.fusion_agent import FusionAgent
 from chat_to_cop.agent.supervisor import Supervisor
 from chat_to_cop.backend.degrading import DegradingBackend, load_cascade_thresholds
-from chat_to_cop.backend.openai_compat import OpenAICompatibleBackend
+from chat_to_cop.backend.openai_compat import DEFAULT_GLOSSARY, OpenAICompatibleBackend
 from chat_to_cop.backend.regex_fallback import RegexBackend
 from chat_to_cop.calibration import CalibrationModel
 from chat_to_cop.config import PipelineConfig
@@ -149,10 +149,25 @@ async def run_replay(
         calibration_model = CalibrationModel.from_file(config.calibration_model)
         logger.info(f"Loaded calibration model from {config.calibration_model}")
 
+    # Load supplemental glossary if configured. The file content is appended
+    # to DEFAULT_GLOSSARY and passed through Supervisor -> ChannelAgent so
+    # the LLM sees exercise-specific callsigns and track numbers.
+    glossary: str | None = None
+    if config.agent.glossary_file:
+        gpath = config.agent.glossary_file
+        if os.path.isfile(gpath):
+            with open(gpath, encoding="utf-8") as gf:
+                supplement = gf.read().strip()
+            glossary = DEFAULT_GLOSSARY + "\n\n" + supplement
+            logger.info(f"Loaded supplemental glossary from {gpath} ({len(supplement)} bytes)")
+        else:
+            logger.warning(f"Glossary file not found: {gpath}, using DEFAULT_GLOSSARY only")
+
     supervisor = Supervisor(
         backend_factory=backend_factory,
         agent_config=config.agent,
         calibration_model=calibration_model,
+        glossary=glossary,
         latency_threshold=config.supervisor.latency_threshold,
         error_rate_threshold=config.supervisor.error_rate_threshold,
         health_check_interval=config.supervisor.health_check_interval,

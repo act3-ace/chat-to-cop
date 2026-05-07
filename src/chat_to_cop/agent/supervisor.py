@@ -206,6 +206,7 @@ class Supervisor:
         *,
         agent_config: AgentConfig | None = None,
         calibration_model: CalibrationModel | None = None,
+        glossary: str | None = None,
         latency_threshold: float = 5.0,
         error_rate_threshold: float = 0.1,
         health_check_interval: float = 5.0,
@@ -221,6 +222,7 @@ class Supervisor:
         # vars were silently ignored — see issue #52 / RQ1 invalidation.
         self._agent_config = agent_config if agent_config is not None else AgentConfig()
         self._calibration_model = calibration_model
+        self._glossary = glossary
         self._agents: dict[str, ChannelAgent] = {}
         self._health: dict[str, AgentHealth] = {}
         self._shed_channels: set[str] = set()
@@ -261,7 +263,7 @@ class Supervisor:
             self.stop_agent(channel)
 
         backend = self._backend_factory()
-        agent = ChannelAgent(
+        kwargs: dict = dict(
             channel=channel,
             backend=backend,
             window_size=self._agent_config.window_size,
@@ -269,6 +271,9 @@ class Supervisor:
             use_speaker_models=self._agent_config.use_speaker_models,
             calibration_model=self._calibration_model,
         )
+        if self._glossary is not None:
+            kwargs["glossary"] = self._glossary
+        agent = ChannelAgent(**kwargs)
         self._agents[channel] = agent
 
         if priority is None:

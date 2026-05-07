@@ -151,6 +151,10 @@ class AgentConfig(BaseSettings):
         default=False,
         description="Enable online speaker model learning (default OFF per RQ1 N=100 results)",
     )
+    glossary_file: str = Field(
+        default="",
+        description="Path to supplemental glossary file to append to DEFAULT_GLOSSARY",
+    )
 
 
 class SupervisorConfig(BaseSettings):
