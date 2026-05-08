@@ -73,6 +73,44 @@ def _coerce_update_type(v: object) -> object:
     return "none"
 
 
+_WORD_TO_CONFIDENCE = {
+    "high": 0.9,
+    "very high": 0.95,
+    "medium": 0.7,
+    "moderate": 0.7,
+    "low": 0.3,
+    "very low": 0.1,
+    "none": 0.0,
+    "unknown": 0.5,
+}
+
+
+def _coerce_confidence(v: object) -> float:
+    """Coerce confidence values that LLMs commonly hallucinate.
+
+    Handles: percentages (85 -> 0.85), word labels ("high" -> 0.9),
+    out-of-range values (clamped to 0.0-1.0), None (-> 0.0).
+    """
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        if v > 1.0:
+            return min(v / 100.0, 1.0)
+        return max(0.0, min(float(v), 1.0))
+    if isinstance(v, str):
+        low = v.strip().lower().rstrip("%")
+        if low in _WORD_TO_CONFIDENCE:
+            return _WORD_TO_CONFIDENCE[low]
+        try:
+            num = float(low)
+            if num > 1.0:
+                return min(num / 100.0, 1.0)
+            return max(0.0, min(num, 1.0))
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
 def _coerce_capability_impact(v: object) -> object:
     """Coerce invalid capability_impact values to None instead of failing.
 
@@ -164,7 +202,7 @@ class CoPUpdate(BaseModel):
     """A structured world-state update extracted from chat."""
 
     update_type: Annotated[UpdateType, BeforeValidator(_coerce_update_type)]
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: Annotated[float, BeforeValidator(_coerce_confidence)] = Field(ge=0.0, le=1.0)
     extraction_method: str = Field(default="llm", description="'llm', 'regex', or 'passthrough'")
     entities: list[EntityUpdate] = Field(default_factory=list)
     source_channel: str = Field(default="", description="Filled by channel agent, not the LLM")

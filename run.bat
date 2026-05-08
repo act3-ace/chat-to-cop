@@ -423,7 +423,7 @@ echo ============================================
 echo   Running smoke test (5 messages)
 echo ============================================
 echo.
-python scripts/quick_test.py --url "!CHAT_TO_COP_LLM_URL!" --model "!CHAT_TO_COP_LLM_MODEL!"
+python scripts\quick_test.py --url "!CHAT_TO_COP_LLM_URL!" --model "!CHAT_TO_COP_LLM_MODEL!"
 if errorlevel 1 (
     echo.
     echo ============================================

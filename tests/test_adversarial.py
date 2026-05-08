@@ -290,21 +290,26 @@ class TestPydanticDefenses:
         )
         assert result.update_type == UpdateType.NONE
 
-    def test_confidence_out_of_range_rejected(self):
-        """Confidence > 1.0 fails Pydantic validation."""
-        with pytest.raises(ValueError):
-            CoPUpdate(
-                update_type=UpdateType.THREAT,
-                confidence=99.0,
-            )
+    def test_confidence_percentage_coerced(self):
+        """Confidence > 1.0 is treated as a percentage and normalized."""
+        result = CoPUpdate(update_type=UpdateType.THREAT, confidence=99.0)
+        assert 0.0 <= result.confidence <= 1.0
+        assert abs(result.confidence - 0.99) < 0.01
 
-    def test_negative_confidence_rejected(self):
-        """Confidence < 0.0 fails Pydantic validation."""
-        with pytest.raises(ValueError):
-            CoPUpdate(
-                update_type=UpdateType.THREAT,
-                confidence=-0.5,
-            )
+    def test_confidence_85_coerced(self):
+        """Confidence=85 (common LLM hallucination) -> 0.85."""
+        result = CoPUpdate(update_type=UpdateType.THREAT, confidence=85)
+        assert abs(result.confidence - 0.85) < 0.01
+
+    def test_confidence_word_label_coerced(self):
+        """Confidence='high' (word label) -> 0.9."""
+        result = CoPUpdate(update_type=UpdateType.THREAT, confidence="high")  # type: ignore[arg-type]
+        assert abs(result.confidence - 0.9) < 0.01
+
+    def test_negative_confidence_clamped(self):
+        """Confidence < 0.0 is clamped to 0.0."""
+        result = CoPUpdate(update_type=UpdateType.THREAT, confidence=-0.5)
+        assert result.confidence == 0.0
 
     def test_metadata_none_values_coerced(self):
         """None values in metadata are dropped, not passed through (#50)."""
