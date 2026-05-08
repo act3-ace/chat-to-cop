@@ -1,0 +1,10 @@
+[14:02:59] wf_beep: ***********************STARTEX DASH 3 GBC Run 10************************
+[14:03:03] VEGAS_ABM2: .
+[14:03:34] ORCA_MC: SITREP / AIR: / LRSAMs: / NAVAL SAMs: / OTHER: //
+[14:03:36] HYDRO_SL: SITREP / AIR: ZEUS 12,13,14 shot down by TTG; YAMA11 flight shot down by TTG
+[14:03:38] CRUSHER_SL: NSTR
+[14:03:39] TAIPAN_SL: NSTR
+[14:05:22] VEGAS_SL: @Hydro_SL: copy harpy12 harpy14 thor13 shark14 all shot down
+[14:10:15] Hydro_Tank: RR15 F+40, RL36 F+50
+[14:15:30] HYDRO_Strike: HADES flt on boom
+[14:20:00] AOC_SIDO: tacrep e10-4, 4th-gen sam active, cigar 316/398, jtn TM677

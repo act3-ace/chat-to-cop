@@ -1,0 +1,122 @@
+# Test the Windows onboarding path on a fresh machine.
+#
+# Exercises the same steps Mia would follow:
+#   1. setup.bat --check  (verify prereq detection)
+#   2. pip install -e ".[dev]"
+#   3. run.bat --smoke-only (install + Ollama + 5-message smoke test)
+#
+# Uses qwen2.5:0.5b (~400 MB) for speed. Extraction quality doesn't
+# matter here -- we're testing that the scripts and pipeline don't crash.
+
+name: Windows Onboarding
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'run.bat'
+      - 'setup.bat'
+      - 'scripts/bootstrap.ps1'
+      - 'scripts/quick_test.py'
+      - 'src/chat_to_cop/**'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-onboarding.yml'
+  pull_request:
+    paths:
+      - 'run.bat'
+      - 'setup.bat'
+      - 'scripts/bootstrap.ps1'
+      - 'scripts/quick_test.py'
+      - 'src/chat_to_cop/**'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-onboarding.yml'
+
+jobs:
+  windows-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify setup.bat --check detects missing Ollama
+        shell: cmd
+        run: |
+          echo. | setup.bat --check
+          if errorlevel 1 (
+            echo setup.bat correctly detected missing prerequisites.
+          ) else (
+            echo ERROR: setup.bat --check should have reported missing Ollama
+            exit /b 1
+          )
+          exit /b 0
+
+      - name: Install package
+        shell: cmd
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verify package import
+        shell: cmd
+        run: python -c "from chat_to_cop.models.cop_update import CoPUpdate; print('OK')"
+
+      - name: Install Ollama
+        shell: pwsh
+        run: |
+          $ollamaDir = "$env:RUNNER_TEMP\ollama"
+          New-Item -ItemType Directory -Path $ollamaDir -Force | Out-Null
+          Write-Host "Downloading Ollama Windows binary..."
+          Invoke-WebRequest -Uri "https://ollama.com/download/ollama-windows-amd64.zip" -OutFile "$env:RUNNER_TEMP\ollama.zip"
+          Write-Host "Extracting..."
+          Expand-Archive -Path "$env:RUNNER_TEMP\ollama.zip" -DestinationPath $ollamaDir -Force
+          # Persist to PATH for all subsequent steps
+          $ollamaDir | Out-File -FilePath $env:GITHUB_PATH -Append
+          $env:Path += ";$ollamaDir"
+          ollama --version
+
+      - name: Start Ollama and pull model
+        shell: pwsh
+        run: |
+          Write-Host "Starting Ollama server..."
+          Start-Process -FilePath "ollama" -ArgumentList "serve" -NoNewWindow
+          # Wait for Ollama to start responding
+          $tries = 0
+          while ($tries -lt 12) {
+            $tries++
+            Start-Sleep -Seconds 5
+            try {
+              $response = Invoke-RestMethod -Uri "http://127.0.0.1:11434/v1/models" -TimeoutSec 3 -ErrorAction Stop
+              Write-Host "Ollama is running."
+              break
+            } catch {
+              Write-Host "Waiting for Ollama... ($tries/12)"
+            }
+          }
+          if ($tries -ge 12) {
+            Write-Host "ERROR: Ollama did not start within 60 seconds"
+            exit 1
+          }
+          Write-Host "Pulling qwen2.5:0.5b (smallest model, ~400 MB)..."
+          ollama pull qwen2.5:0.5b
+
+      - name: Verify setup.bat --check with all tools present
+        shell: cmd
+        run: |
+          echo. | setup.bat --check
+          if errorlevel 1 (
+            echo ERROR: setup.bat --check failed even with all tools installed
+            exit /b 1
+          )
+
+      - name: Run smoke test
+        shell: cmd
+        run: python scripts/quick_test.py --model qwen2.5:0.5b
+
+      - name: Run unit tests
+        shell: cmd
+        run: pytest tests/ -k "not integration" -x -q --tb=short
