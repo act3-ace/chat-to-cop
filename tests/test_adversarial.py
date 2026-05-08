@@ -274,13 +274,21 @@ class TestSpeakerSpoofing:
 
 
 class TestPydanticDefenses:
-    def test_invalid_update_type_rejected(self):
-        """A hallucinated update type fails Pydantic validation."""
-        with pytest.raises(ValueError):
-            CoPUpdate(
-                update_type="fabricated_type",  # type: ignore[arg-type]
-                confidence=0.9,
-            )
+    def test_invalid_update_type_coerced_to_none(self):
+        """A hallucinated update type is coerced to NONE, not rejected."""
+        result = CoPUpdate(
+            update_type="fabricated_type",  # type: ignore[arg-type]
+            confidence=0.9,
+        )
+        assert result.update_type == UpdateType.NONE
+
+    def test_message_data_update_type_coerced(self):
+        """Mia's live error: LLM returned 'message_data' as update_type."""
+        result = CoPUpdate(
+            update_type="message_data",  # type: ignore[arg-type]
+            confidence=0.8,
+        )
+        assert result.update_type == UpdateType.NONE
 
     def test_confidence_out_of_range_rejected(self):
         """Confidence > 1.0 fails Pydantic validation."""

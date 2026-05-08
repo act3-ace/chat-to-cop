@@ -55,6 +55,24 @@ def _coerce_metadata_values(v: object) -> dict[str, str]:
     return {str(k): str(val) for k, val in v.items() if val is not None}
 
 
+def _coerce_update_type(v: object) -> object:
+    """Coerce invalid update_type values to 'none' instead of failing.
+
+    LLMs sometimes return invented types like 'message_data' or
+    'communication' that aren't in the UpdateType enum.
+    """
+    if v is None:
+        return "none"
+    if isinstance(v, UpdateType):
+        return v
+    if isinstance(v, str):
+        valid = {e.value for e in UpdateType}
+        if v.lower() in valid:
+            return v.lower()
+        return "none"
+    return "none"
+
+
 def _coerce_capability_impact(v: object) -> object:
     """Coerce invalid capability_impact values to None instead of failing.
 
@@ -145,7 +163,7 @@ class EntityUpdate(BaseModel):
 class CoPUpdate(BaseModel):
     """A structured world-state update extracted from chat."""
 
-    update_type: UpdateType
+    update_type: Annotated[UpdateType, BeforeValidator(_coerce_update_type)]
     confidence: float = Field(ge=0.0, le=1.0)
     extraction_method: str = Field(default="llm", description="'llm', 'regex', or 'passthrough'")
     entities: list[EntityUpdate] = Field(default_factory=list)
