@@ -59,7 +59,6 @@ class OpenAICompatibleBackend:
         self.num_ctx = num_ctx
         self._hard_timeout = hard_timeout
         self._is_azure = azure_endpoint is not None
-        self._max_retries_configured = max_retries
         self._structured_output_failures = 0
 
         if is_ollama is not None:
