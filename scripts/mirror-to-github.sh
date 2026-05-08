@@ -137,8 +137,13 @@ fi
 # Stage everything
 git add -A
 
-# Commit with a clean author (no EDIPI)
-COMMIT_MSG="Snapshot from $(git -C . log -1 --format='%h' "$BRANCH") ($(date -u +%Y-%m-%d))"
+# Commit with a clean author (no EDIPI) and credit contributors
+COMMIT_MSG="$(cat <<CMSG
+Snapshot from $(git -C . log -1 --format='%h' "$BRANCH") ($(date -u +%Y-%m-%d))
+
+Co-authored-by: Natan Vidra <vidranatan@gmail.com>
+CMSG
+)"
 GIT_AUTHOR_NAME="ACT3" \
 GIT_AUTHOR_EMAIL="act3@example.com" \
 GIT_COMMITTER_NAME="ACT3" \
