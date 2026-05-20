@@ -1,148 +1,98 @@
-# Session Notes - 2026-05-05
+# Session Notes - 2026-05-20
 
 ## Context
 
-Live MASH wargame event at H2O Las Vegas. Mia Kollia deploying chat-to-cop on-site.
-Hamilton supporting remotely.
+MASH live event ongoing. Mia Kollia running chat-to-cop on-site with GenAI.mil
+and AG Bedrock Sonnet backends. Hamilton supporting remotely. Multi-party
+collaboration forming around MASH data replay capability.
 
 ## Completed This Session
 
-### Dashboard and API fixes (pushed, confirmed working)
-- Fixed JS syntax error in dashboard.py (Python `\'` escaping in triple-quoted strings)
-- Fixed admin endpoint 500 errors when CoPWriter not initialized (standalone serve.bat mode)
-- Commits: f758dac, 599a5f9
+### Structured output failure detection (committed, pushed)
+- Auto-detects models that return text instead of JSON (input_type=str/nonetype
+  in pydantic errors) and disables instructor retries to avoid wasting LLM calls.
+- Mia hit this with GenAI.mil's Gemini backend returning conversational text.
+- `_effective_retries()` returns 0 after any structured output failure; resets on
+  success. PermanentError raised immediately instead of 2 wasted retries.
+- 6 new tests in TestStructuredOutputFailureDetection.
+- Commits: e6e4496, b1bd27e
 
-### CoP Schema Discovery (ISSUE #17 UNBLOCKED)
-- Wrote aggressive one-shot schema puller: `scripts/pull_mash_schemas.py`
-- Mia ran it on MASH network at 20:01Z -- 10/12 specs found, 74 files saved
-- Commit: b0d74bc
+### run.bat --live + --cloud support (committed, pushed)
+- run.bat now accepts `--live ws://SERVER --cloud http://REMOTE/v1` together.
+- Eliminates need for shell-specific env var syntax (CMD `set` vs PS `$env:`).
+- Tested all 4 arg patterns in both CMD and PowerShell on Windows 11.
+- Commit: 4872d3d
 
-### Results: All MASH Service Schemas Now In Hand
+### AG Bedrock Sonnet instance for Mia
+- Job 1430 on AG (172.33.69.153, port 4000, 6hr walltime).
+- Bedrock Sonnet extracts ~70% more threats/taskings and runs 2x faster than
+  T4 7B. Command for Mia:
+  `run.bat --live ws://IRC_SERVER:8097 --cloud http://172.33.69.153:4000/v1`
 
-| Service | Port | Endpoints | Schemas | Key Write Path |
-|---------|------|-----------|---------|----------------|
-| TrackManager | :3021 | 14 | 8 | `POST /tracks`, `PUT /tracks/{id}` |
-| SmartPackManager | :3028 | 12 | 33 | `POST /api/AirOperationsDirective` |
-| EffectsManager | :3024 | 30 | 23 | `/damageeffect`, `/effectorconfiguration/{callsign}` |
-| EventManager | :3016 | 16 | 18 | `POST /paeoutputs`, `/paeoutputs/bulk` |
-| MatchEffectorManager | :3027 | 10 | 3 | MEF output |
-| MissionManager | :3022 | 28 | 29 | `/missions/coa`, `/missions/intent` |
-| AreaOfInterestManager | :3015 | 8 | 10 | AOI CRUD |
-| PointOfInterestManager | :3017 | 6 | 2 | POI CRUD |
-| DELTRON | :3060 | 13 | 18 | `/classify`, `/classify/batch` |
-| IRC Multiplexer | :3080 | 8 | 3 | `/channels`, `/messages` |
-| MASH UI | :3011 | - | - | Frontend only (PARTIAL) |
-| Dev Chat | :9000 | - | - | Dev service (PARTIAL) |
+### MASH data replay research
+Comprehensive audit of replay/re-streaming capabilities across all MASH services,
+chat-to-cop, and Colin Leong's equifinality repos.
 
-### Extra Ports Discovered
-- 10.5.185.29:3000 (40KB HTML -- likely Grafana or admin UI)
-- 10.5.185.29:3012 (44KB HTML -- unknown)
-- 10.5.185.29:3050 (5KB HTML -- unknown)
+Key findings:
+- Track Manager has built-in `POST /StreamGenMsgFile` with configurable delay
+- IRC Multiplexer archives to disk + provides SSE stream
+- DELTRON has paginated message history + SSE stream
+- All services have SSE endpoints for real-time subscription
+- Colin's equifinality repos (3 on DLE GitLab) are batch ETL only -- no replay
+- chat-to-cop has proven chat replay but no track/entity data replay yet
+- Leidos/CRONUS aggregator on DLE is essentially the same pattern as StreamGenMsgFile
 
-### Key Schema Findings
+### Multi-party replay collaboration (email thread)
+- Kathleen Dipple (AFRL/RYZA CTR) interested in replay; connected to Leidos
+  vendor (Andrew Molnar) who used CRONUS aggregator from UDRI at MASH
+- Colin Leong has initial-state parser for DASH 3 data (coord cards, effector
+  plays, ACO, MACE files) with typo correction and conflict reconciliation
+- Juan Vasquez cc'd on thread
+- Drafted summary email mapping what exists vs what needs building
 
-**Track object (TrackManager):**
-- id, sourceId, aliases (dict), label, entityType, cotType
-- location: GeoJSON Point [lon, lat, alt]
-- rollDeg, pitchDeg, headingDeg, speed
-- missionNumber, capabilities[], comms[], weapons[], targets[], missions[]
-- affiliation (int enum), dimension (int enum), manned (bool)
-- lastUpdateTime, detectionTime (ISO 8601)
-- additionalInfo (freeform string), genMsgJtn
+## Data Replay Architecture (from research)
 
-**Key insight: missions[] is a string array of "Key:Value" pairs**
-- "Callsign:SWIFT01", "Fuel:2284", "TrackNumber:14306"
-- "AirEntityType:22", "AirEntityTypeDesc:CIVIL, AIRLINER"
-- This is the freeform metadata dictionary mentioned in the planning meeting
+Three tiers of replayable data:
 
-**Affiliation enum (integer):** Values observed: 0, 1, 2, 3 (likely Unknown, Friend, Neutral, Hostile)
+**Tier 1 -- IRC chat (solved):** replay.py handles DASH 1/2/3 chat.zip archives.
+IRC Multiplexer archives produce the same format after each event.
 
-**Write path confirmed:**
-- `POST /tracks` creates a new track (assigns ID if not provided)
-- `PUT /tracks/{id}` upserts by ID
-- `/tracks/identifier/{identifier}` resolves by id, label, sourceId, JTN, or alias
-- `/tracks-sse` for real-time streaming subscription
+**Tier 2 -- Track data (infrastructure exists):** Track Manager's StreamGenMsgFile
+replays GenMSG files natively. GenMSG data available from DASH 2/3 on Pydio.
+TCP (port 5001) and UDP multicast (224.9.8.63:5003) listeners documented.
 
-**EventManager (PAE output):**
-- `POST /paeoutputs` and `/paeoutputs/bulk` for writing
-- PaeOutput has SSE stream at `/paeoutputs-sse`
-- Schemas: PaeInput, PaeOutput, Event, EventAction, EventTarget
+**Tier 3 -- Mission/Effects/Events (snapshottable):** MissionManager has timestamped
+COA assignments, EffectsManager has weapon Pk tables (static reference),
+DELTRON has scored messages with entity bins. All queryable via REST.
 
-**MissionManager (GBC output):**
-- COA CRUD: `/missions/coa`, `/missions/coa-request`
-- Commander's Intent: `/missions/intent`
-- Schemas: Coa, CoaRequest, CommandersIntent, GbcOutput, BattleCoaHyperedge, etc.
+**Gap:** No one is currently recording SSE streams during the live event. Need
+explicit data capture before MASH network teardown. The orchestrator that
+coordinates multi-stream replay with timestamp alignment doesn't exist yet.
 
-**EffectsManager:**
-- Weapons database: DamageEffect, CyberEffect, ElectronicAttackEffect, SensingEffect
-- Platform configs: `/effectorconfiguration/{callsign}`
-- Bulk write: `/damageeffects/bulk`, `/cybereffects/bulk`
-- Live data: AIM-9L/M Sidewinder with full Pk tables by target type
+## MASH Service SSE Endpoints (discovered)
 
-**SmartPackManager:**
-- Air Operations Directives, Joint Task Order Targets, Bullseyes, Airfields
-- Area of Responsibility, Air Operations Centers
-- Schemas for: CDE (Collateral Damage Estimate), Loadout, TargetDetails
+| Service | Endpoint | Content |
+|---------|----------|---------|
+| Track Manager :3021 | GET /tracks-sse | Track create/update events |
+| Track Manager :3021 | POST /StreamGenMsgFile | Replay GenMSG file with delay |
+| DELTRON :3060 | GET /messages-sse | Scored/classified messages |
+| IRC Multiplexer :3080 | GET /api/archive/stream | Live IRC message stream |
+| Event Manager :3016 | GET /paeoutputs-sse | PAE output events |
 
-## Known Issues
+## Commits This Session
 
-- Wi-Fi client isolation on shoc.lan prevents device-to-device access
-  (other machines cannot reach Mia's API at 10.5.184.1:8000)
-- Ethernet hostname (rdwwtws-41lgz2) not responding -- may need wired connection
-- mash_ui (:3011) and dev_chat (:9000) returned HTML only, no API specs
+- e6e4496: auto-disable instructor retries when model can't produce JSON
+- 4872d3d: support --live and --cloud together in run.bat
+- b1bd27e: remove unused _max_retries_configured field
 
-## Next Steps (for agents)
+All pushed to DLE GitLab. GitHub mirror is behind (at d8551fb).
+1170 tests passing.
 
-1. **CoPWriter adapter** -- Map CoPUpdate schema to Track Manager `POST /tracks`
-   - Build the HTTP client targeting http://10.5.185.29:3021/tracks
-   - Map entity fields to Track schema (label, location, affiliation, missions[])
-   - Handle the "Key:Value" string array pattern for missions/capabilities/comms
+## Next Steps
 
-2. **EventManager integration** -- Write PaeOutput for processed events
-   - Map our structured events to PaeInput/PaeOutput schemas
-   - Use bulk endpoint for batch writes
-
-3. **DELTRON coordination** -- We and Jeremy's system are complementary
-   - DELTRON does importance scoring (T0-T4), entity extraction, cross-channel
-   - We do world-state extraction and CoP database writes
-   - Could consume DELTRON's `/messages-sse` as an input source
-
-4. **Real-time track subscription** -- Subscribe to `/tracks-sse`
-   - Use as ground truth for entity resolution
-   - Cross-reference chat mentions against live track data
-
-5. **Schema adapter config** -- Generate mapping config from the OpenAPI specs
-   - `python -m chat_to_cop.cli.adapt_schema` can read these specs
-   - Map CoPRecord fields to Track, PaeOutput, etc.
-
-### Multi-line Message Reassembly (Mia's idea)
-- Implemented `src/chat_to_cop/ingestion/multiline.py` -- MultiLineBuffer
-  merges LINE 0 through LINE 5 ("5 line" plans) into a single IRCMessage
-- Wired into replay.py at both live IRC and replay message sources
-- 22 tests in `tests/test_multiline.py`, 1173 total suite passes
-- Commit: 98ffe6a
-
-### DELTRON Training Data Script
-- `scripts/pull_deltron_training_data.py` -- pulls all classified messages,
-  entity table, threat table, bin snapshots from DELTRON REST API
-- Output: `data/deltron_training/` (messages_all.json, messages_summary.csv, etc.)
-- Commit: 08f0e81
-
-### GitHub Mirror and Vendor Access
-- Sanitized orphan snapshot pushed to act3-ace/chat-to-cop (commit 5f12c4c)
-- Branch protection enabled on GitHub main (requires 1 approving review)
-- Natan Vidra (nv78) invited as collaborator for MASH shell scripts
-- Cleaned 18 accidentally tracked PNGs from repo, updated .gitignore
-- Commit: 9661673
-
-## Files Modified This Session
-
-- `src/chat_to_cop/dashboard.py` (JS escaping fix)
-- `src/chat_to_cop/api.py` (admin endpoint null-safety)
-- `scripts/pull_mash_schemas.py` (complete rewrite, aggressive discovery)
-- `data/mash_schemas/` (74 files from MASH network pull)
-- `src/chat_to_cop/ingestion/multiline.py` (new -- multi-line reassembly)
-- `src/chat_to_cop/replay.py` (wrap message sources with reassemble_multiline)
-- `tests/test_multiline.py` (new -- 22 tests)
-- `scripts/pull_deltron_training_data.py` (new -- DELTRON data puller)
-- `.gitignore` (block *.png, *.jpg, Mia_*.bat, env)
+1. Capture MASH data before teardown: DELTRON message history, Track Manager
+   snapshot, IRC archive
+2. Coordinate with Colin on aligning his SQLite schema with Track Manager's
+   OpenAPI spec for shared ground truth
+3. Build multi-stream replay orchestrator (coordination layer, not rebuild)
+4. Sync GitHub mirror
