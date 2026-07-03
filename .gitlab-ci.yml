@@ -120,7 +120,7 @@ build-hpc-on-ag:
   before_script:
     - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - cp "$AG_SSH_KEY" ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
+    - printf '%s\n' "$(cat "$AG_SSH_KEY")" > ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
     - |
       cat > ~/.ssh/config <<EOF
       Host ag-head
@@ -187,7 +187,7 @@ build-flash-drive:
   before_script:
     - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - cp "$AG_SSH_KEY" ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
+    - printf '%s\n' "$(cat "$AG_SSH_KEY")" > ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
     - |
       cat > ~/.ssh/config <<EOF
       Host ag-head
