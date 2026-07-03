@@ -94,6 +94,8 @@ find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's|C:\\Users\\hsclouse|C:\\Users\\user|g' 2>/dev/null || true
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's|C:/Users/hsclouse|C:/Users/user|g' 2>/dev/null || true
+find . -name '.git' -prune -o -type f -print0 | \
+    xargs -0 sed -i 's|/c/Users/hsclouse|/c/Users/user|g' 2>/dev/null || true
 
 echo "Sanitizing HPC references..."
 find . -name '.git' -prune -o -type f -print0 | \
@@ -114,6 +116,7 @@ find ./docs -type f -print0 2>/dev/null | \
 # Remove files that should not appear in the public mirror
 rm -f CLAUDE.md docs/CLAUDE.md 2>/dev/null || true
 rm -f scripts/mirror-to-github.sh 2>/dev/null || true
+rm -f .claude/settings.local.json 2>/dev/null || true
 rm -rf docs/internal/ 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
