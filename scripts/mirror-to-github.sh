@@ -1,9 +1,9 @@
 #!/bin/bash
 # mirror-to-github.sh -- Push a sanitized, history-free snapshot to GitHub.
 #
-# Creates an orphan commit from the current main branch, scrubs internal
-# IPs, URLs, emails, usernames, and paths, then force-pushes to the
-# GitHub remote. The DLE GitLab repo is never modified.
+# Builds a sanitized snapshot commit from the current main branch (scrubbing
+# internal IPs, URLs, emails, usernames, and paths) on top of the public HEAD,
+# then pushes it to the GitHub remote. The DLE GitLab repo is never modified.
 #
 # Usage:
 #   bash scripts/mirror-to-github.sh              # dry-run (default)
@@ -54,9 +54,19 @@ fi
 
 echo "=== Building sanitized mirror snapshot ==="
 
-# Create orphan branch from current HEAD
-git checkout --orphan "$TEMP_BRANCH" 2>/dev/null
-git reset HEAD -- . >/dev/null 2>&1 || true
+# Base the snapshot on the public HEAD so the push is a plain fast-forward.
+# GitHub's main is protected against force-push, so the old orphan+force-push
+# approach is rejected; committing on top of the current public snapshot pushes
+# cleanly (whoever runs this must be allowed to update the protected branch --
+# e.g. a repo admin). Falls back to an orphan on the first-ever push, when the
+# remote branch does not exist yet.
+if git fetch "$REMOTE" "$BRANCH" 2>/dev/null && git rev-parse -q --verify "$REMOTE/$BRANCH" >/dev/null; then
+    git checkout -b "$TEMP_BRANCH" "$REMOTE/$BRANCH" 2>/dev/null
+    git rm -rq . >/dev/null 2>&1 || true
+else
+    git checkout --orphan "$TEMP_BRANCH" 2>/dev/null
+    git reset HEAD -- . >/dev/null 2>&1 || true
+fi
 git checkout "$BRANCH" -- . 2>/dev/null
 
 # ---------------------------------------------------------------------------
@@ -100,6 +110,8 @@ find . -name '.git' -prune -o -type f -print0 | \
 echo "Sanitizing HPC references..."
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's/hsclouse@narwhal\.navydsrc\.hpc\.mil/user@hpc.example.mil/g' 2>/dev/null || true
+find . -name '.git' -prune -o -type f -print0 | \
+    xargs -0 sed -i 's/narwhal\.navydsrc\.hpc\.mil/hpc.example.mil/g' 2>/dev/null || true
 find . -name '.git' -prune -o -type f -print0 | \
     xargs -0 sed -i 's|/p/work1/hsclouse|/p/work1/user|g' 2>/dev/null || true
 find . -name '.git' -prune -o -type f -print0 | \
@@ -156,7 +168,7 @@ GIT_COMMITTER_EMAIL="act3@example.com" \
 if [ "$DRY_RUN" = true ]; then
     echo ""
     echo "=== Dry run complete ==="
-    echo "Would force-push to $REMOTE/$BRANCH"
+    echo "Would push a sanitized snapshot commit to $REMOTE/$BRANCH"
     echo "Commit: $(git log -1 --oneline)"
     echo ""
     echo "Run with --push to actually push, or --diff to see changes."
@@ -165,10 +177,10 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
-# Force-push to GitHub
+# Push the sanitized snapshot to GitHub (fast-forward on top of the public HEAD)
 echo ""
 echo "=== Pushing to $REMOTE/$BRANCH ==="
-git push --force "$REMOTE" "$TEMP_BRANCH:$BRANCH"
+git push "$REMOTE" "$TEMP_BRANCH:$BRANCH"
 
 # Clean up
 git checkout "$BRANCH" 2>/dev/null
@@ -176,5 +188,5 @@ git branch -d "$TEMP_BRANCH" 2>/dev/null || true
 
 echo ""
 echo "=== Mirror updated ==="
-echo "GitHub now has a single sanitized commit with no history."
-echo "DLE GitLab is unchanged."
+echo "GitHub $BRANCH now has a fresh sanitized snapshot on top of the previous"
+echo "one -- internal history is never exposed. DLE GitLab is unchanged."
