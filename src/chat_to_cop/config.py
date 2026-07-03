@@ -132,6 +132,14 @@ class DegradingConfig(BaseSettings):
             "Missing file falls back to scalar cascade_threshold."
         ),
     )
+    cascade_thresholds_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable per-UpdateType cascade thresholds. When False, the per-type "
+            "map is ignored and cascade_threshold (scalar, default 0.0) applies "
+            "uniformly. Useful for A/B experiments comparing per-type vs flat."
+        ),
+    )
 
 
 class AgentConfig(BaseSettings):
