@@ -93,7 +93,7 @@ fi
 
 if [ ! -f "$CHAT_DATA" ]; then
     echo "ERROR: Chat data not found at $CHAT_DATA"
-    echo "Transfer from local: scp -r data/chat/ $USER@narwhal.navydsrc.hpc.mil:\$WORKDIR/chat/"
+    echo "Transfer from local: scp -r data/chat/ $USER@hpc.example.mil:\$WORKDIR/chat/"
     exit 1
 fi
 

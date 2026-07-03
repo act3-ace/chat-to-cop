@@ -37,7 +37,7 @@ os.environ["KRB5_CONFIG"] = KRB5_CONFIG
 
 import paramiko  # noqa: E402
 
-NARWHAL_HOST = os.environ.get("NARWHAL_HOST", "narwhal.navydsrc.hpc.mil")
+NARWHAL_HOST = os.environ.get("NARWHAL_HOST", "hpc.example.mil")
 NARWHAL_USER = os.environ.get("NARWHAL_USER", os.environ.get("USER", os.environ.get("USERNAME", "")))
 
 
