@@ -17,7 +17,7 @@ This dataset is the primary test and validation corpus for the chat-to-cop pipel
 
 - **Collection Event:** DASH 3 GBC (Global Battlestaff Challenge), September 2025
 - **Collection Method:** IRC server with WebSocket interface (port 8097); voice channels captured via automatic speech recognition (ASR) and piped into IRC as `#stt_*` channels
-- **Storage:** Pydio file server at `https://pydio.dle.afrl.af.mil` under `/dav/dash-mef/Dash3-GBC/`
+- **Storage:** Pydio file server at `https://pydio.example.mil` under `/dav/dash-mef/Dash3-GBC/`
 - **Local Path:** `data/dash3/23Sep_usaf_chat.zip` (committed to repository)
 
 ## Composition

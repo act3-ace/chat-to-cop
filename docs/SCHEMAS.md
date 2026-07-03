@@ -6,7 +6,7 @@ Reference documentation for the data formats used in the DASH/MASH event infrast
 
 Full OpenAPI specs pulled from the live MASH network. Raw specs in `data/mash_schemas/<service>/openapi_spec.json`.
 
-### Track Manager (http://10.5.185.29:3021)
+### Track Manager (http://10.0.0.1:3021)
 
 The primary write target for chat-to-cop. 14 endpoints, 8 schemas.
 
@@ -70,7 +70,7 @@ StoresSummation.
 
 **Design note:** This confirms the "freeform metadata dictionary" approach from the planning meeting. The string arrays ARE the metadata. Our CoPWriter should format extracted data as "Key:Value" strings in the appropriate array.
 
-### Event Manager (http://10.5.185.29:3016)
+### Event Manager (http://10.0.0.1:3016)
 
 PAE (Perceive Actionable Entity) input/output pipeline. 16 endpoints, 18 schemas.
 
@@ -81,7 +81,7 @@ PAE (Perceive Actionable Entity) input/output pipeline. 16 endpoints, 18 schemas
 
 **Key schemas:** PaeInput, PaeOutput, Event, EventAction, EventTarget, EventDetail
 
-### Mission Manager (http://10.5.185.29:3022)
+### Mission Manager (http://10.0.0.1:3022)
 
 GBC (Generate Battle COA) output. 28 endpoints, 29 schemas.
 
@@ -94,7 +94,7 @@ GBC (Generate Battle COA) output. 28 endpoints, 29 schemas.
 **Key schemas:** Coa, CoaRequest, CommandersIntent, GbcOutput, BattleCoaHyperedge,
 BattleCoaVertex, BattleCoaMetadata, SelectedAction, WindowOfOpportunity
 
-### Effects Manager (http://10.5.185.29:3024)
+### Effects Manager (http://10.0.0.1:3024)
 
 Weapons and effects database. 30 endpoints, 23 schemas.
 
@@ -110,7 +110,7 @@ Weapons and effects database. 30 endpoints, 23 schemas.
 **Key schemas:** DamageEffect (with Pk tables by target type), CyberAttack,
 ElectronicAttackEffect, SensingEffect, EffectorConfiguration, EffectorPlays
 
-### SmartPack Manager (http://10.5.185.29:3028)
+### SmartPack Manager (http://10.0.0.1:3028)
 
 Operational planning data. 12 endpoints, 33 schemas.
 
@@ -246,7 +246,7 @@ From DASH 3 `.http/irc/config.json`:
 ```json
 {
   "server": {
-    "url": "ws://10.5.185.72:8097",
+    "url": "ws://10.0.0.1:8097",
     "autojoin": "#isr_reports,#jprc,#c2_coord,#fires,#stt_C2Coord,#stt_mesquiteBMA,#stt_hydroBMA,#stt_crusherBMA,#stt_taipanBMA,#vegas_internal"
   }
 }
@@ -281,7 +281,7 @@ Regex rules for extracting track numbers from chat (adapted from prior DASH even
 ```python
 import socket
 
-SERVER_IP = '10.5.185.9'
+SERVER_IP = '10.0.0.1'
 SERVER_PORT = 5001
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

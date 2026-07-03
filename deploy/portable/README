@@ -53,7 +53,7 @@ CONNECTING TO A REAL IRC SERVER
   1. Edit docker-compose.yml
   2. In the pipeline service, change CHAT_TO_COP_IRC_URL from
      ws://mock-irc:8097 to your real IRC server, e.g.:
-       CHAT_TO_COP_IRC_URL: ws://10.5.185.72:8097
+       CHAT_TO_COP_IRC_URL: ws://10.0.0.1:8097
   3. Update CHAT_TO_COP_IRC_CHANNELS if needed
   4. Remove the mock-irc service (or just leave it -- it won't
      interfere if the pipeline points elsewhere)

@@ -458,9 +458,9 @@ class TestIRCConfigPlumbing:
         assert cfg.irc_channels is None
 
     def test_irc_url_env_override(self, monkeypatch):
-        monkeypatch.setenv("CHAT_TO_COP_IRC_URL", "ws://10.5.185.72:8097")
+        monkeypatch.setenv("CHAT_TO_COP_IRC_URL", "ws://10.0.0.1:8097")
         cfg = PipelineConfig()
-        assert cfg.irc_url == "ws://10.5.185.72:8097"
+        assert cfg.irc_url == "ws://10.0.0.1:8097"
 
     def test_irc_channels_env_override(self, monkeypatch):
         monkeypatch.setenv("CHAT_TO_COP_IRC_CHANNELS", "#c2_coord,#fires")

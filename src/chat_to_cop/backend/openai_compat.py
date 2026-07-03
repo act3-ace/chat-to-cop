@@ -59,6 +59,7 @@ class OpenAICompatibleBackend:
         self.num_ctx = num_ctx
         self._hard_timeout = hard_timeout
         self._is_azure = azure_endpoint is not None
+        self._structured_output_failures = 0
 
         if is_ollama is not None:
             self._is_ollama = is_ollama
@@ -115,13 +116,15 @@ class OpenAICompatibleBackend:
         labels = {"backend": "openai_compat", "model": self.model}
         metrics.inc("backend_calls_total", labels=labels)
 
+        effective_retries = self._effective_retries()
+
         try:
             async with metrics.async_timer("extraction_latency_seconds", labels=labels):
                 kwargs = dict(
                     model=self.model,
                     messages=messages,
                     response_model=schema,
-                    max_retries=self._max_retries,
+                    max_retries=effective_retries,
                 )
                 if self.num_ctx and self._is_ollama:
                     kwargs["extra_body"] = {"options": {"num_ctx": self.num_ctx}}
@@ -136,6 +139,7 @@ class OpenAICompatibleBackend:
                 else:
                     result = await self._client.chat.completions.create(**kwargs)
             metrics.inc("backend_successes_total", labels=labels)
+            self._structured_output_failures = 0
             return result
 
         except asyncio.TimeoutError as e:
@@ -144,11 +148,26 @@ class OpenAICompatibleBackend:
             raise RetryableError(f"Hard timeout after {budget}s (issue #75)") from e
         except Exception as e:
             err_str = str(e).lower()
+            if "input_type=str" in err_str or "input_type=nonetype" in err_str:
+                self._structured_output_failures += 1
+                if self._structured_output_failures == 1:
+                    logger.warning(
+                        "Model {} returned text instead of JSON — disabling "
+                        "instructor retries to avoid wasting LLM calls",
+                        self.model,
+                    )
+                metrics.inc("backend_failures_total", labels={**labels, "reason": "no_structured_output"})
+                raise PermanentError(f"Model cannot produce structured output (returned raw text): {e}") from e
             if any(code in err_str for code in ("429", "rate limit", "503", "502", "timeout")):
                 metrics.inc("backend_failures_total", labels={**labels, "reason": "retryable"})
                 raise RetryableError(str(e)) from e
             metrics.inc("backend_failures_total", labels={**labels, "reason": "permanent"})
             raise PermanentError(str(e)) from e
+
+    def _effective_retries(self) -> int:
+        if self._structured_output_failures > 0:
+            return 0
+        return self._max_retries
 
     @property
     def prompt_hash(self) -> str:

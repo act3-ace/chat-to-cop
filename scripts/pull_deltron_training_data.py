@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-DELTRON_URL = "http://10.5.185.30:3060"
+DELTRON_URL = "http://10.0.0.1:3060"
 OUTPUT_DIR = os.path.join("data", "deltron_training")
 PAGE_SIZE = 500
 

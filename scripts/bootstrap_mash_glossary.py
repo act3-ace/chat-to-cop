@@ -37,8 +37,8 @@ from datetime import datetime, timezone
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-DELTRON_URL = "http://10.5.185.30:3060"
-TRACK_MANAGER_URL = "http://10.5.185.29:3021"
+DELTRON_URL = "http://10.0.0.1:3060"
+TRACK_MANAGER_URL = "http://10.0.0.1:3021"
 OUTPUT_PATH = os.path.join("data", "mash_glossary.txt")
 _CALLSIGN_RE = re.compile(r"^([A-Z]+)(\d+)$", re.IGNORECASE)
 

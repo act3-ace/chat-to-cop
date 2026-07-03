@@ -24,7 +24,7 @@ if sys.platform == "win32":
 
 # ── Configuration ────────────────────────────────────────────────────────────
 # Set these via environment variables or a .env file:
-#   PYDIO_USER   - your DLE email (e.g. first.last.N@us.af.mil)
+#   PYDIO_USER   - your DLE email (e.g. first.last.Nteam@example.mil)
 #   PYDIO_PAT    - Pydio personal access token (NOT your GitLab PAT)
 #   PYDIO_PAT_FILE - path to a file containing the PAT (alternative to PYDIO_PAT)
 import os
@@ -33,7 +33,7 @@ import requests
 
 DLE_USER = os.environ.get("PYDIO_USER", "")
 PAT_FILE = Path(os.environ.get("PYDIO_PAT_FILE", "")) if os.environ.get("PYDIO_PAT_FILE") else None
-BASE_URL = "https://pydio.dle.afrl.af.mil"
+BASE_URL = "https://pydio.example.mil"
 
 # Chat-related filename patterns (case-insensitive)
 CHAT_PATTERNS = re.compile(r"(chat|irc|mirc|log\.txt|speech.to.text)", re.IGNORECASE)

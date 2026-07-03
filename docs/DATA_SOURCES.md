@@ -4,7 +4,7 @@ How to access DASH event data on Pydio and what we've already downloaded.
 
 ## Pydio Access
 
-**URL:** `https://pydio.dle.afrl.af.mil`
+**URL:** `https://pydio.example.mil`
 **WebDAV base:** `/dav/dash-mef/`
 **Auth:** Personal Access Token (PAT) — file a DLE support ticket if you don't have one. This is a separate token from your DLE/GitLab PAT.
 

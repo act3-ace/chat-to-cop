@@ -34,7 +34,7 @@ esac
 
 REPO_DIR="$HOME/chat-to-cop"
 CA_BUNDLE="$HOME/.local/share/dod-ca-bundle.pem"
-DLE_GITLAB="gitlab.dle.afrl.af.mil"
+DLE_GITLAB="gitlab.example.mil"
 REPO_URL="https://${DLE_GITLAB}/c2es1/mash/chat-to-cop.git"
 
 # ── Load token ────────────────────────────────────────────────────────

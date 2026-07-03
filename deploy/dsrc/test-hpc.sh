@@ -77,7 +77,7 @@ if [ -f "$SIF" ]; then
 else
     fail "SIF image not found at $SIF"
     echo "   Download from GitLab releases:"
-    echo "   https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/releases"
+    echo "   https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/releases"
     exit 1
 fi
 

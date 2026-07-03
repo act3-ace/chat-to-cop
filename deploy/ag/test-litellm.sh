@@ -8,7 +8,7 @@
 # Usage:
 #   bash test-litellm.sh                          # test localhost:4000
 #   bash test-litellm.sh http://172.33.68.166:4000 # test remote AG node
-#   LITELLM_URL=https://litellm-bedrock.act3.analyticsgateway.com bash test-litellm.sh
+#   LITELLM_URL=https://litellm-bedrock.ag.example.mil bash test-litellm.sh
 
 set -euo pipefail
 

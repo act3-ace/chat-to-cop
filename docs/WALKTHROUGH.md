@@ -540,7 +540,7 @@ From Pattern F (OODA-centric metrics), four Key Performance Parameters are instr
 See [QUICKSTART.md](QUICKSTART.md) for a 15-minute setup guide. The short version:
 
 ```bash
-git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+git clone https://gitlab.example.mil/c2es1/mash/chat-to-cop.git
 cd chat-to-cop
 pip install -e ".[dev]"
 ollama pull qwen2.5:3b
@@ -560,7 +560,7 @@ python scripts/quick_test.py
 
 ### Open issues to pick up
 
-Check the [GitLab issue board](https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues) for current sprint work. Sprint 3 items that are parallelizable:
+Check the [GitLab issue board](https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/issues) for current sprint work. Sprint 3 items that are parallelizable:
 
 - Docker containerization (#15)
 - Full DASH 3 replay on GPU (#16, in progress)

@@ -140,14 +140,14 @@ Ollama setup, eval harness, Docker, and troubleshooting.
 | [docs/SYSTEM_CARD.md](docs/SYSTEM_CARD.md) | RAI system card |
 | [docs/research/](docs/research/) | Benchmarks, speaker model results, adversarial robustness |
 
-## Team
+## Core Team
 
 | Person | Role |
 |--------|------|
-| **Hamilton Clouse** | ACT3 CAIO — primary developer, architecture, integration |
-| **Mia Kollia** | Human-machine teaming expert |
-| **Colin Leong** | DASH domain expert — equifinality repo, entity catalogs |
-| **Jennifer Carlet** | Expert developer — LLM infrastructure |
+| **Hamilton Clouse** | ACT3 CAIO -- primary developer, architecture, integration |
+| **Mia Kollia** | Human-machine teaming expert, live MASH operator |
+| **Colin Leong** | DASH domain expert -- equifinality repo, entity catalogs |
+| **Jennifer Carlet** | Expert developer -- LLM infrastructure |
 
 ## Related Projects
 

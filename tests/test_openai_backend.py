@@ -562,6 +562,108 @@ class TestNumCtxDetection:
         assert backend.num_ctx == 0
 
 
+class TestStructuredOutputFailureDetection:
+    """Auto-disable instructor retries when model can't produce JSON.
+
+    When a weak model (e.g. GenAI.mil Gemini) returns conversational text
+    instead of JSON, pydantic rejects it with input_type=str. After the
+    first such failure, retries are disabled to avoid wasting LLM calls.
+    """
+
+    def test_text_response_raises_permanent_error(self):
+        backend = OpenAICompatibleBackend(max_retries=2)
+
+        async def mock_create(**kwargs):
+            raise Exception(
+                "1 validation error for CoPUpdate\n"
+                'Input should be an object [type=model_type, input_value="I\'M TRYING!", input_type=str]'
+            )
+
+        backend._client.chat.completions.create = mock_create
+
+        with pytest.raises(PermanentError, match="structured output"):
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
+
+    def test_retries_disabled_after_first_text_failure(self):
+        backend = OpenAICompatibleBackend(max_retries=2)
+        assert backend._effective_retries() == 2
+
+        async def mock_create(**kwargs):
+            raise Exception('Input should be an object [type=model_type, input_value="hello", input_type=str]')
+
+        backend._client.chat.completions.create = mock_create
+
+        with pytest.raises(PermanentError):
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
+
+        assert backend._effective_retries() == 0
+
+    def test_retries_restored_after_success(self):
+        backend = OpenAICompatibleBackend(max_retries=2)
+        backend._structured_output_failures = 3
+        assert backend._effective_retries() == 0
+
+        async def mock_create(**kwargs):
+            return SimpleExtraction(update_type="fuel", confidence=0.9, summary="ok")
+
+        backend._client.chat.completions.create = mock_create
+
+        asyncio.run(
+            backend.extract(
+                messages=[{"role": "user", "content": "test"}],
+                schema=SimpleExtraction,
+            )
+        )
+
+        assert backend._structured_output_failures == 0
+        assert backend._effective_retries() == 2
+
+    def test_nonetype_response_also_detected(self):
+        backend = OpenAICompatibleBackend(max_retries=2)
+
+        async def mock_create(**kwargs):
+            raise Exception("Input should be an object [type=model_type, input_value=None, input_type=nonetype]")
+
+        backend._client.chat.completions.create = mock_create
+
+        with pytest.raises(PermanentError, match="structured output"):
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
+        assert backend._effective_retries() == 0
+
+    def test_normal_validation_error_does_not_disable_retries(self):
+        backend = OpenAICompatibleBackend(max_retries=2)
+
+        async def mock_create(**kwargs):
+            raise Exception("1 validation error for CoPUpdate\nconfidence: value is not a valid float")
+
+        backend._client.chat.completions.create = mock_create
+
+        with pytest.raises(PermanentError):
+            asyncio.run(
+                backend.extract(
+                    messages=[{"role": "user", "content": "test"}],
+                    schema=SimpleExtraction,
+                )
+            )
+
+        assert backend._effective_retries() == 2
+
+
 class TestIntegrationOllama:
     """Integration tests that require a running Ollama instance.
 

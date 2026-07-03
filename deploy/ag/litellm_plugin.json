@@ -1,7 +1,7 @@
 {
   "title": "LiteLLM-Bedrock",
   "version": "0.01",
-  "maintainer": "hamilton.clouse.1@us.af.mil",
+  "maintainer": "maintainer@example.mil",
   "description": "OpenAI-compatible proxy for AWS Bedrock Claude models. Exposes claude-sonnet and claude-haiku via /v1/chat/completions so chat-to-cop operators can use Bedrock without AWS credentials on their laptop.",
   "plugin_type": "custom",
   "friendly_name": "litellm-bedrock",

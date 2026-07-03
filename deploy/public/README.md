@@ -64,7 +64,7 @@ Configuration is via environment variables, set in `docker-compose.yml` or a
 
 1. Edit `docker-compose.yml`
 2. Change `CHAT_TO_COP_IRC_URL` in the pipeline service to your IRC WebSocket
-   URL (e.g., `ws://10.5.185.72:8097`)
+   URL (e.g., `ws://10.0.0.1:8097`)
 3. Update `CHAT_TO_COP_IRC_CHANNELS` to match the channels on your server
 4. Remove the `mock-irc` service and its `depends_on` reference in `pipeline`
 5. Restart: `docker compose up -d`

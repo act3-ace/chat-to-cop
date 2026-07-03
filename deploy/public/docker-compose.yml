@@ -49,7 +49,7 @@ services:
 
   # The extraction pipeline.
   # To connect to a real IRC server, change CHAT_TO_COP_IRC_URL:
-  #   CHAT_TO_COP_IRC_URL: ws://10.5.185.72:8097
+  #   CHAT_TO_COP_IRC_URL: ws://10.0.0.1:8097
   # and remove the mock-irc depends_on.
   pipeline:
     image: ghcr.io/act3-ace/chat-to-cop:latest

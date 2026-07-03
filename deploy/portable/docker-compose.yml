@@ -17,7 +17,7 @@
 # To connect to a real IRC server instead of the demo:
 #   1. Remove or comment out the mock-irc service below
 #   2. Set CHAT_TO_COP_IRC_URL to your IRC WebSocket URL, e.g.:
-#        CHAT_TO_COP_IRC_URL=ws://10.5.185.72:8097
+#        CHAT_TO_COP_IRC_URL=ws://10.0.0.1:8097
 #   3. Remove the mock-irc depends_on from the pipeline service
 #   4. Run: docker compose up
 

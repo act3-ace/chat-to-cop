@@ -46,7 +46,7 @@ variable syntax entirely.
 ### 2.1 Clone and install
 
 ```bash
-git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+git clone https://gitlab.example.mil/c2es1/mash/chat-to-cop.git
 cd chat-to-cop
 pip install -e ".[dev]"
 ```
@@ -426,7 +426,7 @@ Claude Sonnet via AWS Bedrock, proxied through a LiteLLM instance on Analytics G
 ### One-liner setup
 
 ```bash
-export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
+export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.ag.example.mil/v1
 export CHAT_TO_COP_LLM_MODEL=claude-sonnet
 ```
 
@@ -451,13 +451,13 @@ Only Claude Sonnet is enabled in AG Bedrock Model Access. Other models
 1. Verify the proxy is reachable:
 
 ```bash
-curl https://litellm-bedrock.act3.analyticsgateway.com/v1/models
+curl https://litellm-bedrock.ag.example.mil/v1/models
 ```
 
 2. Set environment and run:
 
 ```bash
-export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
+export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.ag.example.mil/v1
 export CHAT_TO_COP_LLM_MODEL=claude-sonnet
 
 python -m chat_to_cop.replay /path/to/live/feed --db data/mash_ag.db
@@ -470,7 +470,7 @@ Combine the AG proxy as primary with a local Ollama fallback for resilience. If 
 
 ```bash
 # Primary: AG-proxied Bedrock (Claude Sonnet)
-export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.act3.analyticsgateway.com/v1
+export CHAT_TO_COP_LLM_URL=https://litellm-bedrock.ag.example.mil/v1
 export CHAT_TO_COP_LLM_MODEL=claude-sonnet
 
 # Fallback: local Ollama
@@ -495,13 +495,13 @@ bash test-litellm.sh
 
 The launch script is idempotent (safe to re-run). LiteLLM runs on port 4000 and logs to `/tmp/litellm.log`.
 
-For a stable HTTPS URL, register the AG plugin using `litellm_plugin.json`. This gives the proxy a friendly name like `https://litellm-bedrock.act3.analyticsgateway.com`. Until that is configured, use the direct IP.
+For a stable HTTPS URL, register the AG plugin using `litellm_plugin.json`. This gives the proxy a friendly name like `https://litellm-bedrock.ag.example.mil`. Until that is configured, use the direct IP.
 
 ### Friendly name URL vs direct IP
 
 | URL Type | Example | When to use |
 |----------|---------|-------------|
-| Friendly name | `https://litellm-bedrock.act3.analyticsgateway.com/v1` | AG plugin registered, HTTPS, stable |
+| Friendly name | `https://litellm-bedrock.ag.example.mil/v1` | AG plugin registered, HTTPS, stable |
 | Direct IP | `http://172.33.68.166:4000/v1` | No plugin yet, testing, or plugin unavailable |
 
 The friendly name provides TLS termination and a stable hostname. Prefer it for production use. The direct IP works for testing and when the plugin has not been registered with AG yet.
@@ -533,7 +533,7 @@ nvidia-smi || (sudo apt-get install -y nvidia-driver-535 && sudo modprobe nvidia
 
 ```bash
 cd /tmp
-git clone https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop.git
+git clone https://gitlab.example.mil/c2es1/mash/chat-to-cop.git
 cd chat-to-cop
 bash deploy/ag/launch-vllm-chat2cop.sh
 ```
@@ -617,7 +617,7 @@ These values will be confirmed at the event. Update before starting the pipeline
 The IRC server address will be provided by the exercise control team. At DASH 3 it was:
 
 ```
-ws://10.5.185.72:8097
+ws://10.0.0.1:8097
 ```
 
 Set via environment variable or CLI flag:

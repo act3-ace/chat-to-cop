@@ -104,9 +104,12 @@ def _make_degrading_backend(
     timeouts.append(1.0)  # Regex is near-instant
 
     # Issue #67: load per-UpdateType cascade thresholds if the configured
-    # JSON file exists. Missing file degrades to the scalar cascade_threshold
-    # (which defaults to 0, i.e. cascade disabled — same as pre-#67 behavior).
-    cascade_thresholds = load_cascade_thresholds(config.degrading.cascade_thresholds_path)
+    # JSON file exists AND the feature is enabled. When disabled, the map
+    # stays empty and DegradingBackend falls back to the scalar
+    # cascade_threshold (default 0.0 = cascade disabled entirely).
+    cascade_thresholds: dict[str, float] = {}
+    if config.degrading.cascade_thresholds_enabled:
+        cascade_thresholds = load_cascade_thresholds(config.degrading.cascade_thresholds_path)
 
     return DegradingBackend(
         backends=backends,

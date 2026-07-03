@@ -249,7 +249,7 @@ if [ -n "$EXISTING_JOB" ]; then
     fi
 else
     echo "  Submitting AG job (g4dn.xlarge GPU node)..."
-    JOB_ID=$(ag_head 'qsub -l select=1:ncpus=1:instance_type=g4dn.xlarge -l walltime=02:00:00 -q standard -N mia-backend /p/home/deployer/ag-helpers/ag-side/job-publish.sh 2>&1' | grep -oP '^\d+')
+    JOB_ID=$(ag_head 'qsub -l select=1:ncpus=1:instance_type=g4dn.xlarge -l walltime=06:00:00 -q standard -N mia-backend /p/home/deployer/ag-helpers/ag-side/job-publish.sh 2>&1' | grep -oP '^\d+')
 
     if [ -z "$JOB_ID" ]; then
         echo "ERROR: qsub failed. Check AG access." >&2

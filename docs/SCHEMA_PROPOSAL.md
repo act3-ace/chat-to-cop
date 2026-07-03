@@ -265,5 +265,5 @@ Our `metadata` overflow dict (Pattern B) is designed for exactly this: informati
 
 - **Hamilton Clouse** — ACT3 CAIO
 - **Mia Kollia** — ACT3 HMT expert
-- **GitLab repo** — https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop (Internal visibility, your team should now have access)
-- **Confluence docs (Sarah's)** — https://confluence.dle.afrl.af.mil/spaces/JADPACT/pages/548864328/Mash+Documentation
+- **GitLab repo** — https://gitlab.example.mil/c2es1/mash/chat-to-cop (Internal visibility, your team should now have access)
+- **Confluence docs (Sarah's)** — https://confluence.example.mil/spaces/JADPACT/pages/548864328/Mash+Documentation

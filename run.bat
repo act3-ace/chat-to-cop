@@ -16,6 +16,7 @@ REM   run.bat --smoke-only    - Just run the smoke test
 REM   run.bat --dashboard     - Start the dashboard only
 REM   run.bat --live URL      - Connect to a live IRC server
 REM   run.bat --cloud URL     - Use a remote LLM backend (skip local Ollama)
+REM   run.bat --live URL --cloud URL  - Live IRC with remote LLM backend
 
 setlocal enabledelayedexpansion
 
@@ -43,9 +44,11 @@ REM Save args before call :auto_update_pull -- the call+goto pattern
 REM inside the subroutine corrupts %1/%2 on some cmd.exe versions.
 set _ARG1=%1
 set _ARG2=%2
+set _ARG3=%3
+set _ARG4=%4
 
 REM -------------------------------------------------------------------
-REM Parse --cloud argument
+REM Parse --cloud argument (can appear as arg1 or arg3)
 REM -------------------------------------------------------------------
 
 set CLOUD_URL=
@@ -61,6 +64,18 @@ if "%_ARG1%"=="--cloud" (
     set USE_CLOUD=1
     echo   Using remote LLM backend: %_ARG2%
     echo   [cloud] URL=%_ARG2% >> "%LOGFILE%"
+)
+if "%_ARG3%"=="--cloud" (
+    if "%_ARG4%"=="" (
+        echo ERROR: --cloud requires a URL.
+        echo Usage: run.bat --live ws://IRC_SERVER --cloud http://REMOTE_IP:PORT/v1
+        pause
+        exit /b 1
+    )
+    set CLOUD_URL=%_ARG4%
+    set USE_CLOUD=1
+    echo   Using remote LLM backend: %_ARG4%
+    echo   [cloud] URL=%_ARG4% >> "%LOGFILE%"
 )
 
 REM -------------------------------------------------------------------
@@ -495,7 +510,12 @@ echo   Connecting to live IRC: %_ARG2%
 echo ============================================
 echo.
 set CHAT_TO_COP_IRC_URL=%_ARG2%
-if not defined CHAT_TO_COP_LLM_URL set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
+if "%USE_CLOUD%"=="1" (
+    set CHAT_TO_COP_LLM_URL=!CLOUD_URL!
+    echo   LLM backend: !CLOUD_URL! ^(remote^)
+) else (
+    if not defined CHAT_TO_COP_LLM_URL set CHAT_TO_COP_LLM_URL=http://127.0.0.1:11434/v1
+)
 if not defined CHAT_TO_COP_LLM_MODEL set CHAT_TO_COP_LLM_MODEL=!RECOMMENDED_MODEL!
 set CHAT_TO_COP_DB_PATH=data\mash_live.db
 python -m chat_to_cop.replay
@@ -582,7 +602,7 @@ echo   Setting up auto-updates...
 echo   [AUTO-UPDATE] Converting zip to git clone >> "%LOGFILE%"
 git init >nul 2>&1
 if errorlevel 1 goto :convert_failed
-git remote add origin git@gitlab.dle.afrl.af.mil:c2es1/mash/chat-to-cop.git >nul 2>&1
+git remote add origin git@gitlab.example.mil:c2es1/mash/chat-to-cop.git >nul 2>&1
 if errorlevel 1 goto :convert_failed
 echo   Connecting to code server (may take a moment)...
 git fetch --depth 1 origin main >nul 2>&1
@@ -616,6 +636,7 @@ echo   run.bat --smoke-only        Just verify everything works (30 seconds)
 echo   run.bat --dashboard         Start the REST API dashboard only
 echo   run.bat --live URL          Connect to a live IRC server
 echo   run.bat --cloud URL         Use a remote LLM backend (skip local Ollama)
+echo   run.bat --live URL --cloud URL  Live IRC with remote LLM
 echo.
 echo GPU Detection:
 echo   The script detects your NVIDIA GPU and picks the best model:

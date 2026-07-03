@@ -31,7 +31,7 @@ SSH_RETRIES=6
 AG_HEAD="ag-head"
 JOBID=""
 
-DLE_API="https://gitlab.dle.afrl.af.mil/api/v4"
+DLE_API="https://gitlab.example.mil/api/v4"
 SNIPPET_URL="$DLE_API/snippets/$AG_SNIPPET_ID/files/main/ag_node.json/raw"
 
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3"

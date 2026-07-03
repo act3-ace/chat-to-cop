@@ -132,6 +132,14 @@ class DegradingConfig(BaseSettings):
             "Missing file falls back to scalar cascade_threshold."
         ),
     )
+    cascade_thresholds_enabled: bool = Field(
+        default=True,
+        description=(
+            "Enable per-UpdateType cascade thresholds. When False, the per-type "
+            "map is ignored and cascade_threshold (scalar, default 0.0) applies "
+            "uniformly. Useful for A/B experiments comparing per-type vs flat."
+        ),
+    )
 
 
 class AgentConfig(BaseSettings):
@@ -283,7 +291,7 @@ class PipelineConfig(BaseSettings):
     # IRC live mode
     irc_url: str | None = Field(
         default=None,
-        description="IRC WebSocket URL for live mode (e.g. ws://10.5.185.72:8097). None = file replay.",
+        description="IRC WebSocket URL for live mode (e.g. ws://10.0.0.1:8097). None = file replay.",
     )
     irc_channels: str | None = Field(
         default=None,

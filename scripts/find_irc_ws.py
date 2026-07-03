@@ -6,7 +6,7 @@ the web client page for WebSocket URLs.
 
 Usage:
     python scripts/find_irc_ws.py
-    python scripts/find_irc_ws.py --host 10.5.185.72
+    python scripts/find_irc_ws.py --host 10.0.0.1
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def scrape_web_client(host: str) -> list[str]:
 
 async def main():
     parser = argparse.ArgumentParser(description="Find IRC WebSocket endpoint on MASH network")
-    parser.add_argument("--host", default="10.5.185.72", help="IRC server IP (default: 10.5.185.72)")
+    parser.add_argument("--host", default="10.0.0.1", help="IRC server IP (default: 10.0.0.1)")
     args = parser.parse_args()
 
     host = args.host
@@ -160,7 +160,7 @@ async def main():
         print("The IRC server is on port 6667 (raw TCP), not WebSocket.")
         print("Options:")
         print("  1. Ask exercise control if there's a WebSocket gateway")
-        print("  2. Open http://10.5.185.72/irc in Chrome, press F12,")
+        print("  2. Open http://10.0.0.1/irc in Chrome, press F12,")
         print("     Network tab > WS filter, and report the URL")
         print(f"\nOpen TCP ports found: {open_ports}")
         if scraped_urls:

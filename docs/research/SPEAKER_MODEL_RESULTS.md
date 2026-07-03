@@ -1,6 +1,6 @@
 # Speaker Model Evaluation Results (RQ1)
 
-**Issue:** [#35](https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues/35) (RQ1 base) and [#52](https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues/52) (multi-backend extension)
+**Issue:** [#35](https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/issues/35) (RQ1 base) and [#52](https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/issues/52) (multi-backend extension)
 **Labels:** `data/labels/dash3_silver_labels_opus.jsonl` (856 labeled messages, Claude Opus silver labels)
 **Eval script:** `scripts/eval_speaker_sweep.py`
 **Sweep infrastructure:** MR !97 (scripts), MR !98 (export fix)

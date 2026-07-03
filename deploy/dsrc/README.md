@@ -19,7 +19,7 @@ The container is built automatically by GitLab CI on tagged releases. It include
 
 Download the `.sif` from the GitLab release page:
 ```
-https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/releases
+https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/releases
 ```
 
 Look for the **"Apptainer SIF image (HPC, with Ollama + Qwen2.5-14B)"** link.

@@ -76,7 +76,7 @@ auto_update_convert() {
     echo "  Setting up auto-updates..."
     echo "  [AUTO-UPDATE] Converting zip to git clone" >> "$LOGFILE"
     if git init &>/dev/null \
-        && git remote add origin git@gitlab.dle.afrl.af.mil:c2es1/mash/chat-to-cop.git &>/dev/null \
+        && git remote add origin git@gitlab.example.mil:c2es1/mash/chat-to-cop.git &>/dev/null \
         && { echo "  Connecting to code server (may take a moment)..."; git fetch --depth 1 origin main &>/dev/null; } \
         && git checkout -f -B main origin/main &>/dev/null; then
         echo "  Auto-updates enabled -- future runs will pull the latest code."

@@ -6,7 +6,7 @@
 # available.
 #
 # Based on Jennifer Carlet's scripts:
-#   https://gitlab.dle.afrl.af.mil/analytics-gateway/llms-on-ag
+#   https://gitlab.example.mil/analytics-gateway/llms-on-ag
 #
 # Usage:
 #   ./launch-vllm-chat2cop.sh              # Docker if available, else native
@@ -88,7 +88,7 @@ detect_gpu() {
     # From Jennifer Carlet's benchmarks: --dtype float16 required for T4,
     # --max-num-seqs 16 reduces memory pressure. Triton shared memory
     # exhaustion is a known issue on CC <8.0 GPUs.
-    # Ref: gitlab.dle.afrl.af.mil/analytics-gateway/llms-on-ag
+    # Ref: gitlab.example.mil/analytics-gateway/llms-on-ag
     if echo "$gpu_name" | grep -qi "T4"; then
         echo "  T4 detected (CC 7.5) -- applying T4-specific flags"
         T4_EXTRA_ARGS="--dtype float16 --max-num-seqs 16"
@@ -187,7 +187,7 @@ launch_native() {
     echo "Starting vLLM natively (no Docker)..."
     echo ""
     echo "  If vllm is not installed, see Jennifer Carlet's install script:"
-    echo "    https://gitlab.dle.afrl.af.mil/analytics-gateway/llms-on-ag"
+    echo "    https://gitlab.example.mil/analytics-gateway/llms-on-ag"
     echo "    vllm_scripts/install_build_deps.sh  (CUDA 12.4 + python3-dev)"
     echo "    pip install vllm                     (or: uv pip install vllm)"
     echo ""

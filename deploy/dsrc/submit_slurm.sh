@@ -21,7 +21,7 @@
 # Prerequisites:
 #   1. Kerberos ticket:  kinit <username>@HPCMP.HPC.MIL
 #   2. Container built by CI — download the HPC .sif from GitLab release:
-#        https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/releases
+#        https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/releases
 #   3. Transfer to Narwhal:
 #        scp chat-to-cop-hpc_<tag>.sif $USER@narwhal.hpc.mil:$WORKDIR/
 #        scp -r data/chat/ $USER@narwhal.hpc.mil:$WORKDIR/chat/
@@ -74,7 +74,7 @@ if [ ! -f "$CONTAINER" ]; then
     echo "ERROR: Container not found: $CONTAINER"
     echo ""
     echo "Download the HPC .sif from the GitLab release:"
-    echo "  https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/releases"
+    echo "  https://gitlab.example.mil/c2es1/mash/chat-to-cop/-/releases"
     echo ""
     echo "Then transfer to Narwhal:"
     echo "  kinit <username>@HPCMP.HPC.MIL"

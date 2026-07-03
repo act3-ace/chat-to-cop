@@ -20,18 +20,18 @@ from urllib.request import Request, urlopen
 # --- Known services from the MASH network info sheet ---
 
 SERVICES = [
-    ("track_manager", "http://10.5.185.29:3021", "Tracks"),
-    ("smart_pack_manager", "http://10.5.185.29:3028", "SmartPack"),
-    ("effects_manager", "http://10.5.185.29:3024", "Effects"),
-    ("event_manager", "http://10.5.185.29:3016", "PaeOutput"),
-    ("mef_manager", "http://10.5.185.29:3027", "MefOutput"),
-    ("mission_manager", "http://10.5.185.29:3022", "GbcOutput"),
-    ("aoi_manager", "http://10.5.185.29:3015", "Area of Interest"),
-    ("poi_manager", "http://10.5.185.29:3017", "Points of Interest"),
-    ("deltron_chatparser", "http://10.5.185.30:3060", "Deltron/ChatParser"),
-    ("irc_streamer", "http://10.5.185.30:3080", "IRC Streamer"),
-    ("mash_ui", "http://10.5.185.29:3011", "JadBMW/MASH UI"),
-    ("dev_chat", "http://10.5.185.30:9000", "Dev Chat Service"),
+    ("track_manager", "http://10.0.0.1:3021", "Tracks"),
+    ("smart_pack_manager", "http://10.0.0.1:3028", "SmartPack"),
+    ("effects_manager", "http://10.0.0.1:3024", "Effects"),
+    ("event_manager", "http://10.0.0.1:3016", "PaeOutput"),
+    ("mef_manager", "http://10.0.0.1:3027", "MefOutput"),
+    ("mission_manager", "http://10.0.0.1:3022", "GbcOutput"),
+    ("aoi_manager", "http://10.0.0.1:3015", "Area of Interest"),
+    ("poi_manager", "http://10.0.0.1:3017", "Points of Interest"),
+    ("deltron_chatparser", "http://10.0.0.1:3060", "Deltron/ChatParser"),
+    ("irc_streamer", "http://10.0.0.1:3080", "IRC Streamer"),
+    ("mash_ui", "http://10.0.0.1:3011", "JadBMW/MASH UI"),
+    ("dev_chat", "http://10.0.0.1:9000", "Dev Chat Service"),
 ]
 
 # Every spec path we can think of
@@ -336,7 +336,7 @@ def pull_service(name: str, base_url: str, description: str) -> dict:
 
 def probe_extra_ports():
     """Probe for unknown services on the MASH hosts."""
-    hosts = ["10.5.185.29", "10.5.185.30"]
+    hosts = ["10.0.0.1", "10.0.0.1"]
     found = []
 
     print("\n  Probing extra ports...", flush=True)

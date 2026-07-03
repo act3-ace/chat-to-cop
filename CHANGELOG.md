@@ -12,6 +12,34 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- Structured output failure detection (2026-05-20): auto-detects models that
+  return text instead of JSON (input_type=str/nonetype in pydantic errors) and
+  disables instructor retries to avoid wasting LLM calls. Triggered by
+  GenAI.mil Gemini backend. _effective_retries() returns 0 after failure,
+  resets on success. PermanentError raised immediately. 6 tests.
+- run.bat --live + --cloud support (2026-05-20): run.bat now accepts
+  `--live ws://SERVER --cloud http://REMOTE/v1` together as positional args,
+  eliminating need for shell-specific env var syntax. Tested on CMD and
+  PowerShell on Windows 11.
+
+### Research
+
+- MASH data replay audit (2026-05-20): mapped all SSE streaming endpoints
+  across MASH services. Track Manager has built-in `POST /StreamGenMsgFile`
+  replay with configurable delay. IRC Multiplexer archives to disk. DELTRON
+  has paginated message history. Gap: no one recording SSE streams during live
+  event, and no multi-stream replay orchestrator yet. Multi-party collaboration
+  forming with Colin Leong (initial-state parser), Kathleen Dipple (AFRL/RYZA),
+  and Leidos/CRONUS aggregator on DLE.
+
+### Failed approaches
+
+- GenAI.mil Gemini as structured output backend (2026-05-20): model returns
+  conversational text ("I'M TRYING!") instead of JSON, triggering pydantic
+  input_type=str errors. Each failure cost 3 LLM calls (1 original + 2 retries)
+  before the auto-detection fix. The model fundamentally cannot produce
+  structured output via instructor.
+
 - IRC channel auto-discovery (2026-05-07): IRC client sends LIST every 2
   minutes and auto-joins new channels sorted by user count, up to a
   configurable cap (default 50). Channels with zero users are skipped.
