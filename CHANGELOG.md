@@ -12,6 +12,17 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Added
 
+- AG CI on non-root runners (2026-07-04): the AG build jobs (`build-hpc-on-ag`,
+  `build-flash-drive`) now run on the mixed non-root DLE k8s pool. Switched them
+  to `python:3.12` with `export HOME=$CI_PROJECT_DIR` (no apt needed), hardened
+  the `AG_SSH_KEY` copy against a dropped trailing newline, and replaced the
+  openssh `ssh`/`scp` -- which abort with "No user exists for uid N" on runners
+  with no /etc/passwd entry -- with a paramiko helper (`deploy/ci/ag_ssh.py`).
+  Also fixed `test`/`lint` on the non-root runners and the `mirror-to-github.sh`
+  sanitizer (was leaking the maintainer username via
+  `.claude/settings.local.json`; now fast-forwards a snapshot compatible with
+  GitHub branch protection).
+
 - Structured output failure detection (2026-05-20): auto-detects models that
   return text instead of JSON (input_type=str/nonetype in pydantic errors) and
   disables instructor retries to avoid wasting LLM calls. Triggered by
