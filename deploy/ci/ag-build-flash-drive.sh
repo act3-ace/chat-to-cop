@@ -45,13 +45,18 @@ DISK_GB="${AG_DISK_GB:-50}"
 POLL_INTERVAL=5
 POLL_TIMEOUT=600
 SSH_RETRIES=6
-AG_HEAD="ag-head"
+# AG access via the paramiko helper (ag_ssh.py), not the openssh binary, which
+# aborts with "No user exists for uid N" on non-root runners with no /etc/passwd
+# entry. ag_ssh.py reads AG_SSH_KEY / AG_USERNAME from the environment.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ag_head() { python3 "$SCRIPT_DIR/ag_ssh.py" head "$@"; }
+ag_node() { python3 "$SCRIPT_DIR/ag_ssh.py" node "$NODE_IP" "$@"; }
 JOBID=""
 
 DLE_API="https://gitlab.dle.afrl.af.mil/api/v4"
 SNIPPET_URL="$DLE_API/snippets/$AG_SNIPPET_ID/files/main/ag_node.json/raw"
 
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
+# (SSH transport is handled by ag_ssh.py; no openssh client options needed.)
 
 # ---------------------------------------------------------------------------
 # Cleanup trap — always release the AG job
@@ -60,7 +65,7 @@ SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o Connect
 cleanup() {
     if [ -n "$JOBID" ]; then
         echo "--- Cleanup: deleting AG job $JOBID ---"
-        ssh $SSH_OPTS "$AG_HEAD" "qdel $JOBID" 2>/dev/null || true
+        ag_head "qdel $JOBID" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
@@ -72,7 +77,7 @@ trap cleanup EXIT
 echo "=== Phase 1: Submit AG compute job ==="
 echo "Node type: $NODE_TYPE  Walltime: $WALLTIME  Disk: ${DISK_GB}GB  Model: $MODEL"
 
-OUTPUT=$(ssh $SSH_OPTS "$AG_HEAD" \
+OUTPUT=$(ag_head \
     "qsub -l select=1:type=$NODE_TYPE -l disk=$DISK_GB -l walltime=$WALLTIME -N flash-drive-build ~/job-publish.sh" 2>&1) || true
 echo "qsub output: $OUTPUT"
 
@@ -115,18 +120,8 @@ if [ -z "$NODE_IP" ]; then
     exit 1
 fi
 
-# Write ProxyJump SSH config for the compute node
-cat >> ~/.ssh/config <<EOF
-
-Host ag-node
-    HostName $NODE_IP
-    User $AG_USERNAME
-    IdentityFile ~/.ssh/ag_key
-    IdentitiesOnly yes
-    ProxyJump $AG_HEAD
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-EOF
+# ag_node (defined above) reaches the compute node at $NODE_IP through the head's
+# allowlisted nc tunnel -- that hop is handled inside ag_ssh.py.
 
 # ---------------------------------------------------------------------------
 # Phase 3: Build on AG compute node
@@ -138,7 +133,7 @@ IMAGE_TAG="${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA:-latest}}"
 
 # Retry SSH connection (node may still be initializing sshd)
 for i in $(seq 1 $SSH_RETRIES); do
-    if ssh $SSH_OPTS ag-node "echo ok" 2>/dev/null; then
+    if ag_node "echo ok" 2>/dev/null; then
         echo "SSH connected (attempt $i)"
         break
     fi
@@ -151,10 +146,10 @@ for i in $(seq 1 $SSH_RETRIES); do
 done
 
 # Transfer the node build script and execute it
-ssh $SSH_OPTS ag-node "cat > /tmp/ag-node-flash-drive.sh && chmod +x /tmp/ag-node-flash-drive.sh" \
+ag_node "cat > /tmp/ag-node-flash-drive.sh && chmod +x /tmp/ag-node-flash-drive.sh" \
     < "$(dirname "$0")/ag-node-flash-drive.sh"
 
-ssh $SSH_OPTS ag-node \
+ag_node \
     "DLE_GITLAB_TOKEN='$DLE_GITLAB_TOKEN' \
      CI_PROJECT_URL='${CI_PROJECT_URL:-}' \
      COMMIT_SHA='${CI_COMMIT_SHORT_SHA:-HEAD}' \
@@ -168,7 +163,9 @@ ssh $SSH_OPTS ag-node \
 
 echo "=== Phase 4: Retrieve flash drive package ==="
 
-scp $SSH_OPTS ag-node:/tmp/chat-to-cop-portable.tar.gz ./chat-to-cop-portable.tar.gz
+# Download the tarball by streaming it back through ag_ssh.py (cat over the
+# paramiko channel) rather than scp, which would need the ssh binary.
+ag_node "cat /tmp/chat-to-cop-portable.tar.gz" > ./chat-to-cop-portable.tar.gz
 
 TARBALL_SIZE=$(stat -c%s chat-to-cop-portable.tar.gz 2>/dev/null || stat -f%z chat-to-cop-portable.tar.gz 2>/dev/null || echo "unknown")
 echo "Retrieved chat-to-cop-portable.tar.gz ($TARBALL_SIZE bytes)"

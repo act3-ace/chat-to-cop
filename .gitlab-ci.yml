@@ -128,21 +128,13 @@ build-hpc-on-ag:
     AG_WALLTIME: "2:00:00"
     AG_DISK_GB: "90"
   before_script:
-    # python:3.12 already ships openssh-client/curl/python3, so no apt-get needed.
-    # This job overrides the default before_script, so it sets HOME itself.
+    # This job overrides the default before_script. AG access uses paramiko
+    # (deploy/ci/ag_ssh.py) instead of the ssh binary, which aborts on non-root
+    # runners with no /etc/passwd entry -- so no ~/.ssh setup is needed. HOME must
+    # still be writable for pip.
     - export HOME="$CI_PROJECT_DIR"
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - printf '%s\n' "$(cat "$AG_SSH_KEY")" > ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
-    - |
-      cat > ~/.ssh/config <<EOF
-      Host ag-head
-          HostName act3.analyticsgateway.com
-          User $AG_USERNAME
-          IdentityFile ~/.ssh/ag_key
-          IdentitiesOnly yes
-      EOF
-    - chmod 600 ~/.ssh/config
-    - ssh-keyscan act3.analyticsgateway.com >> ~/.ssh/known_hosts 2>/dev/null || true
+    - export PYTHONPATH="$CI_PROJECT_DIR/.pydeps"
+    - python3 -m pip install --quiet --no-cache-dir --target "$CI_PROJECT_DIR/.pydeps" paramiko
   script:
     - bash deploy/ci/ag-build-hpc.sh
   rules:
@@ -197,21 +189,13 @@ build-flash-drive:
     AG_DISK_GB: "100"
     FLASH_DRIVE_MODEL: "model-b:7b"
   before_script:
-    # python:3.12 already ships openssh-client/curl/python3, so no apt-get needed.
-    # This job overrides the default before_script, so it sets HOME itself.
+    # This job overrides the default before_script. AG access uses paramiko
+    # (deploy/ci/ag_ssh.py) instead of the ssh binary, which aborts on non-root
+    # runners with no /etc/passwd entry -- so no ~/.ssh setup is needed. HOME must
+    # still be writable for pip.
     - export HOME="$CI_PROJECT_DIR"
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - printf '%s\n' "$(cat "$AG_SSH_KEY")" > ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
-    - |
-      cat > ~/.ssh/config <<EOF
-      Host ag-head
-          HostName act3.analyticsgateway.com
-          User $AG_USERNAME
-          IdentityFile ~/.ssh/ag_key
-          IdentitiesOnly yes
-      EOF
-    - chmod 600 ~/.ssh/config
-    - ssh-keyscan act3.analyticsgateway.com >> ~/.ssh/known_hosts 2>/dev/null || true
+    - export PYTHONPATH="$CI_PROJECT_DIR/.pydeps"
+    - python3 -m pip install --quiet --no-cache-dir --target "$CI_PROJECT_DIR/.pydeps" paramiko
   script:
     - bash deploy/ci/ag-build-flash-drive.sh --model "$FLASH_DRIVE_MODEL"
   artifacts:
