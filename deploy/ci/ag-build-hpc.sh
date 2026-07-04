@@ -28,18 +28,23 @@ DISK_GB="${AG_DISK_GB:-90}"
 POLL_INTERVAL=5
 POLL_TIMEOUT=600
 SSH_RETRIES=6
-AG_HEAD="ag-head"
+# AG access via the paramiko helper (ag_ssh.py), not the openssh binary, which
+# aborts with "No user exists for uid N" on non-root runners with no /etc/passwd
+# entry. ag_ssh.py reads AG_SSH_KEY / AG_USERNAME from the environment.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ag_head() { python3 "$SCRIPT_DIR/ag_ssh.py" head "$@"; }
+ag_node() { python3 "$SCRIPT_DIR/ag_ssh.py" node "$NODE_IP" "$@"; }
 JOBID=""
 
 DLE_API="https://gitlab.dle.afrl.af.mil/api/v4"
 SNIPPET_URL="$DLE_API/snippets/$AG_SNIPPET_ID/files/main/ag_node.json/raw"
 
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
+# (SSH transport is handled by ag_ssh.py; no openssh client options needed.)
 
 cleanup() {
     if [ -n "$JOBID" ]; then
         echo "--- Cleanup: deleting AG job $JOBID ---"
-        ssh $SSH_OPTS "$AG_HEAD" "qdel $JOBID" 2>/dev/null || true
+        ag_head "qdel $JOBID" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
@@ -48,7 +53,7 @@ echo "=== Phase 1: Submit AG compute job ==="
 echo "Node type: $NODE_TYPE  Walltime: $WALLTIME  Disk: ${DISK_GB}GB"
 
 # AG head node only allows: qsub, qstat, qdel, qextend, nc.
-OUTPUT=$(ssh $SSH_OPTS "$AG_HEAD" \
+OUTPUT=$(ag_head \
     "qsub -l select=1:type=$NODE_TYPE -l disk=$DISK_GB -l walltime=$WALLTIME -N hpc-build ~/job-publish.sh" 2>&1) || true
 echo "qsub output: $OUTPUT"
 
@@ -87,18 +92,8 @@ if [ -z "$NODE_IP" ]; then
     exit 1
 fi
 
-# Write ProxyJump SSH config for the compute node
-cat >> ~/.ssh/config <<EOF
-
-Host ag-node
-    HostName $NODE_IP
-    User $AG_USERNAME
-    IdentityFile ~/.ssh/ag_key
-    IdentitiesOnly yes
-    ProxyJump $AG_HEAD
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-EOF
+# ag_node (defined above) reaches the compute node at $NODE_IP through the head's
+# allowlisted nc tunnel -- that hop is handled inside ag_ssh.py.
 
 echo "=== Phase 3: Build on AG compute node ==="
 
@@ -106,7 +101,7 @@ IMAGE_TAG="${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
 
 # Retry SSH connection (node may still be initializing sshd)
 for i in $(seq 1 $SSH_RETRIES); do
-    if ssh $SSH_OPTS ag-node "echo ok" 2>/dev/null; then
+    if ag_node "echo ok" 2>/dev/null; then
         echo "SSH connected (attempt $i)"
         break
     fi
@@ -119,10 +114,10 @@ for i in $(seq 1 $SSH_RETRIES); do
 done
 
 # Transfer the build script and execute it
-ssh $SSH_OPTS ag-node "cat > /tmp/ag-node-build.sh && chmod +x /tmp/ag-node-build.sh" \
+ag_node "cat > /tmp/ag-node-build.sh && chmod +x /tmp/ag-node-build.sh" \
     < "$(dirname "$0")/ag-node-build.sh"
 
-ssh $SSH_OPTS ag-node \
+ag_node \
     "DLE_GITLAB_TOKEN='$DLE_GITLAB_TOKEN' \
      CI_REGISTRY='$CI_REGISTRY' \
      CI_REGISTRY_USER='$CI_REGISTRY_USER' \
