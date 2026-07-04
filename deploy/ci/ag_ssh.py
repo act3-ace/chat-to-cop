@@ -104,11 +104,19 @@ def main():
     if args[0] == "head":
         sys.exit(run(head, args[1]))
 
-    # node: tunnel to <node_ip>:22 through the head's allowlisted `nc`.
+    # node: open a channel to <node_ip>:22 through the head. Prefer a direct-tcpip
+    # channel -- what OpenSSH ProxyJump/-W uses, and what the laptop config relies
+    # on -- and fall back to the head's allowlisted `nc` if forwarding is refused.
     node_ip = args[1]
-    tunnel = head.get_transport().open_session()
-    tunnel.exec_command("nc %s 22" % node_ip)
-    node = connect(node_ip, pkey, sock=tunnel)
+    transport = head.get_transport()
+    try:
+        sock = transport.open_channel(
+            "direct-tcpip", (node_ip, 22), ("127.0.0.1", 0), timeout=CONNECT_TIMEOUT
+        )
+    except Exception:
+        sock = transport.open_session()
+        sock.exec_command("nc %s 22" % node_ip)
+    node = connect(node_ip, pkey, sock=sock)
     sys.exit(run(node, args[2]))
 
 
