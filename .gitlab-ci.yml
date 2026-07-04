@@ -9,6 +9,16 @@ variables:
   # Container registry path on DLE GitLab
   CONTAINER_IMAGE: "$CI_REGISTRY_IMAGE"
 
+# DLE k8s runners run non-root with an unwritable $HOME (~ -> /). Point it at the
+# writable project dir in before_script -- NOT as a job variable: a HOME variable
+# also applies during get_sources, where $CI_PROJECT_DIR does not exist yet and
+# git fails to write .gitconfig. before_script runs after checkout (dir exists).
+default:
+  before_script:
+    - export HOME="$CI_PROJECT_DIR"
+    # pip --user drops console scripts (ruff, pytest) in ~/.local/bin; put it on PATH.
+    - export PATH="$HOME/.local/bin:$PATH"
+
 cache:
   paths:
     - .pip-cache/
@@ -112,13 +122,15 @@ build-apptainer:
 # DLE_GITLAB_TOKEN. See deploy/ci/ag-build-hpc.sh for details.
 build-hpc-on-ag:
   stage: build
-  image: ubuntu:22.04
+  image: python:3.12
   variables:
     AG_NODE_TYPE: "m7i.4xlarge"
     AG_WALLTIME: "2:00:00"
     AG_DISK_GB: "90"
   before_script:
-    - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
+    # python:3.12 already ships openssh-client/curl/python3, so no apt-get needed.
+    # This job overrides the default before_script, so it sets HOME itself.
+    - export HOME="$CI_PROJECT_DIR"
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - printf '%s\n' "$(cat "$AG_SSH_KEY")" > ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
     - |
@@ -178,14 +190,16 @@ test-portable:
 # DLE_GITLAB_TOKEN. See deploy/ci/ag-build-flash-drive.sh for details.
 build-flash-drive:
   stage: build
-  image: ubuntu:22.04
+  image: python:3.12
   variables:
     AG_NODE_TYPE: "m7i.4xlarge"
     AG_WALLTIME: "1:00:00"
     AG_DISK_GB: "100"
     FLASH_DRIVE_MODEL: "model-b:7b"
   before_script:
-    - apt-get update -qq && apt-get install -y -qq openssh-client curl python3 > /dev/null
+    # python:3.12 already ships openssh-client/curl/python3, so no apt-get needed.
+    # This job overrides the default before_script, so it sets HOME itself.
+    - export HOME="$CI_PROJECT_DIR"
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - printf '%s\n' "$(cat "$AG_SSH_KEY")" > ~/.ssh/ag_key && chmod 600 ~/.ssh/ag_key
     - |
