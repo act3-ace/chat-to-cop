@@ -126,7 +126,7 @@ build-hpc-on-ag:
   variables:
     AG_NODE_TYPE: "m7i.4xlarge"
     AG_WALLTIME: "2:00:00"
-    AG_DISK_GB: "90"
+    AG_DISK_GB: "180"
   before_script:
     # This job overrides the default before_script. AG access uses paramiko
     # (deploy/ci/ag_ssh.py) instead of the ssh binary, which aborts on non-root
