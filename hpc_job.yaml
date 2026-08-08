@@ -1,0 +1,375 @@
+# ============================================================================
+# hpc_job.yaml -- chat-to-cop-evals, schema v1.2
+# ============================================================================
+# Machine-readable card for chat-to-cop's HPC evaluation campaigns: model-size
+# comparisons (7B/14B/30B/32B), the N=100 speaker-model factorial sweep, and
+# the Blueback prompt-regression harness (issue #73). Portfolio conventions
+# C1-C4 are defined once in hpc-portfolio/hpc_job.template.yaml; this card
+# conforms to them and does not redefine them. No narrative JOB_CARD.md exists
+# yet for this job; see runbook/outputs/done_conditions below for the best
+# available sources (docs/RUNBOOK.md, CHANGELOG.md, script headers).
+# ============================================================================
+
+schema_version: 1.2
+job:
+  id: chat-to-cop-evals
+  project: chat-to-cop
+  repos:
+    - "gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop (origin/dle -- canonical, DoD domain)"
+    - "github.com/act3-ace/chat-to-cop (mirror; vendor/contractor collaboration surface per README.md + CHANGELOG.md GitHub branch protection notes)"
+  one_line: >-
+    Model-size comparison (7B/14B/30B/32B) and speaker-model A/B evaluation
+    campaigns for chat-to-cop's DASH-3 chat-to-CoP extraction pipeline, plus
+    the Blueback prompt-regression harness (issue #73) -- run via
+    scripts/narwhal_*.sh and scripts/blueback_replay_bench.sh, submitted
+    through paramiko/GSSAPI SSH (scripts/narwhal_connect.py) since Narwhal
+    requires Windows Kerberos that neither Git Bash OpenSSH nor PuTTY handle.
+  kind: batch-campaign
+  status: parked   # campaigns are episodic and tied to specific issues (#26, #52, #73); none in any queue now
+  urgency: backfill
+  intent: efficiency   # evaluation/validation throughput feeding config and model-selection decisions; not allocation-clearing burn and not a standing service
+  criticality: >-
+    Feeds chat-to-cop's shipped config and model-selection decisions: the
+    N=100 speaker-model factorial sweep (1,600 runs; CHANGELOG.md [0.1.0]
+    "Research") is the evidence behind `use_speaker_models=False` as the
+    current default (statistically significant degradation at all 4 model
+    sizes, p<0.0001), and the model comparison across 7B/14B/30B/32B is the
+    basis for documenting model-b-14b as the "cost/performance sweet spot."
+    The project's stated driving deadline -- the MASH event at H2O Las Vegas
+    -- was May 2026, already PAST as of this card's 2026-08-07 pass; remaining
+    eval work is retrospective validation (prompt-regression checks per issue
+    #73, docs/RUNBOOK.md) and post-event research, not schedule-critical.
+    Nothing breaks if paused: the speakers-OFF default and the 14B model
+    choice are already-shipped config, not pending decisions.
+
+owner: {name: Scott, user: hsclouse, email: hsclouse@ieee.org}
+escalation:
+  secondary: "TBD -- Bryan for allocation/money decisions"
+  venue_help: "HPCMP CCAC — help@ccac.hpc.mil"
+
+related_jobs:
+  - id: agent-team-experiments
+    note: >-
+      Sibling MASH-adjacent HPC line but a SEPARATE job/repo/domain:
+      agent-team (personal domain, hsclouse@ieee.org identity, card at
+      agent-team/hpc_job.yaml) runs exploratory LoRA / Phase-3-arch-alt /
+      model-comparison research against the same underlying DASH-3/MASH
+      speaker-routing question, while THIS job (chat-to-cop, DoD domain,
+      hamilton.clouse.1@us.af.mil identity) runs the production-repo
+      evaluation campaigns that shipped the current
+      use_speaker_models=False default. Same AFSNW27526RYZ charge, disjoint
+      job names, disjoint repos and domains -- do not merge into one card.
+
+accounting:
+  canonical_units: [cpu_core_hour, gpu_hour]
+  this_job:
+    cpu_core_hour: 407552   # COMPUTED, not sacct-measured -- 128 cores/node (Narwhal
+                             # whole-node V100 billing, VENUES.yaml) x 3,184 V100-GPU-hours
+                             # (see gpu_hour below). Per full N=100 factorial speaker-model
+                             # sweep campaign, the single largest identified compute event
+                             # for this job -- NOT a daily rate.
+    gpu_hour: 3184           # submit_speaker_sweep.py's OWN printed pre-submission estimate
+                             # for its default invocation (n=100, models=3b/7b/14b/32b, both
+                             # speaker settings, both determinism settings): est_hours =
+                             # sum over models of hourly_rate x 100 x 2 x 2, where
+                             # hourly_rates = {3b:0.42, 7b:1.42, 14b:1.95, 32b:4.17}. CAVEAT:
+                             # this card did NOT independently reconcile those per-run
+                             # hourly_rates against the ~28s/message full-corpus-replay rate
+                             # documented separately in narwhal_14b_run_a.sh -- treat as the
+                             # script's own stated estimate, not a cross-validated figure.
+    anchors:
+      - "'1,600-run factorial sweep on Narwhal HPC' -- CHANGELOG.md [0.1.0] Research section. Cross-checks exactly against submit_speaker_sweep.py's own math: 4 models x 2 speaker-settings x 2 determinism-settings x n=100 = 1,600 total array tasks."
+      - "submit_speaker_sweep.py prints 'Est. V100-hours: ~{est_hours:.0f}' before submitting -- for the default invocation this computes to ~3,184 (see gpu_hour note above)"
+      - "narwhal_14b_run_a.sh header comment: '8-hour walltime to accommodate the observed ~28s/message rate on V100 with 14B at 8K context. Expected duration: ~7 hours.' -- a SEPARATE, smaller anchor for the dedicated 14B A/B pair (not part of the sweep)"
+      - "narwhal_30b_test.sh: model-b-30b-a3b (MoE, ~3B active) at Q4_K_M needs ~18GB VRAM -- comfortably inside V100-32GB; single 4h-walltime validation run, issue #26"
+      - "CHANGELOG.md reports the sweep's STATISTICAL RESULTS as complete and settled (all 4 model sizes significant at p<0.0001), which implies the full 1,600-run campaign did execute to completion at some point -- but no sacct pull or per-cell completion log was found in this repo pass to independently confirm the realized total matched the ~3,184 GPU-hour estimate"
+    frequency: >-
+      irregular -- episodic campaigns tied to specific issues (#26 model
+      validation, #52 speaker A/B, #73 prompt-regression), not continuous or
+      scheduled. None in any queue as of this card's pass (job.status).
+  charges: [{charge: AFSNW27526RYZ, role: primary}]
+  pace_floor_corehr_day: null   # n/a -- urgency is backfill, not deadline-burn
+  deadline: null                # n/a -- MASH (the project's cited deadline) already passed; see job.criticality
+  attribution: >-
+    sacct/qstat rollup by health.jobname_glob (c2c-*). History already matches
+    cleanly for the dedicated model-comparison runs: c2c-7b-A, c2c-7b-B,
+    c2c-14b-A, c2c-14b-B, c2c-14b-ab, c2c-30b (grep-confirmed across
+    scripts/narwhal_*.sh, 2026-08-07). TWO families do NOT match and are NOT
+    currently attributable by this glob: `replay-bench` (Blueback,
+    scripts/blueback_replay_bench.sh's own literal --job-name) and the
+    speaker-sweep family `sw-<name>` (set at submission time by
+    submit_speaker_sweep.py's f-string, e.g. sw-14b_on_det --
+    scripts/narwhal_speaker_sweep.sh itself carries no hardcoded --job-name).
+    Both should adopt c2c- prefixes on next run (see health.jobname_glob).
+
+references:
+  allocation_ledger:
+    poll_cmd: "show_usage; also sbalance/sreport/sacct (VENUES.yaml narwhal.ledger); also polled fleet-wide by act3/hpc-usage-dashboard/scripts/update_live.py -> GitLab Pages dashboard on DLE"
+    key: AFSNW27526RYZ
+  venue_registry:
+    external_status: "https://centers.hpc.mil/systems/unclassified.html"
+    internal: VENUES.yaml
+
+capability:
+  accelerator:
+    api: cuda   # every script read for this card targets CUDA (V100 on Narwhal; generic gres=gpu:1 on Blueback, see venues[blueback].pins for the ROCm-ambiguity risk)
+    pin_level: library   # Ollama-based zero-shot serving throughout -- no training, no custom kernel/quantization pin beyond "whatever Ollama's default GGUF quant for the tag is"
+    min_arch: sm_70   # V100 (Narwhal, primary/heaviest-used venue); Blueback lane is architecturally unconstrained by the script itself (see venues[blueback].pins)
+    vram_floor_gb: 18   # largest-observed anchor: model-b-30b-a3b (MoE, ~3B active) at Q4_K_M needs ~18GB (narwhal_30b_test.sh header comment) -- smaller models (3B/7B/14B) need proportionally less; V100's 32GB comfortably covers the whole range tested
+    aggregate_vram_gb: null   # n/a -- single-GPU throughout, no sharded serve observed
+  cpu_arch: [x86-64]
+  min_cores_per_node: 4   # observed floor: blueback_replay_bench.sh and narwhal_speaker_sweep.sh both request --cpus-per-task=4; the dedicated model-comparison scripts (14b/7b/30b) request 8
+  min_usable_ram_per_node_gb: null   # REQUESTED only (--mem=32G in every narwhal script that sets it), NOT sacct-measured -- no MaxRSS anchor found in any script/log/doc read for this card
+  nodes_per_task: 1
+  interconnect: []   # single-node, single-GPU throughout; no MPI/multi-node observed
+  job_topology: >-
+    Independent per-model/per-condition Slurm submissions. The N=100 factorial
+    sweep is a SET of independent array jobs -- one `sbatch --array=1-100%20`
+    per (model, speakers, determinism) cell, generated by
+    scripts/submit_speaker_sweep.py -- with NO cross-job scheduler dependency
+    or aggregation task; scripts/eval_speaker_sweep.py aggregates results
+    post-hoc, run manually after all arrays complete. Same no-scheduler-chain
+    pattern observed on the sibling agent-team-experiments card.
+  container:
+    runtime: "none observed in the eval scripts read -- shared conda env ($WORK/envs/chat-to-cop) + bare Ollama binary, not apptainer/singularity"
+    images: []
+    pins: ["chat-to-cop DOES have HPC container-image CI build jobs (build-hpc, build-hpc-sif per CHANGELOG.md) -- but those build a DEPLOYMENT container for a different purpose; no evidence any eval script in scripts/narwhal_*.sh or blueback_replay_bench.sh apptainer-execs into it"]
+  software:
+    - "python (conda env at $WORK/envs/chat-to-cop, shared across concurrent jobs -- do NOT `pip install -e .` inside a job script, pre-install once; CHANGELOG.md !90)"
+    - "chat_to_cop package (src/chat_to_cop) + its pyproject deps: instructor, openai SDK (OpenAI-compatible client, model-agnostic), pydantic, tenacity, pybreaker, aiosqlite"
+    - "ollama (LLM serving, all model sizes -- 3b/7b/14b/32b-family tags plus model-b:30b-a3b MoE)"
+    - "stats tooling for the sweep's ANOVA analysis (scripts/eval_speaker_sweep.py) -- specific packages not confirmed, not read in full for this card"
+  storage_gb: null   # NOT MEASURED -- DASH-3 chat.zip corpus size, per-model Ollama pull sizes, and output DB sizes are not stated in any script/doc read for this card
+  runtime_egress: none   # not explicitly documented for this repo, but consistent with the local-Ollama-serving pattern used throughout (no external calls from the compute node during a replay)
+  login_egress:
+    - "Ollama model pulls (registry.ollama.ai) -> $WORK/ollama-models; submit_speaker_sweep.py --pull-models automates this for the sweep"
+    - "DASH-3 chat corpus staging -- referenced as already-present at $WORK/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip in every script; no pull/stage script found in scripts/ for this card"
+  ssh_forwarding: false   # paramiko exec via scripts/narwhal_connect.py, not a tunnel
+  single_venue_risk: >-
+    LOW-MODERATE. Ollama already abstracts model serving across two
+    architecturally different venues (Narwhal V100/CUDA, Blueback
+    generic-gres/CUDA-or-ROCm). Narwhal is clearly the heavier/primary venue
+    in practice (6 of 8 HPC scripts are Narwhal-specific and V100-pinned;
+    MRs !90/!94/!98 are all Narwhal-specific fixes); Blueback's role is
+    narrower (issue #73's 15-minute debug-partition prompt-regression check
+    only). No training or bespoke quantization-library pin (contrast the
+    sibling agent-team-experiments card's LoRA/PEFT path) -- the real gate is
+    operational (DASH-3 corpus staging, a working conda env), not GPU capability.
+  portability_verdict: >-
+    Ollama-based zero-shot serving is broadly portable in principle -- already
+    validated on 2 architecturally different venues. The real gate is
+    operational rather than capability-based: DASH-3 chat corpus staging path
+    is undocumented in any script read (assumed pre-staged), and one
+    Narwhal script (narwhal_30b_test.sh) currently submits against the wrong
+    account entirely (see venues[narwhal].pins) -- a compliance gate, not a
+    hardware one.
+
+venues:
+  - venue: narwhal
+    state: validated
+    eligible: AFSNW27526RYZ
+    directives: >-
+      Dedicated model-comparison runs (c2c-7b-{A,B}, c2c-14b-{A,B,ab}, c2c-30b):
+      --account=AFSNW27526RYZ --qos=standard --partition=general (c2c-30b uses
+      --partition=MLA instead, see pins) --gres=gpu:v100:1 --cpus-per-task=8
+      --mem=32G, walltime 4h (14b-ab, 30b) to 8h (14b run_a/run_b). Speaker
+      sweep (sw-<name>, array): --partition=general --qos=standard
+      --gres=gpu:v100:1 --cpus-per-task=4 --mem=32G, submitted by
+      scripts/submit_speaker_sweep.py with one `sbatch --array=1-<n>%20` per
+      factorial cell, walltime/timeout scaled by model size (3b:3h/60s through
+      32b:16h/600s).
+    pins:
+      - "CRITICAL (higher severity than a copy-paste hazard -- this is a LIVE #SBATCH directive): scripts/narwhal_30b_test.sh (job-name c2c-30b, Issue #26) hardcodes --account=AFRLC2070NSH, NOT AFSNW27526RYZ. Running `sbatch scripts/narwhal_30b_test.sh` unmodified today submits against a DIFFERENT, PROHIBITED account -- VENUES.yaml narwhal.eligibility explicitly lists AFRLC2070NSH as 'visible on venue... NOT authorized', and the 2026-07-18/07-22 RYZ-only mandate names AFRLC2070NSH by name as never-authorized (alongside A21). Every OTHER script in this repo (blueback_replay_bench.sh, narwhal_14b_ab/run_a/run_b.sh, narwhal_7b_run_a/run_b.sh, narwhal_speaker_sweep.sh) correctly uses AFSNW27526RYZ -- this is isolated to narwhal_30b_test.sh. Not fixed here -- out of scope for this card (do not edit other files); this should be treated as higher priority than the agent-team card's equivalent finding since it is the actual submission directive, not example/usage text."
+      - "--partition=MLA (capital) in narwhal_30b_test.sh is not documented anywhere in VENUES.yaml's narwhal entry (which lists partition: general only, no MLA partition) -- either VENUES.yaml is incomplete for Narwhal, or this is a stale/miscopied partition name (e.g. from a Wheat/Nautilus MLA-constraint pattern). Not independently resolved for this card."
+      - "$ARCHIVE_HOME is set system-wide on Narwhal but its default symlink target (/archive/g/$USER) was never provisioned for this project -- narwhal_14b_run_a.sh/run_b.sh detect this and fall back to $HOME/chat-to-cop inside a trap-based cleanup() that archives the DB, log, AND slurm .out/.err (fix per CHANGELOG.md !94). narwhal_14b_ab.sh does NOT have this fallback or a trap-based archive step -- it only PRINTS the archive command as a manual next step, a materially weaker pattern than its own sibling scripts in the same repo."
+      - "shared conda env ($WORK/envs/chat-to-cop) pip install races under concurrent jobs (CHANGELOG.md !90, fixed) -- pre-install once (`git pull && pip install -e . -q`) before submitting parallel jobs; do not `pip install -e .` inside each job script"
+      - "sbatch --export requires comma-separated KEY=VAL pairs, not space-separated (CHANGELOG.md !98 -- silently drops env vars otherwise); submit_speaker_sweep.py's own --export=ALL,{env_vars} construction already does this correctly"
+      - "DLE GitLab from this venue: RSA key only, ed25519 rejected (VENUES.yaml narwhal.pins)"
+    cold_start: {stage_gb: null, time: "not measured", human_steps: 1}
+    excluded_reason: ""
+    rechecked: null
+
+  - venue: blueback
+    state: validated
+    eligible: AFSNW27526RYZ
+    directives: >-
+      sbatch scripts/blueback_replay_bench.sh [MODEL=model-b:30b-a3b N=50] --
+      --account=AFSNW27526RYZ --partition=debug --gres=gpu:1
+      --cpus-per-task=4 --time=00:15:00 (Issue #73 Part A, prompt-regression
+      harness; procedure documented in docs/RUNBOOK.md). Job name is literally
+      "replay-bench", not c2c-prefixed -- see health.jobname_glob.
+    pins:
+      - "--gres=gpu:1 carries NO --constraint=viz/mla filter (contrast agent-team's Blueback scripts, cross-referenced from agent-team/hpc_job.yaml venues.blueback.directives) -- Slurm could schedule this on either an L40 (CUDA, works as Ollama's defaults assume) or an MI300A (ROCm) node. If it lands on MI300A, the script is MISSING the ROCm env vars (module load rocm/6.3.0, HSA_OVERRIDE_GFX_VERSION=9.4.2, HSA_FORCE_FINE_GRAIN_PCIE=1) that agent-team's MI300A scripts show are required for Ollama to actually use the GPU. Not observed failing in any log read for this card -- flagged as an UNVERIFIED risk surfaced by cross-referencing the sibling card, not a confirmed bug."
+      - "--partition=debug is not documented in VENUES.yaml's blueback entry (queues: {qos: standard, rejected: [short-*], forbidden: [background, transfer]} -- no 'debug' partition listed there). Either VENUES.yaml is incomplete for Blueback, or the script is relying on a partition name that may not exist on this venue (Wheat has a documented debug queue; this may be a cross-venue copy). Not independently resolved for this card."
+      - "module load apptainer/1.3.4-1 (VENUES.yaml fleet-wide pin) is irrelevant here -- this script uses bare Ollama, no container"
+    cold_start: {stage_gb: null, time: "not measured", human_steps: 1}
+    excluded_reason: ""
+    rechecked: null
+
+sizing:
+  requested_per_unit:
+    narwhal_14b_ab_or_runab: "1x V100, 8 cpus, 32G mem, 4h (ab combined) to 8h (run_a/run_b split)"
+    narwhal_7b_runab: "1x V100, 8 cpus, 32G mem, walltime not independently confirmed for this card (assumed similar pattern to 14b run_a/b)"
+    narwhal_30b_test: "1x GPU (MLA partition, see venues[narwhal].pins), 8 cpus, 32G mem, 4h walltime, single run (not an array)"
+    narwhal_speaker_sweep_cell: "1x V100, 4 cpus, 32G mem, 3-16h walltime by model size, array of N=100 per cell (max 20 concurrent, submit_speaker_sweep.py MAX_CONCURRENT)"
+    blueback_replay_bench: "1x GPU (type unconstrained, see venues[blueback].pins), 4 cpus, 15min walltime (debug), N=100 default"
+  observed_per_unit:
+    narwhal_14b_run_a: "~28s/message observed rate -> ~7h realized against an 8h request (script's own header comment, narwhal_14b_run_a.sh) -- not an independent sacct pull for this card"
+    speaker_sweep_full: "submit_speaker_sweep.py's own PRE-SUBMISSION estimate: ~3,184 V100-GPU-hours for the default n=100 x 4-model x 2x2 sweep -- no sacct confirmation found that the realized total matched this estimate, though CHANGELOG.md reports the sweep's statistical results as complete and settled (p<0.0001 across all 4 model sizes), implying it DID run to completion at some point"
+    replay_14b_without_speakers_5973223: >-
+      the in-repo artifact replay_14b_without_speakers_5973223.db (repo root)
+      is 0 BYTES (ls -la, confirmed 2026-08-07, file dated May 5) -- too small
+      to be a valid SQLite database (even an empty schema is >8KB). Its
+      filename pattern matches BOTH narwhal_14b_ab.sh's Run-B output and
+      narwhal_14b_run_b.sh's output -- both are Narwhal/V100 scripts, which
+      conflicts with this card's task brief describing job 5973223 as a
+      "real Blueback job id": no Blueback script in this repo produces a
+      filename matching this pattern (blueback_replay_bench.sh writes to
+      results/, not $WORK/output/replay_14b_without_speakers_*.db), and the
+      GPU type (--gres=gpu:v100:1) only exists on Narwhal per VENUES.yaml
+      (Blueback has MI300A/L40 only). FLAGGED, NOT RESOLVED: either the task
+      brief's venue attribution is imprecise, or there is a Blueback path to
+      this exact filename that was not found in this repo pass. Either way,
+      the file itself carries no usable data.
+    source: "script header comments + submit_speaker_sweep.py's own estimator + direct file inspection, 2026-08-07"
+  recommendation: >-
+    The single most consequential sizing/compliance fact is NOT cores/RAM/GPU
+    -- it's that narwhal_30b_test.sh's account string is wrong (see
+    venues[narwhal].pins), which would misattribute or outright fail a real
+    submission. Beyond that, walltime sizing looks reasonable where checked:
+    narwhal_14b_run_a.sh's own comment shows ~7h realized against an 8h
+    request (comfortable, not over-provisioned), and submit_speaker_sweep.py
+    already computes a per-cell walltime/timeout table scaled to model size,
+    which is the right pattern. The 0-byte replay_14b_without_speakers_5973223.db
+    finding (observed_per_unit) suggests an output-persistence risk exists
+    here too, though far less systemically documented than agent-team's
+    AGENTS.md-rule-3 incident (chat-to-cop's narwhal_14b_run_a.sh/run_b.sh
+    DO implement a real trap-based archive-on-exit) -- worth a deliberate
+    check that any single archived .db actually contains rows before trusting
+    it as a complete result.
+
+assets:
+  - name: "DASH-3 chat corpus (23Sep/usaf/chat.zip)"
+    gb: null   # size not found in any script/doc read for this card
+    venues: [narwhal, blueback]
+    shared_with: []
+    restage_from: "not documented in any script read for this card -- $WORK/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip is referenced as already-present; no pull/stage script found"
+    purge_risk: "Narwhal 14-30 day Lustre purge (VENUES.yaml) if under $WORKDIR"
+    last_verified: null
+  - name: "Ollama models (model-b:3b/7b/14b/32b-family tags, model-b:30b-a3b)"
+    gb: null   # sizes not sourced from any doc/script read for this card
+    venues: [narwhal, blueback]
+    shared_with: []
+    restage_from: "ollama pull (registry.ollama.ai) -> $WORK/ollama-models; submit_speaker_sweep.py --pull-models automates this for the sweep"
+    purge_risk: "Narwhal 14-30 day Lustre / Blueback ~30-day scratch (VENUES.yaml)"
+    last_verified: null
+  - name: "replay_14b_without_speakers_5973223.db (committed in-repo)"
+    gb: 0   # confirmed 0 bytes -- see sizing.observed_per_unit
+    venues: ["narwhal (inferred from filename pattern + GPU type -- see the venue-attribution discrepancy noted in sizing.observed_per_unit)"]
+    shared_with: []
+    restage_from: "produced by narwhal_14b_ab.sh (Run B) or narwhal_14b_run_b.sh -- not restaged from elsewhere; would need a fresh run to get real data"
+    purge_risk: "already committed to git (not scratch-purge-eligible) -- but 0 bytes, so preserving it preserves nothing"
+    last_verified: "2026-08-07 (confirmed 0 bytes via ls -la)"
+
+data:
+  classification: >-
+    "DASH event data is IL2 through the MASH event. Becomes CUI after."
+    (README.md, verbatim). MASH was May 2026 -- per that statement, DASH-3
+    chat corpora and any eval artifacts derived from them (SQLite DBs, sweep
+    results) are CUI as of this card's 2026-08-07 pass. pii: not explicitly
+    assessed in any doc read; chat content includes real callsigns/operator
+    handles per the project's own description (speaker modeling, per-user
+    online learning).
+  ingress:
+    desc: "DASH-3 chat.zip corpus (pre-staged, source/staging mechanism not found in scripts read); one-time Ollama model pulls per model tag"
+    gb_day: null
+  egress:
+    dest: "$ARCHIVE_HOME/chat-to-cop/ on Narwhal (inconsistently automated -- see venues[narwhal].pins); results/ on Blueback (blueback_replay_bench.sh)"
+    method: "cp (trap-based/automatic for narwhal_14b_run_a.sh + run_b.sh; manual/echo-only suggestion for narwhal_14b_ab.sh)"
+  at_rest: "$WORK/output (Narwhal, purge-eligible 14-30 day Lustre) / results/ (Blueback, purge-eligible ~30-day scratch)"
+  durable_archive: >-
+    $ARCHIVE_HOME/chat-to-cop/ when the archive step actually runs (see
+    venues[narwhal].pins for the inconsistency across scripts). At least one
+    recovered artifact (replay_14b_without_speakers_5973223.db) is committed
+    directly into the git repo root rather than living under the documented
+    $ARCHIVE_HOME pattern -- and it is 0 bytes (see assets), so this
+    particular "durable copy" preserves no actual data.
+  retention: >-
+    No formal retention policy found. The README's CUI-after-MASH
+    classification note (above) implies retention/handling obligations that
+    are not reflected in any script-level access control read for this
+    card -- flagging as a documentation gap, not asserting a violation
+    (per workspace standing rule, no filtering applied here -- surfaced as
+    found).
+
+auth:
+  human_gated:
+    - step: >-
+        kinit via HPCMP KfW (Windows) + YubiKey OTP for SSH to Narwhal/Blueback
+        (paramiko GSSAPI wrapper, scripts/narwhal_connect.py -- bridges MIT
+        Kerberos for Windows because Git Bash's native OpenSSH cannot read the
+        API: credential cache and PuTTY 0.76 hangs on kex with OpenSSH 10.2,
+        per the script's own header docstring)
+      cadence: "~10h ticket lifetime"
+      mitigation: "hpc-ticket-keeper skill, or iLauncher kinit"
+  secrets: [hpcmp_password, yubikey_otp_pool]
+
+schedule:
+  cadence: "episodic -- validation/eval campaigns tied to specific issues (#26, #52, #73) and config decisions, not scheduled or standing. None in any queue now (job.status)."
+  chaining: >-
+    None -- each script is a discrete sbatch (or array) submission.
+    submit_speaker_sweep.py generates independent array jobs per factorial
+    cell with no scheduler dependency between them; eval_speaker_sweep.py
+    aggregates results post-hoc, run manually after all arrays complete.
+  heartbeat: null
+  preemptible: null   # NOT ESTABLISHED -- qos=standard (Narwhal) / partition=debug (Blueback) used throughout; no explicit preemption policy for either found in any source read
+  resume_cost:
+    mechanism: >-
+      Re-submit the relevant script. Run A / Run B are independent (either
+      can be resubmitted alone without repeating the other); sweep cells are
+      independent array tasks (submit_speaker_sweep.py can resubmit a subset
+      via --models/--seed-only/--stoch-only). No checkpoint concept observed
+      -- a killed run restarts the full replay from message 1.
+    unit_of_resume: "one script submission (single run) or one array cell (sweep)"
+    cost_per_unit: "model-size-dependent, 3-16h walltime x 1 V100 (submit_speaker_sweep.py's WALLTIMES table)"
+    cost_worst_case: "~16h x 1 V100 = 16 GPU-hours (~2,048 core-hours at Narwhal's 128-cores/node whole-node billing) for a single killed 32B sweep cell restarted from scratch"
+
+health:
+  jobname_glob: "c2c-*"
+    # REGISTERED (VENUES.yaml reserved_jobname_globs, 2026-08-05 audit): "history
+    # already uses c2c-7b/14b/30b names on Narwhal + replay-bench on Blueback"
+    # -- the registry note itself already flags replay-bench as an outlier.
+    # This card's own grep (2026-08-07) confirms the clean matches (c2c-7b-A,
+    # c2c-7b-B, c2c-14b-A, c2c-14b-B, c2c-14b-ab, c2c-30b) and identifies a
+    # SECOND non-matching family the registry note didn't name: the
+    # speaker-sweep jobs (sw-<name>, set by submit_speaker_sweep.py's
+    # f-string, e.g. sw-14b_on_det). Proposed renames for next run:
+    # replay-bench -> c2c-replay-bench (one line in blueback_replay_bench.sh);
+    # sw-<name> -> c2c-sw-<name> (one f-string in submit_speaker_sweep.py's
+    # submit_cell()). Not made here -- out of scope for this card.
+  check_cmd: >-
+    NOT YET WRITTEN -- no health-check script exists in scripts/ for this job
+    today. Proposed path: scripts/c2c_eval_health.sh. Proposed C2 contract,
+    given job.status=parked: 0 OK = `squeue -u hsclouse --name=c2c-*` (and,
+    once renamed, c2c-replay-bench / c2c-sw-*) returns nothing AND no
+    resubmission is currently expected (parked, by design); 10 RUNNING = a
+    matching job is R/PD; 30 FAILED = sacct State is
+    FAILED/TIMEOUT/OUT_OF_ME/NODE_FAIL for the most recent submission, OR
+    State=COMPLETED but the expected output .db is missing OR implausibly
+    small (< a few KB -- the exact failure mode already found once, see
+    sizing.observed_per_unit's 0-byte artifact); 40 UNKNOWN = no squeue/sacct
+    on PATH, no ticket, or nothing has ever matched the glob.
+  end_to_end_cmd: null   # n/a -- batch-campaign, not a service
+  cancelled_is_failed: true   # no self-resubmit chain (schedule.chaining: none); a cancelled/preempted eval run should surface as needing a rerun, not be silently ignored -- especially given the 0-byte artifact already found once in this repo
+
+runbook: {doc: "docs/RUNBOOK.md (prompt-regression procedure, issue #73 -- local-vs-Blueback replay_bench.py comparison table and 'what to report' metrics); docs/SPEAKER_MODEL_RESULTS.md (N=100 sweep methodology and results, referenced from CHANGELOG.md but not independently re-read for this card)"}
+outputs: {doc: "SQLite DBs (replay_*.db, sweep_<name>_<job>_<task>.db) with a cop_updates table (extraction_method, confidence, latency_ms, entities); results/*.json (replay_bench.py, Blueback); see narwhal_14b_run_a.sh's own inline 'Database Summary' query for the canonical output schema"}
+done_conditions: {doc: "no formal done_conditions doc found; closest is docs/RUNBOOK.md's 'What to report' table (type_accuracy, entity_overlap_jaccard, none_false_positive_rate, mean_latency_ms, prompt_approx_tokens, before-vs-after) for prompt-regression checks"}
+
+summary_row: >-
+  AFSNW27526RYZ | ledger: poll references.allocation_ledger (never embedded) |
+  no fixed deadline (project's MASH deadline already past) | GPU (V100 on
+  Narwhal; unconstrained type on Blueback) | narwhal validated (6 of 8 HPC
+  scripts, primary) / blueback validated (1 script, narrower role) | episodic
+  backfill, none queued now | preemptible unknown; resume = re-submit, no
+  checkpoint | intent=efficiency | owner=hsclouse | status=parked
