@@ -111,6 +111,15 @@ references:
     internal: VENUES.yaml
 
 capability:
+  placement:                # C5 -- added 2026-08-17
+    needs_gpu: true
+    node_class: varies      # this card has no single correct class -- it differs by venue:
+                            #   narwhal  -> smla (1x V100) or viz (1x V100); sm_70 stack, correct fit
+                            #   blueback -> viz (L40, sm_89 CUDA). NOT mla: Blueback's mla is
+                            #     MI300A/gfx942 (ROCm) and this stack is CUDA-only, so a bare
+                            #     --gres=gpu:1 there is exactly the "ROCm ambiguity" the venues[]
+                            #     block already flags. Pin viz explicitly on Blueback.
+    exclusive_node: true
   accelerator:
     api: cuda   # every script read for this card targets CUDA (V100 on Narwhal; generic gres=gpu:1 on Blueback, see venues[blueback].pins for the ROCm-ambiguity risk)
     pin_level: library   # Ollama-based zero-shot serving throughout -- no training, no custom kernel/quantization pin beyond "whatever Ollama's default GGUF quant for the tag is"
