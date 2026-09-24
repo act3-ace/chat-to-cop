@@ -78,30 +78,56 @@ def load_labels(path: Path) -> dict[tuple[str, str, str], dict]:
     return labels
 
 
+class EvalDBError(RuntimeError):
+    """A replay DB could not be read against the expected schema.
+
+    Raised instead of returning a zeroed metrics dict. A run that could not be
+    read is not a run that scored zero, and the two must never be averaged into
+    the same published statistic.
+    """
+
+
 def eval_db(db_path: Path, labels: dict) -> dict:
-    """Evaluate a single replay DB against labels. Returns metrics dict."""
+    """Evaluate a single replay DB against labels. Returns metrics dict.
+
+    Reads the `updates` table written by WorldStateStore. Entities live inside
+    the serialized CoPUpdate in the `data_json` column, not in a column of
+    their own -- there has never been an `entities` column on `updates`.
+
+    Raises EvalDBError if the DB does not carry that schema.
+    """
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
     try:
         rows = conn.execute(
             "SELECT timestamp, source_channel, source_speaker, update_type, "
-            "confidence, extraction_method, entities FROM cop_updates"
+            "confidence, extraction_method, data_json FROM updates"
         ).fetchall()
-    except sqlite3.OperationalError:
-        # Try the audit table if cop_updates doesn't exist
-        rows = conn.execute(
-            "SELECT timestamp, source_channel, source_speaker, update_type, "
-            "confidence, extraction_method, entities FROM updates"
-        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        try:
+            present = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        except sqlite3.Error:
+            present = []
+        raise EvalDBError(
+            f"{db_path}: cannot read the 'updates' table ({exc}). "
+            f"Tables present: {', '.join(present) or '(none)'}. "
+            "Expected the WorldStateStore schema, with entities inside updates.data_json."
+        ) from exc
     finally:
         conn.close()
 
-    # Build extraction lookup
+    # Build extraction lookup; entities are nested inside data_json
     extractions = {}
     for row in rows:
         key = (row["timestamp"], row["source_channel"], row["source_speaker"])
-        extractions[key] = dict(row)
+        rec = dict(row)
+        try:
+            data = json.loads(rec.get("data_json") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            data = {}
+        rec["entities"] = data.get("entities") or []
+        extractions[key] = rec
 
     # Match against labels
     matched = 0
@@ -287,7 +313,7 @@ def run_anova(results: list[RunResult]) -> str:
     return "\n".join(output)
 
 
-def generate_report(results: list[RunResult], output_path: Path | None) -> str:
+def generate_report(results: list[RunResult], output_path: Path | None, n_skipped: int = 0) -> str:
     """Generate the full markdown report."""
     # Group by cell
     cells: dict[str, list[RunResult]] = defaultdict(list)
@@ -300,6 +326,8 @@ def generate_report(results: list[RunResult], output_path: Path | None) -> str:
     lines.append(f"**Total runs:** {len(results)}")
     lines.append(f"**Cells:** {len(cells)}")
     lines.append(f"**N per cell:** {', '.join(str(len(v)) for v in cells.values())}")
+    if n_skipped:
+        lines.append(f"**Skipped (unreadable) DBs:** {n_skipped} -- excluded from every number below")
     lines.append("")
 
     # Summary table
@@ -457,6 +485,7 @@ def main() -> None:
 
     # Evaluate each DB
     results = []
+    skipped: list[tuple[Path, str]] = []
     for i, (sweep_name, db_path) in enumerate(dbs):
         model, speakers, deterministic = parse_sweep_name(sweep_name)
         pattern = re.compile(r"sweep_\w+_(\d+)_(\d+)\.db")
@@ -467,7 +496,15 @@ def main() -> None:
         if (i + 1) % 50 == 0 or i == 0:
             print(f"  Evaluating {i + 1}/{len(dbs)}: {db_path.name}...")
 
-        metrics = eval_db(db_path, labels)
+        try:
+            metrics = eval_db(db_path, labels)
+        except EvalDBError as exc:
+            # Skip it, loudly. A DB we could not read is not a run that scored
+            # zero, and must not be averaged in as though it were.
+            print(f"  SKIP {db_path.name}: {exc}", file=sys.stderr)
+            skipped.append((db_path, str(exc)))
+            continue
+
         results.append(
             RunResult(
                 sweep_name=sweep_name,
@@ -488,12 +525,29 @@ def main() -> None:
             )
         )
 
-    print(f"\nAll {len(results)} runs evaluated.")
+    print(f"\n{len(results)} of {len(dbs)} runs evaluated.")
     print(f"Cells: {len(set(r.sweep_name for r in results))}")
 
-    report = generate_report(results, args.output)
+    if skipped:
+        print(
+            f"\n{len(skipped)} of {len(dbs)} DBs were SKIPPED and are in none of the numbers below:",
+            file=sys.stderr,
+        )
+        for db_path, reason in skipped:
+            print(f"  - {reason}", file=sys.stderr)
+
+    if not results:
+        print("No DB could be evaluated; refusing to write an empty report.", file=sys.stderr)
+        sys.exit(1)
+
+    report = generate_report(results, args.output, n_skipped=len(skipped))
     if not args.output:
         print("\n" + report)
+
+    if skipped:
+        # Non-zero so a gate run cannot mistake a partial sweep for a complete
+        # one; docs/GO_NOGO.md uses this script as the N>=50 rerun gate.
+        sys.exit(1)
 
 
 if __name__ == "__main__":
