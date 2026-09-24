@@ -1,115 +1,135 @@
 # chat-to-cop
 
-AI staff officer system for MASH wargame events. IRC/STT chat → world-state extraction → CoP database.
-See @docs/DESIGN_PHILOSOPHY.md and @docs/ARCHITECTURE.md for details.
+AI staff officer for MASH wargame events: IRC/STT chat -> world-state extraction -> CoP database.
+See @docs/DESIGN_PHILOSOPHY.md and @docs/ARCHITECTURE.md.
 
-## Build & Test
+## What this file is, and is not
+
+It carries only what is specific to this repo. Four other layers already apply, and repeating them
+here would mean two copies to keep true:
+
+| Layer | Holds |
+|---|---|
+| Team defaults, `~/.claude/CLAUDE.md` | CHANGELOG practice, intent markers, `glab` over the GitLab MCP, model delegation, no emoji or AI-attribution in anything a human reads |
+| Personal overlay, `~/GitProjects/CLAUDE.md` | SSH on Windows, dual-push remotes, the HPC charge mandate, HPC venue rules |
+| Workspace, `~/GitProjects/act3/CLAUDE.md` | Domain separation, the handling and classification standing rule, session recovery, where workspace memory lives |
+| The harness | Commit attribution, set per session. Do not hand-write a `Co-Authored-By` line |
+
+Memory for this repo lives in the workspace scope,
+`~/.claude/projects/c--Users-hsclouse-GitProjects-act3/memory/`, and syncs through `claude-config`.
+Write a memory when something was expensive to learn and is not already in the code or the
+CHANGELOG.
+
+Precedence, highest first: the user's request in the conversation, then this file, then the
+workspace file, then the team defaults.
+
+## The remotes are not interchangeable
+
+- `origin` and `dle` both point at DLE GitLab, `c2es1/mash/chat-to-cop`, project **18350**. That is
+  the tracker and the place work merges. Query it with `glab`; never trust a stale issue list.
+- `github` is `act3-ace/chat-to-cop`, a **sanitized snapshot mirror**, written only by
+  `scripts/mirror-to-github.sh`. It is not a backup and it is not a place to push by hand.
+
+On 2026-05-05 a mirror run committed its sanitized tree straight onto main (295cb02). It deleted
+`CLAUDE.md` and every file under `docs/internal/`, and nobody noticed for four months. It also left
+placeholder substitutions inside live files, which are **still there**:
+`deploy/ag/start-backend-for-mia.sh` says `deployer` where it means the real account (lines 103,
+152, 240, 252, 299, 312) and `docs/GO_NOGO.md:217` says `C:\Users\user`. The script's own
+sanitizer produced both (`mirror-to-github.sh:122`, `:104`).
+
+The script was fixed on 2026-07-04 to build its temp branch from `github/main` instead of the
+checked-out branch, so the accident should not recur. Still: run it from a clean tree, and read
+what it pushed.
+
+`CLAUDE.md` and `docs/internal/` are stripped from the mirror by design (`:129`, `:132`), so
+internal working documents belong there and cannot leak to the public repo.
+
+## Build, test, run
 
 ```bash
 pip install -e ".[dev]"
 ruff check src/ tests/ && ruff format src/ tests/ && pytest tests/ -k "not integration" -v
-```
-
-## Replay
-
-```bash
-python -m chat_to_cop.replay data/chat/Dash3-GBC/Data/23Sep/usaf/chat.zip --num-ctx 8192
-python -m chat_to_cop.replay <path> --url http://localhost:11434/v1 --model model-b:7b --num-ctx 8192
-# --timeout sets per-message LLM timeout (seconds)
-```
-
-## Docker
-
-```bash
 docker compose up
+python -m chat_to_cop.replay data/dash3/23Sep_usaf_chat.zip --num-ctx 8192
+python -m chat_to_cop.replay <path> --url http://localhost:11434/v1 --model model-b:7b --num-ctx 8192
 ```
 
-## Branch/Commit Workflow
+`--timeout` sets the per-message LLM timeout in seconds. Integration tests are marked
+`@pytest.mark.integration` and need Ollama or another live service.
 
-Every change goes through a branch and MR. Never commit directly to main.
+## Defaults that are easy to get wrong
 
-```bash
-git checkout main && git pull
-git checkout -b <issue-number>-<short-description>
-# ... work, test, lint ...
-git push -u origin <branch-name>
-```
+- **Speaker models are OFF** (`CHAT_TO_COP_USE_SPEAKER_MODELS=false`). The RQ1 N=100 sweep found
+  they hurt Type Exact at every model size, p<0.0001. The criteria for turning them back on are in
+  @docs/GO_NOGO.md; the evidence is in @docs/research/SPEAKER_MODEL_RESULTS.md.
+- **HPC scripts carry live `#SBATCH --account` lines** (`scripts/narwhal_*.sh`). Every one must read
+  `AFSNW27526RYZ`. The mandate itself is in the personal overlay; what is specific here is that this
+  repo has seven scripts that can violate it silently.
+- **Narwhal's partition is `general`**, with `--gres=gpu:v100:N`. `scripts/narwhal_30b_test.sh` is the
+  lone outlier at `--partition=MLA` and is wrong; @docs/internal/NARWHAL_30B_TEST.md lesson 2 settled
+  that in April.
+- **Neither silent-failure alarm can fire.** `Supervisor.run()` has exactly one caller in the repo,
+  a test. Anything that depends on the health loop is dead code in production until that changes.
 
-Commit style: `feat|fix|refactor: description`, `Closes #<N>`, include test counts.
-Always include `Co-Authored-By: Claude <noreply@anthropic.com>`.
+## Versioning and releases
 
-## Versioning and Releases
+Semver at 0.y.z while the API is unstable: breaking changes bump MINOR, fixes bump PATCH. The
+version lives in two places and they must agree — `pyproject.toml` and
+`src/chat_to_cop/__init__.py` (both 0.1.4 today). To cut a release: update both, move
+`[Unreleased]` in `CHANGELOG.md` into a new `[0.x.y]`, then `git tag v0.x.y && git push origin
+v0.x.y`. CI builds the Docker and Apptainer images and creates the GitLab release.
 
-We use **semver at 0.y.z** during initial development. Per the semver spec,
-major version zero is for rapid iteration where the API is not yet stable.
-Breaking changes bump MINOR, fixes bump PATCH. The version will advance to
-1.0.0 when the system is considered stable and ready for formal release.
+## Library choices — don't reinvent
 
-Version is tracked in two places (keep them in sync):
+| Need | Use | Not |
+|---|---|---|
+| Retries with backoff | `tenacity` | a custom retry loop |
+| Circuit breaker | `pybreaker` | a custom state machine |
+| Configuration | `pydantic-settings` | a custom parser |
+| Structured LLM output | `instructor` | raw calls plus manual parsing |
+| Experiment tracking | `mlflow` | custom SQLite run logs |
+| Metrics (future) | OpenTelemetry SDK | a custom `metrics.py` |
 
-- `pyproject.toml` (`version = "0.x.y"`)
-- `src/chat_to_cop/__init__.py` (`__version__ = "0.x.y"`)
+## Code style and tests
 
-To cut a release:
+Python 3.10+, ruff at line-length 120, type hints, loguru, Pydantic, asyncio. Do not add docstrings
+to code you did not change, error handling nothing asked for, or abstractions ahead of a second
+caller. **Every LLM call goes through the OpenAI-compatible interface — never import a vendor SDK.**
 
-1. Update both version strings
-2. Move `[Unreleased]` entries in `CHANGELOG.md` to a new `[0.x.y]` section
-3. Commit, push, tag: `git tag v0.x.y && git push origin v0.x.y`
-4. CI builds Docker + Apptainer images and creates a GitLab release automatically
+Store tests use in-memory SQLite, agent tests use `FakeBackend`, and a new component ships its
+tests in the same MR.
 
-## Issue Tracking
+## The lesson that cost the most
 
-All work tracked on DLE GitLab: https://gitlab.dle.afrl.af.mil/c2es1/mash/chat-to-cop/-/issues (project ID: 18350).
-Query GitLab for current issue status — do not rely on stale lists.
+**Config-bypass, 2026-04-11.** Three `pydantic-settings` fields were dead between `PipelineConfig()`
+and any consumer, so the April 6 and 10 A/B experiments both ran with speakers ON in both arms and
+the RQ1 numbers were invalid. Fixed in !88, with regression tests in
+`TestSupervisorAgentConfigPlumbing`.
 
-## Library Choices — Don't Reinvent
+**The rule: when you add a config `Field`, add its consumer in the same MR.** Never merge a
+`Field(...)` nothing reads. Test it by monkeypatching the environment variable and asserting on
+behaviour — asserting on the config object only tests pydantic.
 
-| Need | Use This | NOT This |
-|------|----------|----------|
-| Retries with backoff | `tenacity` | Custom retry loops |
-| Circuit breaker | `pybreaker` | Custom state machine |
-| Configuration | `pydantic-settings` | Custom config parser |
-| Structured LLM output | `instructor` | Raw API calls + manual parsing |
-| Experiment tracking | `mlflow` | Custom SQLite run logs |
-| Metrics (future) | OpenTelemetry SDK | Custom metrics.py |
+That failure has a sibling worth remembering: a claim in a commit message is not a fix. Commit
+4aa362d said it corrected the `cop_updates` table name; its diff did not, and
+`scripts/eval_speaker_sweep.py` stayed broken for five months while the CHANGELOG said otherwise.
 
-## Code Style
+## Constraints
 
-Python 3.10+, ruff (line-length 120), type hints, loguru, Pydantic, asyncio.
-Do NOT add: docstrings to unchanged code, unnecessary error handling, premature abstractions.
-Every LLM call must go through the OpenAI-compatible interface. Never import a vendor-specific SDK.
+- IL2 throughout — experiment freely.
+- Latency first. It has to beat a human. "70% is great."
+- Degrade gracefully: LLM -> smaller LLM -> regex -> passthrough. Never stop silently.
+- The CoP schema is still the contractor's. Use BattleEffectSchemaV2 and the GenMSG specs in
+  @docs/SCHEMAS.md.
 
-## Tests
-
-- Unit: `tests/test_*.py`, run with `pytest tests/ -k "not integration"`
-- Integration: marked `@pytest.mark.integration`, require Ollama or external services
-- Use in-memory SQLite (`:memory:`) for store tests, FakeBackend for agent tests
-- Every new component needs tests in the same MR
-
-## Lessons Learned
-
-**Config-bypass bug (2026-04-11):** Three pydantic-settings fields were silently dead in the production replay path because nothing read them between `PipelineConfig()` and the consumer. The April 6/10 A/B experiments both ran with speakers ON in both arms. Fixed in !88, with regression tests in `TestSupervisorAgentConfigPlumbing`.
-
-**Rule: When adding any config Field, also add its consumer in the same MR.** Don't merge a `Field(...)` with no `config.x.y` reader. When testing config, monkeypatch the env var and assert the resulting object's behavior — testing the config object alone only tests pydantic.
-
-## Important Constraints
-
-- IL2 (unclassified) throughout — experiment freely
-- Latency is #1 priority. Must be faster than humans. "70% is great."
-- System must degrade gracefully: LLM → smaller LLM → regex → passthrough. Never silently stop.
-- CoP database schema pending from contractor team — use BattleEffectSchemaV2 and GenMSG specs in @docs/SCHEMAS.md
-
-## Context On Demand
+## Context on demand
 
 - Architecture: @docs/ARCHITECTURE.md
-- Design philosophy / anti-ontology: @docs/DESIGN_PHILOSOPHY.md
+- Design philosophy and the anti-ontology argument: @docs/DESIGN_PHILOSOPHY.md
 - Data sources: @docs/DATA_SOURCES.md
 - Schemas: @docs/SCHEMAS.md
-- Narwhal HPC: use `narwhal-hpc` skill
-- Parallel worktree work: use `parallel-agent-work` skill
-- RAI provenance: use `rai-provenance` skill
-
-## Session Recovery
-
-- When asked to update session notes: write SESSION_NOTES.md in project root
-- When compacting: preserve the full list of modified files and current task state
+- Go/no-go criteria: @docs/GO_NOGO.md
+- AG deployment: @docs/MASH_DEPLOYMENT.md, with the setup detail in
+  @docs/internal/ANALYTICS_GATEWAY_DEPLOYMENT.md
+- Internal working notes and briefing records: `docs/internal/` (restored 2026-09-24; several are
+  historical records rather than current instructions, and say so in their own headers)
