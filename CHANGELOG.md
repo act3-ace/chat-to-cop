@@ -33,6 +33,29 @@ The major version will advance to 1.0.0 when the API is considered stable.
   eliminating need for shell-specific env var syntax. Tested on CMD and
   PowerShell on Windows 11.
 
+### Fixed
+
+- eval_speaker_sweep.py read a column that has never existed (2026-09-24).
+  `eval_db()` queried `entities FROM cop_updates`, then fell back to
+  `entities FROM updates`; the WorldStateStore schema has no `cop_updates`
+  table and no `entities` column on `updates` (entities are nested in the
+  serialized CoPUpdate in `data_json`, and `entities` is a separate table).
+  Against any real replay DB the script died with
+  `OperationalError: no such column: entities`. Now reads `data_json` and
+  parses the entity list out of it. `docs/GO_NOGO.md` names this script as
+  the harness for the N>=50 rerun gate (#35), so the gate was unrunnable.
+  - Correcting the record: the v0.1.0 "Fixed" entry below, commit 4aa362d
+    and MR !99 all state this was fixed in April. It was not. 4aa362d's
+    message lists three bugs and delivers two -- it renamed the label fields
+    and rebuilt the ANOVA formula but never touched the SQL. The SQL fix was
+    written the day before in e804238 on `fix-sweep-export-commas`, which
+    was never merged.
+  - `eval_db()` now raises `EvalDBError` on a DB it cannot read instead of
+    returning a zeroed metrics dict, and the CLI skips such DBs loudly,
+    reports the count in the markdown report, and exits non-zero. A run that
+    could not be read is not a run that scored zero, and averaging the two
+    would quietly drag down a published sweep mean.
+
 ### Research
 
 - MASH data replay audit (2026-05-20): mapped all SSE streaming endpoints
