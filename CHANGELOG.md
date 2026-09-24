@@ -10,6 +10,30 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ## [Unreleased]
 
+### Restored
+- `CLAUDE.md` and the ten `docs/internal/` files, deleted on 2026-05-05 by 295cb02 -- a
+  `mirror-to-github.sh` run that committed its sanitized tree onto main instead of the mirror
+  branch. Nobody noticed for four months. `docs/internal/AG_CLAUDE_CODE_SETUP.md` was not
+  restored: it was a redirect stub, and its target (`ag-helpers/docs/CLAUDE_CODE.md`) is already
+  referenced from six live files here.
+- Restored files that are records rather than instructions now say so in a header note. One of
+  them, `NARWHAL_30B_TEST.md`, answers a question `hpc_job.yaml:192` still records as unresolved:
+  Narwhal's partition is `general`, not the `MLA` that `scripts/narwhal_30b_test.sh` still passes.
+
+### Security
+- `docs/internal/NIPRNET_SILVER_LABELS.md` carried a literal STARK API key on its `--api-key`
+  line. The restored copy uses `$STARK_API_KEY`. **The original value is still in git history at
+  98ffe6a and every ancestor, so treat it as exposed and rotate it.**
+
+### Changed
+- `CLAUDE.md` rewritten rather than restored as it stood. It now carries only what is specific to
+  this repo and says which layer owns everything else. Corrected: the replay path is
+  `data/dash3/23Sep_usaf_chat.zip`; the `narwhal-hpc` and `rai-provenance` skills it referenced do
+  not exist. Added: that `github` is a sanitized snapshot mirror and `origin`/`dle` are the real
+  remotes, the sanitizer placeholders still sitting in `start-backend-for-mia.sh` and
+  `GO_NOGO.md`, speakers defaulting OFF and why, and that `Supervisor.run()` has one caller and it
+  is a test.
+
 ### Added
 
 - AG CI on non-root runners (2026-07-04): the AG build jobs (`build-hpc-on-ag`,
