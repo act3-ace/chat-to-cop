@@ -22,6 +22,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 SSH_OPTS="-o ConnectTimeout=15 -o StrictHostKeyChecking=no"
 
+# The AG account this script drives: it owns the qsub jobs and the home directory
+# the node commands cd into. A variable, not a literal, for two reasons: anyone
+# else on the team can run this with AG_USER set, and scripts/mirror-to-github.sh
+# rewrites the literal username on its way to the public mirror -- which is how
+# `deployer` ended up here in the first place (295cb02), pointing every qstat and
+# every path at an account that does not exist.
+AG_USER="${AG_USER:-hsclouse}"
+
 VLLM_PORT=8000
 LITELLM_PORT=4000
 
@@ -100,7 +108,7 @@ check_status() {
 
     # Find running job
     local jobs
-    jobs=$(ag_head 'qstat -u deployer 2>/dev/null' | grep -E "^\d" || true)
+    jobs=$(ag_head 'qstat -u '"${AG_USER}"' 2>/dev/null' | grep -E "^\d" || true)
     if [ -z "$jobs" ]; then
         echo "  No AG jobs running."
         echo "  Start with: $0 --vllm (or --bedrock or --both)"
@@ -149,7 +157,7 @@ stop_all() {
 
     # Release AG jobs
     local jobs
-    jobs=$(ag_head 'qstat -u deployer 2>/dev/null' | grep -oP '^\d+' || true)
+    jobs=$(ag_head 'qstat -u '"${AG_USER}"' 2>/dev/null' | grep -oP '^\d+' || true)
     if [ -n "$jobs" ]; then
         for job in $jobs; do
             ag_head "qdel ${job}" || true
@@ -237,7 +245,7 @@ echo "================================================================"
 echo ""
 
 # Check for existing AG job
-EXISTING_JOB=$(ag_head 'qstat -u deployer 2>/dev/null' | grep -oP '^\d+' | head -1 || true)
+EXISTING_JOB=$(ag_head 'qstat -u '"${AG_USER}"' 2>/dev/null' | grep -oP '^\d+' | head -1 || true)
 
 if [ -n "$EXISTING_JOB" ]; then
     echo "  Found existing AG job: ${EXISTING_JOB}"
@@ -249,7 +257,7 @@ if [ -n "$EXISTING_JOB" ]; then
     fi
 else
     echo "  Submitting AG job (g4dn.xlarge GPU node)..."
-    JOB_ID=$(ag_head 'qsub -l select=1:ncpus=1:instance_type=g4dn.xlarge -l walltime=06:00:00 -q standard -N mia-backend /p/home/deployer/ag-helpers/ag-side/job-publish.sh 2>&1' | grep -oP '^\d+')
+    JOB_ID=$(ag_head 'qsub -l select=1:ncpus=1:instance_type=g4dn.xlarge -l walltime=06:00:00 -q standard -N mia-backend /p/home/'"${AG_USER}"'/ag-helpers/ag-side/job-publish.sh 2>&1' | grep -oP '^\d+')
 
     if [ -z "$JOB_ID" ]; then
         echo "ERROR: qsub failed. Check AG access." >&2
@@ -296,7 +304,7 @@ if [ "$WANT_VLLM" -eq 1 ]; then
         echo "  vLLM already running."
         VLLM_OK=1
     else
-        ag_node "cd /p/home/deployer/chat-to-cop && VLLM_MODE=docker HF_CACHE_DIR=/p/home/deployer/.cache/huggingface bash deploy/ag/launch-vllm-chat2cop.sh" &
+        ag_node "cd /p/home/${AG_USER}/chat-to-cop && VLLM_MODE=docker HF_CACHE_DIR=/p/home/${AG_USER}/.cache/huggingface bash deploy/ag/launch-vllm-chat2cop.sh" &
         VLLM_WAIT_PID=$!
     fi
 fi
@@ -309,7 +317,7 @@ if [ "$WANT_LITELLM" -eq 1 ]; then
         echo "  LiteLLM already running."
         LITELLM_OK=1
     else
-        ag_node "cd /p/home/deployer/chat-to-cop && bash deploy/ag/launch-litellm.sh" &
+        ag_node "cd /p/home/${AG_USER}/chat-to-cop && bash deploy/ag/launch-litellm.sh" &
         LITELLM_WAIT_PID=$!
     fi
 fi
