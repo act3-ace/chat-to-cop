@@ -35,6 +35,20 @@ The major version will advance to 1.0.0 when the API is considered stable.
 
 ### Fixed
 
+- The AG launcher was driving an account that does not exist (2026-09-24).
+  `scripts/mirror-to-github.sh` rewrites `hsclouse` to `deployer` for the
+  public mirror; on 2026-05-05 a mirror run committed its sanitized tree onto
+  main (295cb02), so that rewrite landed in live code.
+  `deploy/ag/start-backend-for-mia.sh` has since pointed three `qstat` calls
+  and three `/p/home` paths at `deployer`, which is nobody's home, so the
+  script cannot have worked in four months -- someone even changed its
+  walltime from 02:00:00 to 06:00:00 in that window without noticing. The
+  account is now `AG_USER="${AG_USER:-hsclouse}"`: a variable survives
+  sanitization as a variable, a teammate can run the script with `AG_USER`
+  set, and the next accidental rewrite would change a visible default rather
+  than silently redirect six commands. `docs/GO_NOGO.md` carried the same
+  snapshot's other placeholder (`C:\Users\user`) and now uses `%USERPROFILE%`.
+
 - eval_speaker_sweep.py read a column that has never existed (2026-09-24).
   `eval_db()` queried `entities FROM cop_updates`, then fell back to
   `entities FROM updates`; the WorldStateStore schema has no `cop_updates`
