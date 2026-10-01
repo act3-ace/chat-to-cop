@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=c2c-14b-ab
-#SBATCH --account=AFSNW27526RYZ
+#SBATCH --account=AFSNW27527ACT
 #SBATCH --qos=standard
 #SBATCH --partition=general
 #SBATCH --nodes=1
@@ -54,7 +54,7 @@ echo "Chat-to-CoP: 14B Speaker Model A/B Experiment (#52)"
 echo "=============================================================================="
 echo "Job ID:     $JOB_ID"
 echo "Node:       $(hostname)"
-echo "Account:    AFSNW27526RYZ"
+echo "Account:    AFSNW27527ACT"
 echo "Model:      $MODEL_TAG"
 echo "Chat data:  $CHAT_DATA"
 echo "Run A DB:   $DB_WITH"

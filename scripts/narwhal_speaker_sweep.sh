@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=AFSNW27526RYZ
+#SBATCH --account=AFSNW27527ACT
 #SBATCH --qos=standard
 #SBATCH --partition=general
 #SBATCH --nodes=1

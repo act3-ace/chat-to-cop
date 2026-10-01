@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=c2c-30b
-#SBATCH --account=AFSNW27526RYZ
+#SBATCH --account=AFSNW27527ACT
 #SBATCH --partition=MLA
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

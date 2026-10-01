@@ -57,7 +57,7 @@ related_jobs:
       speaker-routing question, while THIS job (chat-to-cop, DoD domain,
       hamilton.clouse.1@us.af.mil identity) runs the production-repo
       evaluation campaigns that shipped the current
-      use_speaker_models=False default. Same AFSNW27526RYZ charge, disjoint
+      use_speaker_models=False default. Same AFSNW27527ACT charge, disjoint
       job names, disjoint repos and domains -- do not merge into one card.
 
 accounting:
@@ -87,7 +87,7 @@ accounting:
       irregular -- episodic campaigns tied to specific issues (#26 model
       validation, #52 speaker A/B, #73 prompt-regression), not continuous or
       scheduled. None in any queue as of this card's pass (job.status).
-  charges: [{charge: AFSNW27526RYZ, role: primary}]
+  charges: [{charge: AFSNW27527ACT, role: primary}]
   pace_floor_corehr_day: null   # n/a -- urgency is backfill, not deadline-burn
   deadline: null                # n/a -- MASH (the project's cited deadline) already passed; see job.criticality
   attribution: >-
@@ -105,7 +105,7 @@ accounting:
 references:
   allocation_ledger:
     poll_cmd: "show_usage; also sbalance/sreport/sacct (VENUES.yaml narwhal.ledger); also polled fleet-wide by act3/hpc-usage-dashboard/scripts/update_live.py -> GitLab Pages dashboard on DLE"
-    key: AFSNW27526RYZ
+    key: AFSNW27527ACT
   venue_registry:
     external_status: "https://centers.hpc.mil/systems/unclassified.html"
     internal: VENUES.yaml
@@ -176,10 +176,10 @@ capability:
 venues:
   - venue: narwhal
     state: validated
-    eligible: AFSNW27526RYZ
+    eligible: AFSNW27527ACT
     directives: >-
       Dedicated model-comparison runs (c2c-7b-{A,B}, c2c-14b-{A,B,ab}, c2c-30b):
-      --account=AFSNW27526RYZ --qos=standard --partition=general (c2c-30b uses
+      --account=AFSNW27527ACT --qos=standard --partition=general (c2c-30b uses
       --partition=MLA instead, see pins) --gres=gpu:v100:1 --cpus-per-task=8
       --mem=32G, walltime 4h (14b-ab, 30b) to 8h (14b run_a/run_b). Speaker
       sweep (sw-<name>, array): --partition=general --qos=standard
@@ -188,7 +188,7 @@ venues:
       factorial cell, walltime/timeout scaled by model size (3b:3h/60s through
       32b:16h/600s).
     pins:
-      - "CRITICAL (higher severity than a copy-paste hazard -- this is a LIVE #SBATCH directive): scripts/narwhal_30b_test.sh (job-name c2c-30b, Issue #26) hardcodes --account=AFRLC2070NSH, NOT AFSNW27526RYZ. Running `sbatch scripts/narwhal_30b_test.sh` unmodified today submits against a DIFFERENT, PROHIBITED account -- VENUES.yaml narwhal.eligibility explicitly lists AFRLC2070NSH as 'visible on venue... NOT authorized', and the 2026-07-18/07-22 RYZ-only mandate names AFRLC2070NSH by name as never-authorized (alongside A21). Every OTHER script in this repo (blueback_replay_bench.sh, narwhal_14b_ab/run_a/run_b.sh, narwhal_7b_run_a/run_b.sh, narwhal_speaker_sweep.sh) correctly uses AFSNW27526RYZ -- this is isolated to narwhal_30b_test.sh. Not fixed here -- out of scope for this card (do not edit other files); this should be treated as higher priority than the agent-team card's equivalent finding since it is the actual submission directive, not example/usage text."
+      - "CRITICAL (higher severity than a copy-paste hazard -- this is a LIVE #SBATCH directive): scripts/narwhal_30b_test.sh (job-name c2c-30b, Issue #26) hardcodes --account=AFRLC2070NSH, NOT AFSNW27527ACT. Running `sbatch scripts/narwhal_30b_test.sh` unmodified today submits against a DIFFERENT, PROHIBITED account -- VENUES.yaml narwhal.eligibility explicitly lists AFRLC2070NSH as 'visible on venue... NOT authorized', and the 2026-07-18/07-22 RYZ-only mandate names AFRLC2070NSH by name as never-authorized (alongside A21). Every OTHER script in this repo (blueback_replay_bench.sh, narwhal_14b_ab/run_a/run_b.sh, narwhal_7b_run_a/run_b.sh, narwhal_speaker_sweep.sh) correctly uses AFSNW27527ACT -- this is isolated to narwhal_30b_test.sh. Not fixed here -- out of scope for this card (do not edit other files); this should be treated as higher priority than the agent-team card's equivalent finding since it is the actual submission directive, not example/usage text."
       - "--partition=MLA (capital) in narwhal_30b_test.sh is not documented anywhere in VENUES.yaml's narwhal entry (which lists partition: general only, no MLA partition) -- either VENUES.yaml is incomplete for Narwhal, or this is a stale/miscopied partition name (e.g. from a Wheat/Nautilus MLA-constraint pattern). Not independently resolved for this card."
       - "$ARCHIVE_HOME is set system-wide on Narwhal but its default symlink target (/archive/g/$USER) was never provisioned for this project -- narwhal_14b_run_a.sh/run_b.sh detect this and fall back to $HOME/chat-to-cop inside a trap-based cleanup() that archives the DB, log, AND slurm .out/.err (fix per CHANGELOG.md !94). narwhal_14b_ab.sh does NOT have this fallback or a trap-based archive step -- it only PRINTS the archive command as a manual next step, a materially weaker pattern than its own sibling scripts in the same repo."
       - "shared conda env ($WORK/envs/chat-to-cop) pip install races under concurrent jobs (CHANGELOG.md !90, fixed) -- pre-install once (`git pull && pip install -e . -q`) before submitting parallel jobs; do not `pip install -e .` inside each job script"
@@ -200,10 +200,10 @@ venues:
 
   - venue: blueback
     state: validated
-    eligible: AFSNW27526RYZ
+    eligible: AFSNW27527ACT
     directives: >-
       sbatch scripts/blueback_replay_bench.sh [MODEL=model-b:30b-a3b N=50] --
-      --account=AFSNW27526RYZ --partition=debug --gres=gpu:1
+      --account=AFSNW27527ACT --partition=debug --gres=gpu:1
       --cpus-per-task=4 --time=00:15:00 (Issue #73 Part A, prompt-regression
       harness; procedure documented in docs/RUNBOOK.md). Job name is literally
       "replay-bench", not c2c-prefixed -- see health.jobname_glob.
@@ -376,7 +376,7 @@ outputs: {doc: "SQLite DBs (replay_*.db, sweep_<name>_<job>_<task>.db) with a co
 done_conditions: {doc: "no formal done_conditions doc found; closest is docs/RUNBOOK.md's 'What to report' table (type_accuracy, entity_overlap_jaccard, none_false_positive_rate, mean_latency_ms, prompt_approx_tokens, before-vs-after) for prompt-regression checks"}
 
 summary_row: >-
-  AFSNW27526RYZ | ledger: poll references.allocation_ledger (never embedded) |
+  AFSNW27527ACT | ledger: poll references.allocation_ledger (never embedded) |
   no fixed deadline (project's MASH deadline already past) | GPU (V100 on
   Narwhal; unconstrained type on Blueback) | narwhal validated (6 of 8 HPC
   scripts, primary) / blueback validated (1 script, narrower role) | episodic

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=replay-bench
-#SBATCH --account=AFSNW27526RYZ
+#SBATCH --account=AFSNW27527ACT
 #SBATCH --partition=debug
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
